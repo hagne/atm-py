@@ -18,11 +18,9 @@ class ArmDataset(object):
 
     def _concat(self, arm_data_objs, close_gaps = True):
         for att in self._concatable:
-            print('attribute: ', att)
             first_object = getattr(arm_data_objs[0], att)
             which_type = type(first_object).__name__
             data_period = first_object._data_period
-            print(which_type)
             if which_type == 'TimeSeries_2D':
                 value = _timeseries.TimeSeries_2D(_pd.concat([getattr(i, att).data for i in arm_data_objs]))
             elif which_type == 'TimeSeries':

@@ -20,6 +20,7 @@ def check_availability(folder,
                        data_product = None,
                        site = 'sgp',
                        time_window = ('1990-01-01','2030-01-01'),
+                       custom_product_keys = False,
                        ignore_unknown = True,
                        verbose = False):
 
@@ -46,7 +47,7 @@ def check_availability(folder,
         if not date:
             continue
 
-        product_id = _is_in_product_keys(f, ignore_unknown, verbose)
+        product_id = _is_in_product_keys(f, ignore_unknown, verbose, custom_product_keys = custom_product_keys)
         if not product_id:
             continue
 
@@ -198,7 +199,7 @@ def _is_site(f,site,verbose):
                 print(txt)
     return out
 
-def _is_in_product_keys(f, ignore_unknown,verbose):
+def _is_in_product_keys(f, ignore_unknown,verbose, custom_product_keys = False):
 
     fnt = _os.path.split(f)[-1].split('.')
     product_id = False
@@ -207,20 +208,25 @@ def _is_in_product_keys(f, ignore_unknown,verbose):
             product_id = prod
             break
 
+    if custom_product_keys:
+        for prod in custom_product_keys:
+            if prod in fnt[0]:
+                product_id = prod
+                return product_id
+
     if not product_id:
         txt = '\t has no ncattr named platform_id. Guess from file name failed ... skip'
         if verbose:
             print(txt)
-
-
-    if product_id not in arm_products.keys():
-        txt = 'Platform id %s is unknown.'%product_id
-        product_id = False
-        if ignore_unknown:
-            if verbose:
-                print(txt + '... skipping')
-        else:
-            raise KeyError(txt)
+    else:
+        if product_id not in arm_products.keys():
+            txt = 'Platform id %s is unknown.'%product_id
+            product_id = False
+            if ignore_unknown:
+                if verbose:
+                    print(txt + '... skipping')
+            else:
+                raise KeyError(txt)
     return product_id
 
 def _is_in_time_window(f,time_window, verbose):

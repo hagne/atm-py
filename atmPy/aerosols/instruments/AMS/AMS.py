@@ -25,7 +25,6 @@ def ion2electrolyte_mass_concentration(ion_concentrations, ions, electrolytes):
         ###### material_elct['molar_concentration'] = np.nan
 
         for elect in electrolytes.index:
-    #         print(elect)
             elect_prop = electrolytes.loc[elect]
 
             eps_an = eps_ans.loc[elect_prop.loc['anion']]
@@ -51,10 +50,8 @@ def ion2electrolyte_mass_concentration(ion_concentrations, ions, electrolytes):
 
     sulfate_ratio = ions['molar_concentration'][['ammonium','sodium','calcium']].sum()/ ions['molar_concentration']['sulfate']
 
-    # print(sulfate_ratio)
     rich_only = ['sulfuric_acid','ammonium_hydrogen_sulfate']
     if sulfate_ratio >= 2:
-        # print('sulfate_poor')
 
         electrolytes = electrolytes.drop(rich_only, axis = 0)
         electrolytes = sulfat_poor()
@@ -152,7 +149,6 @@ class AMS_Timeseries_lev01(_timeseries.TimeSeries):
         dt = _np.zeros((self.data.shape[0],material_elct.shape[0]))
         df = _pd.DataFrame(dt,columns=material_elct.index, index = self.data.index)
         for i in self.data.index:
-        #     print(i)
             cct = self.data.loc[i]
             electro = ion2electrolyte_mass_concentration(cct, material_ions, material_elct)
             df.loc[i] = electro.mass_concentration

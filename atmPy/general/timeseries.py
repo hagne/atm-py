@@ -137,7 +137,7 @@ def close_gaps(ts, verbose = False):
     median = _np.median(dt)
 
     if median > (1.1 * ts._data_period) or median < (0.9 * ts._data_period):
-        raise ValueError('periode and median missmatch (%0.1f,%0.1f)'%(median,ts._data_period))
+        _warnings.warn('There is a periode and median missmatch (%0.1f,%0.1f), this is either due to an error in the assumed period or becuase there are too many gaps in the _timeseries.'%(median,ts._data_period))
 
     point_dist = (index.values[1:] - index.values[:-1]) / _np.timedelta64(1, 's')
     where = point_dist > 2 * ts._data_period
@@ -373,8 +373,6 @@ class TimeSeries(object):
         return self.data.__repr__()
 
     def __truediv__(self,other):
-        import pdb
-    # def test(self,other):
         self = self.copy()
         other = other.copy()
         if self._data_period > other._data_period:

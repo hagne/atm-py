@@ -216,6 +216,7 @@ class SizeDist(object):
 
     @property
     def physical_property_density(self):
+        """setter: if type _timeseries or vertical profile alignment is taken care of"""
         return self.__physical_property_density
 
     @physical_property_density.setter
@@ -388,10 +389,10 @@ sizedistribution.align to align the index of the new array."""
         #     import pdb
         #     pdb.set_trace()
             if adjust_refractive_index:
-                print('n_mix.shape', n_mix.shape)
+                # print('n_mix.shape', n_mix.shape)
                 df = pd.DataFrame(n_mix)
                 df.columns = ['index_of_refraction']
-                print('df.shape', df.shape)
+                # print('df.shape', df.shape)
                 # import pdb
                 # pdb.set_trace()
                 df.index = dist_g.data.index
