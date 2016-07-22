@@ -122,15 +122,15 @@ def makeMie_diameter(radiusRangeInMikroMeter = [0.05,1.5],
             intensity =  event.get_detectableIntensity(geometry)
             perpInt.append(intensity)
         diameter = np.array(2 * np.array(dRange))
-        scatteringEfficiency = np.array(perpInt)
+        scatteringIntensity = np.array(perpInt)
 #         if broadened:     
-        output[0]+= normalizer[e] * scatteringEfficiency/normalizer.sum()
+        output[0]+= normalizer[e] * scatteringIntensity/normalizer.sum()
         if len(exWavelengthInUm) == 1:
-            return diameter, scatteringEfficiency
+            return diameter, scatteringIntensity
         elif not singleLine: #why am I doing that?
-            output[e+1]=scatteringEfficiency
+            output[e+1]=scatteringIntensity
         elif e == int(len(exWavelengthInUm)/2): #why am I doing that?
-            output[1] = scatteringEfficiency
+            output[1] = scatteringIntensity
         
     if broadened:
         return diameter,output#,(exWavelengthInUm,normalizer)

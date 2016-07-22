@@ -5,11 +5,11 @@ from struct import unpack, calcsize
 
 import numpy as np
 import pandas as pd
-import pylab as plt
+import matplotlib.pylab as plt
 
 from atmPy.aerosols.size_distribution import sizedistribution
 from atmPy.tools import miscell_tools as misc
-
+from atmPy.general import timeseries as _timeseries
 #from StringIO import StringIO as io
 #from POPS_lib import calibration
 
@@ -19,17 +19,16 @@ defaultBins = np.logspace(np.log10(140), np.log10(3000), 30)
 
 #######
 #### Peak file
-def _read_PeakFile_Binary(fname, version = 'current', deltaTime=0):
+def _read_PeakFile_Binary(fname, version = 'current', time_shift=0):
     """returns a peak instance
-    fname: ...
-    deltaTime: if you want to apply a timedelay in seconds"""
+    test_data_folder: ..."""
     directory, filename = os.path.split(fname)
     if version == 'current':
         data = _binary2array_labview_clusters(fname)
-        dataFrame = _PeakFileArray2dataFrame(data,filename, deltaTime, log = False, since_midnight = False)
+        dataFrame = _PeakFileArray2dataFrame(data,filename, time_shift, log = False, since_midnight = False)
     elif version == '01':
         data = _BinaryFile2Array(fname)
-        dataFrame = _PeakFileArray2dataFrame(data,filename,deltaTime)
+        dataFrame = _PeakFileArray2dataFrame(data,filename,time_shift)
     else:
         txt = 'This version does not exist: '%version
         raise ValueError(txt)
@@ -38,12 +37,15 @@ def _read_PeakFile_Binary(fname, version = 'current', deltaTime=0):
     return peakInstance
 
 
-def read_binary(fname, version = 'current'):
+def read_binary(fname, time_shift = False ,version = 'current'):
     """Generates a single Peak instance from a file or list of files
 
     Arguments
     ---------
     fname: string or list of strings
+    time_shift: iterable
+        e.g. (1,'h)
+        see http://docs.scipy.org/doc/numpy/reference/arrays.datetime.html#datetime-units
     version: str
         'current' - current :-)
         '01': before summer-fall 2015
@@ -57,7 +59,7 @@ def read_binary(fname, version = 'current'):
                 print('%s is not a peak file ... skipped' % file)
                 continue
             print('%s ... processed' % file)
-            mt = _read_PeakFile_Binary(file, version = version)
+            mt = _read_PeakFile_Binary(file, version = version, time_shift=time_shift)
             if first:
                 m = mt
                 first = False
@@ -65,7 +67,7 @@ def read_binary(fname, version = 'current'):
                 m.data = pd.concat((m.data, mt.data))
 
     else:
-        m = _read_PeakFile_Binary(fname)
+        m = _read_PeakFile_Binary(fname, version = version, time_shift=time_shift)
 
     return m
 
@@ -75,9 +77,9 @@ def read_binary(fname, version = 'current'):
 #############################################
 #############################################
 
-# def _PeakFileArray2dataFrame(data,fname,deltaTime):
+# def _PeakFileArray2dataFrame(data,test_data_folder,deltaTime):
 #     data = data.copy()
-#     dateString = fname.split('_')[0]
+#     dateString = test_data_folder.split('_')[0]
 #     dt = datetime.datetime.strptime(dateString, "%Y%m%d") - datetime.datetime.strptime('19700101', "%Y%m%d")
 #     dts = dt.total_seconds()
 #     #dtsPlus = datetime.timedelta(seconds = deltaTime).total_seconds()
@@ -93,7 +95,7 @@ def read_binary(fname, version = 'current'):
 #     except OverflowError:
 #
 #         data, report = _cleanPeaksArray(data)
-#         warnings.warn('Binary file %s is corrupt. Will try to fix it. if no exception accured it probably worked\nReport:\n%s'%(fname,report))
+#         warnings.warn('Binary file %s is corrupt. Will try to fix it. if no exception accured it probably worked\nReport:\n%s'%(test_data_folder,report))
 #
 #
 #         Time_s = data[:,0]
@@ -118,7 +120,7 @@ def _csv2array(fname):
 
 def _read_peak_file_csv(fname, deltaTime=0, log = True, since_midnight = True):
     """returns a peak instance
-    fname: ...
+    test_data_folder: ...
     deltaTime: if you want to apply a timedelay in seconds"""
     data = _csv2array(fname)
     directory, fname = os.path.split(fname)
@@ -190,7 +192,7 @@ def read_cal_process_peakFile(fname, cal, bins, average_over_time=False, normali
     peakdf.apply_calibration(cal)
     dist = peakdf.peak2numberdistribution(bins=bins)
     if average_over_time:
-        dist = dist.average_overTime(average_over_time)
+        dist = dist.average_time(average_over_time)
     if normalize:
         dist.data *= 1./normalize
     dist = dist.convert2dNdlogDp()
@@ -282,7 +284,7 @@ def _binary2array_labview_clusters(fname, skip = 20):
     return full_array
 
 
-def _PeakFileArray2dataFrame(data,fname,deltaTime, log = True, since_midnight = True):
+def _PeakFileArray2dataFrame(data,fname,time_shift, log = True, since_midnight = True):
     data = data.copy()
     dateString = fname.split('_')[0]
     if since_midnight:
@@ -294,13 +296,17 @@ def _PeakFileArray2dataFrame(data,fname,deltaTime, log = True, since_midnight = 
     #dtsPlus = datetime.timedelta(seconds = deltaTime).total_seconds() 
     
     columns = np.array(['Ticks', 'Amplitude', 'Width', 'Saturated', 'Masked'])
-    
-    
+
+    if time_shift:
+        time_shift_in_sec = np.timedelta64(*time_shift)/np.timedelta64(1,'s')
+    else:
+        time_shift_in_sec = 0
+
     try:
         Time_s = data[:,0]
         rest = data[:,1:]
         dataTable = pd.DataFrame(rest, columns=columns)
-        dataTable.index = pd.Series(pd.to_datetime(Time_s + dts + deltaTime, unit = 's'), name = 'Time_UTC')
+        dataTable.index = pd.Series(pd.to_datetime(Time_s + dts + time_shift_in_sec, unit = 's'), name = 'Time_UTC')
     except OverflowError:
         
         data, report = _cleanPeaksArray(data)
@@ -310,7 +316,7 @@ def _PeakFileArray2dataFrame(data,fname,deltaTime, log = True, since_midnight = 
         Time_s = data[:,0]
         rest = data[:,1:]
         dataTable = pd.DataFrame(rest, columns=columns)
-        dataTable.index = pd.Series(pd.to_datetime(Time_s + dts + deltaTime, unit = 's'), name = 'Time_UTC')
+        dataTable.index = pd.Series(pd.to_datetime(Time_s + dts + time_shift_in_sec, unit = 's'), name = 'Time_UTC')
         
     if log:
         dataTable.Amplitude = 10**dataTable.Amplitude # data is written in log10
@@ -379,7 +385,7 @@ def _cleanPeaksArray(PeakArray):
     report += 'All together %s (%.5f%%) datapoints removed.'%(pointsRem, pointsRem/float(startstartShape[0]))
     return BarrayClean, report
 
-class peaks:
+class peaks(object):
     def __init__(self,dataFrame):
         self.data = dataFrame
         
@@ -388,13 +394,14 @@ class peaks:
         
         where_tooBig = np.where(self.data.Amplitude > calibrationInstance.data.amp.max())
         where_tooSmall = np.where(self.data.Amplitude < calibrationInstance.data.amp.min())
-        tooSmall = len(where_tooSmall[0])
-        tooBig = len(where_tooBig[0])
-        self.data.Masked.values[where_tooBig] = 1
+        too_small = len(where_tooSmall[0])
+        too_big = len(where_tooBig[0])
+        self.data.Masked.values[where_tooBig] = 2
         self.data.Masked.values[where_tooSmall] = 1
-        misc.msg('\t %s from %s peaks (%.1i %%) are outside the calibration range (amplitude = [%s, %s], diameter = [%s, %s])'%(tooSmall + tooBig, len(self.data.Amplitude),100 * float(tooSmall + tooBig)/float(len(self.data.Amplitude)) , calibrationInstance.data.amp.min(),  calibrationInstance.data.amp.max(), calibrationInstance.data.d.min(), calibrationInstance.data.d.max()))
-        misc.msg('\t\t %s too small'%(tooSmall))
-        misc.msg('\t\t %s too big'%(tooBig))
+        misc.msg('\t %s from %s peaks (%.1i %%) are outside the calibration range (amplitude = [%s, %s], diameter = [%s, %s])'%(too_small + too_big, len(self.data.Amplitude),100 * float(too_small + too_big)/float(len(self.data.Amplitude)) , calibrationInstance.data.amp.min(),  calibrationInstance.data.amp.max(), calibrationInstance.data.d.min(), calibrationInstance.data.d.max()))
+        misc.msg('\t\t %s too small'%(too_small))
+        misc.msg('\t\t %s too big'%(too_big))
+        self.particles_larger_than_pops_detection_range = too_big
         return
         
     #########
@@ -472,13 +479,11 @@ class peaks:
     
         """
         notMasked = np.where(self.data.Masked == 0)
-        # print('lenNotMasked', len(notMasked))
-        # if len(notMasked) < 2:
-        #     txt = 'peak file contains no valid peak information. Origins could be problems with the calibration!'
-        #     raise ValueError(txt)
+        # too_big_condi = np.where(self.data.Masked == 2)
+
         unique = np.unique(self.data.index.values[notMasked])
         N = np.zeros((unique.shape[0],bins.shape[0]-1))
-    
+        too_big = np.zeros(unique.shape[0])
     
         for e,i in enumerate(unique):
             condi = np.where(np.logical_and(self.data.Masked == 0, self.data.index.values == i))
@@ -488,16 +493,17 @@ class peaks:
                 process = self.data.Diameter.values[condi]
             n,edg = np.histogram(process, bins = bins)
             N[e] = n
+            too_big[e] = np.logical_and(self.data.Masked == 2, self.data.index.values == i).sum()
     
         N = N.astype(np.float)
-    
+        too_big = too_big.astype(np.float)
+
         deltaT = (unique[1:]-unique[:-1]) / np.timedelta64(1,'s')
 
-        deltaT = np.append(deltaT[0],deltaT)
-        deltaT = np.repeat(np.array([deltaT]),bins.shape[0]-1, axis=0)
+        deltaT_sl = np.append(deltaT[0],deltaT)
+        deltaT = np.repeat(np.array([deltaT_sl]),bins.shape[0]-1, axis=0)
         N/=deltaT.transpose()
-        
-        # bincenter = (edg[:-1] + edg[1:])/2.
+        too_big /= deltaT_sl.transpose()
         binwidth = edg[1:] - edg[:-1]
     
         if not differentialStyle:
@@ -513,11 +519,14 @@ class peaks:
         for e,i in enumerate(binstr[:-1]):
             cols.append(i+'-'+binstr[e+1])
         dataFrame = pd.DataFrame(N, columns=cols, index = unique)
+        # too_big = pd.DataFrame(too_big, columns=['# too big'])
+        too_big = _timeseries.TimeSeries(pd.DataFrame(too_big, columns=['# too big'], index = unique))
         if distributionType == 'calibration':
             return sizedistribution.SizeDist_TS(dataFrame, bins, 'calibration')
         else:
             dist = sizedistribution.SizeDist_TS(dataFrame, bins, 'dNdDp')
             dist = dist.convert2dNdlogDp()
+            dist.particle_number_concentration_outside_range = too_big
             return dist
         
 #    def peak2numberdistribution_dNdlogDp(self, bins = defaultBins):
@@ -534,7 +543,8 @@ class peaks:
         if type(bins) == str:
             if bins == 'default':
                 bins = defaultBins
-        return self._peak2Distribution(bins = bins, differentialStyle='dNdDp')
+        dist = self._peak2Distribution(bins=bins, differentialStyle='dNdDp')
+        return dist
         
 #    def peak2calibration(self, bins = 200, ampMin = 20):
 #        bins = np.logspace(np.log10(20), np.log10(self.data.Amplitude.values.max()),bins)

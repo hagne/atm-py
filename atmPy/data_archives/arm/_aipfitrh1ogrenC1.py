@@ -12,6 +12,7 @@ class ArmDatasetSub(_netCDF.ArmDataset):
 
     def __init__(self,*args, **kwargs):
         self._data_period = 3600
+        self._time_offset = (- self._data_period, 's')
         super(ArmDatasetSub,self).__init__(*args, **kwargs)
 
         self._concatable = ['f_RH_scatt_funcs_2p', 'f_RH_scatt_funcs_3p','f_RH_scatt_2p_85_40', 'f_RH_scatt_3p_85_40', 'f_RH_scatt_2p_ab_G_1um']
@@ -24,6 +25,8 @@ class ArmDatasetSub(_netCDF.ArmDataset):
         self.__sup_RH = None
         self.__kappa = None
         self.__growthfactor = None
+        self.__kappa_85_40 = None
+        self.__growthfactor_85_40 = None
         self.__sup_kappa_sizedist = None
         self.__sup_kappa_wavelength = None
 
@@ -165,7 +168,7 @@ class ArmDatasetSub(_netCDF.ArmDataset):
         both values and than divide."""
         if not self.__f_RH_scatt_2p:
             if not self.sup_RH:
-                raise ValueError('please set the relative humidity in sup_RH')
+                raise ValueError('Please set the relative humidity to calculate f(RH) at. Therefore, set sup_RH (in %)')
 
             def applyfunk(value):
                 if type(value).__name__ == 'function':
@@ -194,8 +197,11 @@ class ArmDatasetSub(_netCDF.ArmDataset):
     @_decorators.change_doc(_hygrow.kappa_from_fofrh_and_sizedist)
     def kappa(self):
         if not self.__kappa:
-            if not self.sup_kappa_sizedist or not self.sup_kappa_wavelength:
-                txt = "Make sure you define the following attributes first: \nself.sup_kappa_sizedist and self.sup_kappa_wavelength"
+            if not self.sup_kappa_sizedist or not self.sup_kappa_wavelength or not self.sup_RH:
+                txt = ("Make sure you define the following attributes first: \n"
+                       "\t - self.sub_RH -- needed to calculate f(RH) for a representitive value (e.g. 80)\n"
+                       "\t - self.sup_kappa_sizedist\n"
+                       "\t - and self.sup_kappa_wavelength")
                 raise ValueError(txt)
 
             self.__kappa, self.__growthfactor = _hygrow.kappa_from_fofrh_and_sizedist(self.f_RH_scatt_2p, self.sup_kappa_sizedist,
@@ -212,6 +218,38 @@ class ArmDatasetSub(_netCDF.ArmDataset):
         if self.__growthfactor:
             self.kappa
         return self.__growthfactor
+
+
+
+    @property
+    @_decorators.change_doc(_hygrow.kappa_from_fofrh_and_sizedist)
+    def kappa_85_40(self):
+        if not self.__kappa_85_40:
+            if not self.sup_kappa_sizedist or not self.sup_kappa_wavelength:
+                txt = ("Make sure you define the following attributes first: \n"
+                       "\t - self.sup_kappa_sizedist\n"
+                       "\t - and self.sup_kappa_wavelength")
+                raise ValueError(txt)
+
+            self.__kappa_85_40, self.__growthfactor_85_40 = _hygrow.kappa_from_fofrh_and_sizedist(self.f_RH_scatt_2p_85_40, self.sup_kappa_sizedist,
+                                                                                      self.sup_kappa_wavelength, 85)
+        return self.__kappa_85_40
+
+    @kappa_85_40.setter
+    def kappa_85_40(self, value):
+        self.__kappa_85_40 = value
+
+    @property
+    @_decorators.change_doc(_hygrow.kappa_from_fofrh_and_sizedist)
+    def growth_factor_85_40(self):
+        if self.__growthfactor_85_40:
+            self.kappa_85_40
+        return self.__growthfactor_85_40
+
+
+
+
+
 
     @property
     def sup_kappa_sizedist(self):

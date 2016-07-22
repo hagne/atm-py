@@ -29,12 +29,15 @@ year = '2015'
 miniSASP_channels = [550.4, 460.3, 671.2, 860.7]
 
 
-def read_csv(fname, verbose=False):
+def read_csv(fname, version = 'current', verbose=False):
     """Creates a single ULR instance from one file or a list of files.
 
     Arguments
     ---------
     fname: string or list
+    version: str
+        0.1: files till 2016-07-18 ... this includes Svalbard data
+        current: files since 2016-07-18
     """
     if type(fname).__name__ == 'list':
         first = True

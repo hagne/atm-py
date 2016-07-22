@@ -5,6 +5,7 @@ from atmPy.data_archives.arm import _netCDF
 class ArmDatasetSub(_netCDF.ArmDataset):
     def __init__(self,*args, **kwargs):
         self._data_period = 60.
+        self._time_offset = (- self._data_period, 's')
         super(ArmDatasetSub,self).__init__(*args, **kwargs)
         ## Define what is good, patchy or bad data
 

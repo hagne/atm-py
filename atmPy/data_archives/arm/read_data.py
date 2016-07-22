@@ -89,7 +89,7 @@ def read_cdf(fname,
              concat = True,
              ignore_unknown = False,
              leave_cdf_open = False,
-             verbose = True,
+             verbose = False,
              ):
     """
     Reads ARM NetCDF file(s) and returns a containers with the results.
@@ -131,6 +131,7 @@ def read_cdf(fname,
     products = {}
 
     #loop thru files
+    no_valid = 0
     for f in fname:
         if verbose:
             print('\n', f)
@@ -167,8 +168,12 @@ def read_cdf(fname,
             arm_file_object._close()
 
         products[product_id].append(arm_file_object)
+        no_valid += 1
 
     if len(fname) == 1:
+        if not no_valid:
+            txt = '%s is either not the right file format or does not fall into the enquiry specifications'%(fname[0])
+            raise ValueError(txt)
         return arm_file_object
 
     else:

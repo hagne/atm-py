@@ -186,7 +186,7 @@ class calibration:
         self.calibrationFunction = self.get_calibrationFunctionSpline()
 
     def save_csv(self,fname):
-#         save_Calibration(self,fname)
+#         save_Calibration(self,test_data_folder)
         self.data.to_csv(fname, index = False)
         return
 

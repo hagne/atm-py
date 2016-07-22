@@ -43,10 +43,10 @@ def load_PMEL_SMPS(fname):
     dist = sizedistribution.aerosolSizeDistribution(reducedTab,binedges, 'dNdlogDp', bincenters = bincenters)
     return dist
     
-#def load_PMEL_SMPS(fname):
+#def load_PMEL_SMPS(test_data_folder):
 #    """returns an aerosolsizedistributio instance from the POPS_lib libary"""
 #
-#    tab = pd.read_csv(fname,sep = '\t',header = 18)
+#    tab = pd.read_csv(test_data_folder,sep = '\t',header = 18)
 #    tab.index = pd.to_datetime(tab.Date+' '+tab['Start Time'])
 #    reducedTab = tab.iloc[:,8:-26]
 #    col = reducedTab.columns

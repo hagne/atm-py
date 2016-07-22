@@ -2,7 +2,7 @@ import pandas as pd
 import pylab as plt
 from copy import deepcopy as _deepcopy
 
-from atmPy.general import timeseries
+import atmPy.general.timeseries
 from atmPy.tools import plt_tools
 
 
@@ -57,7 +57,7 @@ class VerticalProfile(object):
         cat_sort_int = cat_sort_int.dropna()
         cat_sort_int.index = cat_sort_int.TimeUTC
         cat_sort_int = cat_sort_int.drop('TimeUTC', axis=1)
-        return timeseries.TimeSeries(cat_sort_int)
+        return atmPy.general.timeseries.TimeSeries(cat_sort_int)
 
 #### Tools
 def merge(ts, ts_other):

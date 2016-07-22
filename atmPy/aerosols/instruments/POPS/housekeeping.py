@@ -12,14 +12,14 @@ from atmPy.general import atmosphere_standards as atm_std, timeseries
 
 
 def _read_housekeeping(fname):
-    """Reads housekeeping file (fname; csv-format) returns a pandas data frame instance."""
+    """Reads housekeeping file (test_data_folder; csv-format) returns a pandas data frame instance."""
     print('reading %s'%fname)
     try:
         df = pd.read_csv(fname, error_bad_lines=False)
     except ValueError:
         return False
 #    data = df.values
-#    dateString = fname.split('_')[0]
+#    dateString = test_data_folder.split('_')[0]
     dt = datetime.datetime.strptime('19700101', "%Y%m%d") - datetime.datetime.strptime('19040101', "%Y%m%d") 
     dts = dt.total_seconds()
     # todo: (low) what is that delta t for, looks fishi (Hagen)
@@ -34,7 +34,7 @@ def _read_housekeeping(fname):
     return POPSHouseKeeping(df)
 
 
-def read_csv(fname):
+def read_csv(fname, verbose = False):
     """
     Parameters
     ----------
@@ -44,8 +44,8 @@ def read_csv(fname):
     -------
     TimeSeries instance
     """
-    # fname = os.listdir()
-    # fname = '20150419_000_POPS_HK.csv'
+    # test_data_folder = os.listdir()
+    # test_data_folder = '20150419_000_POPS_HK.csv'
 
     houseKeeping_file_endings = ['HK.csv', 'HK.txt']
 
@@ -59,6 +59,9 @@ def read_csv(fname):
                     break
                 else:
                     is_hk = False
+            if verbose and not is_hk:
+                print('%s is not a housekeeping file ... continue')
+
             if is_hk:
                 hktmp = _read_housekeeping(file)
                 if not hktmp:
@@ -66,6 +69,7 @@ def read_csv(fname):
                 elif first:
                     data = hktmp.data.copy()
                     first = False
+                    hk = POPSHouseKeeping(data)
                     # continue
                 else:
                     data = pd.concat((data, hktmp.data))

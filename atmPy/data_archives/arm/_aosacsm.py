@@ -27,7 +27,8 @@ def _concat_rules(arm_data_objs):
 
 class ArmDatasetSub(_ArmDataset):
     def __init__(self,*args, **kwargs):
-        self._data_period = 2048.
+        self._data_period = 1800.
+        self._time_offset = (- self._data_period, 's')
         super(ArmDatasetSub,self).__init__(*args, **kwargs)
 
         self.__kappa = None

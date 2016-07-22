@@ -13,7 +13,6 @@ import warnings as _warnings
 import datetime
 import scipy.optimize as optimization
 from scipy import stats
-from atmPy.general import vertical_profile
 from atmPy.aerosols.physics import hygroscopic_growth as hg, optical_properties
 from atmPy.tools import pandas_tools
 from atmPy.aerosols.physics import optical_properties
@@ -81,8 +80,9 @@ def read_csv(fname, fixGaps=True):
 
     rein.close()
     data = pd.read_csv(fname, header=i + 1, index_col=0)
-    data.index = pd.to_datetime(data.index)
+    # data.index = pd.to_datetime(data.index)
     if outDict['objectType'] == 'SizeDist_TS':
+        data.index = pd.to_datetime(data.index)
         distRein = SizeDist_TS(data, outDict['bins'], outDict['distributionType'], fixGaps=fixGaps)
     elif outDict['objectType'] == 'SizeDist':
         distRein = SizeDist(data, outDict['bins'], outDict['distributionType'], fixGaps=fixGaps)
@@ -213,6 +213,30 @@ class SizeDist(object):
 
         if fixGaps:
             self.fillGaps()
+
+    def __mul__(self, other):
+        self.data *= other
+        self.particle_number_concentration_outside_range *= other
+        self._update()
+        return self
+
+    def __truediv__(self, other):
+        self.data /= other
+        self.particle_number_concentration_outside_range /= other
+        self._update()
+        return self
+
+    def __add__(self, other):
+        self.data += other
+        self.particle_number_concentration_outside_range += other
+        self._update()
+        return self
+
+    def __sub__(self, other):
+        self.data -= other
+        self.particle_number_concentration_outside_range -= other
+        self._update()
+        return self
 
     @property
     def physical_property_density(self):
@@ -839,7 +863,7 @@ sizedistribution.align to align the index of the new array."""
         sfc_all = surface_conc.sum(axis = 1) # nm^2/cm^3
         sfc_all = sfc_all * 1e-6 # um^2/cm^3
         label = 'Surface concentration $\mu m^2 / cm^{-3}$'
-        sfc_df = pd.DataFrame(sfc_all * 1e-9, columns = [label])
+        sfc_df = pd.DataFrame(sfc_all, columns = [label])
         if type(self).__name__ == 'SizeDist':
             return sfc_df
         elif type(self).__name__ == 'SizeDist_TS':
@@ -849,8 +873,10 @@ sizedistribution.align to align the index of the new array."""
             out =  _vertical_profile.VerticalProfile(sfc_df)
         else:
             raise ValueError("Can't be! %s is not an option here"%(type(self).__name__))
-        out._x_label = label
+        out._y_label = label
         return out
+
+
 
     def _get_volume_concentration(self):
         """ volume of particles per volume air"""
@@ -861,7 +887,7 @@ sizedistribution.align to align the index of the new array."""
 
         vlc_all = volume_conc.sum(axis = 1) # nm^3/cm^3
         vlc_all = vlc_all * 1e-9 # um^3/cm^3
-        vlc_df = pd.DataFrame(vlc_all * 1e-9, columns = ['volume concentration $\mu m^3 / cm^{-3}$'])
+        vlc_df = pd.DataFrame(vlc_all, columns = ['volume concentration $\mu m^3 / cm^{3}$'])
         if type(self).__name__ == 'SizeDist':
             return  vlc_df
         elif type(self).__name__ == 'SizeDist_TS':
@@ -1012,6 +1038,104 @@ class SizeDist_TS(SizeDist):
         self._uptodate_particle_mass_concentration = False
         self._uptodate_particle_mass_mixing_ratio = False
         self._uptodate_particle_number_mixing_ratio = False
+        self._uptodate_particle_surface_concentration = False
+        self._uptodate_particle_volume_concentration = False
+
+    # todo: declared deprecated on 2016-04-29
+    def convert2layerseries(self, hk, layer_thickness=10, force=False):
+        """convertes the time series to a layer series.
+
+        Note
+        ----
+        nan values are excluded when an average is taken over a the time that corresponds to the particular layer
+        (altitude). If there are only nan values nan is returned and there is a gap in the Layerseries.
+
+        The the housekeeping instance has to have a column called "Altitude" and which is monotonicly in- or decreasing
+
+        Arguments
+        ---------
+        hk: housekeeping instance
+        layer_thickness (optional): [10] thickness of each generated layer in meter"""
+        _warnings.warn("convert2layerseries is deprecated and will be deleted in the future. Please use convert2verticalprofile (2016-04-29)")
+        if any(_np.isnan(hk.data.Altitude)):
+            txt = """The Altitude contains nan values. Either fix this first, eg. with pandas interpolate function"""
+            raise ValueError(txt)
+
+        if ((hk.data.Altitude.values[1:] - hk.data.Altitude.values[:-1]).min() < 0) and (
+                    (hk.data.Altitude.values[1:] - hk.data.Altitude.values[:-1]).max() > 0):
+            if force:
+                hk.data = hk.data.sort(columns='Altitude')
+            else:
+                txt = ('Given altitude data is not monotonic. This is not possible (yet). Use force if you\n'
+                       'know what you are doing')
+                raise ValueError(txt)
+
+        start_h = round(hk.data.Altitude.values.min() / layer_thickness) * layer_thickness #what did I do here?!?!
+        end_h = round(hk.data.Altitude.values.max() / layer_thickness) * layer_thickness
+
+        layer_edges = _np.arange(start_h, end_h, layer_thickness)
+        empty_frame = pd.DataFrame(columns=self.data.columns)
+        lays = SizeDist_LS(empty_frame, self.bins, self.distributionType, None)
+
+        for e, end_h_l in enumerate(layer_edges[1:]):
+            start_h_l = layer_edges[e]
+            layer = hk.data.Altitude.iloc[
+                _np.where(_np.logical_and(start_h_l < hk.data.Altitude.values, hk.data.Altitude.values < end_h_l))]
+            start_t = layer.index.min()
+            end_t = layer.index.max()
+            dist_tmp = self.zoom_time(start=start_t, end=end_t)
+            avrg = dist_tmp.average_overAllTime()
+            # return avrg,lays
+            lays.add_layer(avrg, (start_h_l, end_h_l))
+        lays.parent_dist_TS = self
+        lays.parent_timeseries = hk
+
+        data = hk.data.copy()
+        data['Time_UTC'] = data.index
+        data.index = data.Altitude
+        data = data.sort_index()
+        if not data.index.is_unique:  # this is needed in case there are duplicate indeces
+            grouped = data.groupby(level=0)
+            data = grouped.last()
+
+        # lays.housekeeping = data
+        data = data.reindex(lays.layercenters, method='nearest')
+        lays.housekeeping = _vertical_profile.VerticalProfile(data)
+        return lays
+
+    def convert2verticalprofile(self, laythick=2):
+        sd = self.copy()
+        # if not np.array_equal(sd.data.index.values, sd.housekeeping.data.index.values): raise ValueError()
+        # if not np.array_equal(sd.data.index.values, sd.housekeeping.data.index.values): raise ValueError()
+
+        sd.data.index = sd.housekeeping.data.Altitude
+        sd.data.sort_index(inplace=True)
+
+        sd.housekeeping.data.index = sd.housekeeping.data.Altitude
+        sd.housekeeping.data.sort_index(inplace=True)
+
+        start = _np.floor(sd.housekeeping.data.Altitude.min())
+        end = _np.ceil(sd.housekeeping.data.Altitude.max())
+
+        layerbounderies = _np.arange(start, end + 1, laythick)
+        layerbounderies = _np.array([layerbounderies[0:-1], layerbounderies[1:]]).transpose()
+
+        index = _np.apply_along_axis(lambda x: x.sum(), 1, layerbounderies) / 2.
+        df = pd.DataFrame(_np.zeros((layerbounderies.shape[0], sd.data.shape[1])), index=index, columns=sd.data.columns)
+
+        dfhk = pd.DataFrame(_np.zeros((layerbounderies.shape[0], sd.housekeeping.data.shape[1])), index=index, columns=sd.housekeeping.data.columns)
+
+        for l in layerbounderies:
+            where = _np.where(_np.logical_and(sd.data.index > l[0], sd.data.index < l[1]))[0]
+            mean = sd.data.iloc[where, :].mean()
+            df.loc[(l[0] + l[1]) / 2] = mean
+
+            mean = sd.housekeeping.data.iloc[where, :].mean()
+            dfhk.loc[(l[0] + l[1]) / 2] = mean
+
+        dist_ls = SizeDist_LS(df, sd.bins, sd.distributionType, layerbounderies)
+        dist_ls.housekeeping = _vertical_profile.VerticalProfile(dfhk)
+        return dist_ls
 
     def fit_normal(self, log=True, p0=[10, 180, 0.2]):
         """ Fits a single normal distribution to each line in the data frame.
@@ -1253,14 +1377,17 @@ class SizeDist_TS(SizeDist):
         return dist
 
 
-    def average_overTime(self, window='1S'):
+    def average_time(self, window=(1, 's')):
         """returns a copy of the sizedistribution_TS with reduced size by averaging over a given window
 
         Arguments
         ---------
-        window: str ['1S']. Optional
-            window over which to average. For aliases see
-            http://pandas.pydata.org/pandas-docs/stable/timeseries.html#offset-aliases
+        window: tuple
+            tuple[0]: periods
+            tuple[1]: frequency (Y,M,W,D,h,m,s...) according to:
+                http://docs.scipy.org/doc/numpy/reference/arrays.datetime.html#datetime-units
+                if error also check out:
+                http://pandas.pydata.org/pandas-docs/stable/timeseries.html#offset-aliases
 
         Returns
         -------
@@ -1269,12 +1396,13 @@ class SizeDist_TS(SizeDist):
         """
 
         dist = self.copy()
-        window = window
-        dist.data = dist.data.resample(window, closed='right', label='right')
+        dist.data = dist.data.resample(window, label='left').mean()
+        dist._data_period = _np.timedelta64(window[0], window[1]) / _np.timedelta64(1, 's')
         if dist.distributionType == 'calibration':
             dist.data.values[_np.where(_np.isnan(self.data.values))] = 0
 
-        dist.housekeeping = self.housekeeping.average_overTime(window = window)
+        if dist.housekeeping:
+            dist.housekeeping = self.housekeeping.average_time(window = window)
 
 
         dist._update()
@@ -1292,68 +1420,8 @@ class SizeDist_TS(SizeDist):
 
         data = pd.DataFrame(_np.array([singleHist]), columns=self.data.columns)
         avgDist = SizeDist(data, self.bins, self.distributionType)
-        self._update()
+        # self._update()
         return avgDist
-
-    def convert2layerseries(self, hk, layer_thickness=10, force=False):
-        """convertes the time series to a layer series.
-
-        Note
-        ----
-        nan values are excluded when an average is taken over a the time that corresponds to the particular layer
-        (altitude). If there are only nan values nan is returned and there is a gap in the Layerseries.
-
-        The the housekeeping instance has to have a column called "Altitude" and which is monotonicly in- or decreasing
-
-        Arguments
-        ---------
-        hk: housekeeping instance
-        layer_thickness (optional): [10] thickness of each generated layer in meter"""
-        if any(_np.isnan(hk.data.Altitude)):
-            txt = """The Altitude contains nan values. Either fix this first, eg. with pandas interpolate function"""
-            raise ValueError(txt)
-
-        if ((hk.data.Altitude.values[1:] - hk.data.Altitude.values[:-1]).min() < 0) and (
-                    (hk.data.Altitude.values[1:] - hk.data.Altitude.values[:-1]).max() > 0):
-            if force:
-                hk.data = hk.data.sort(columns='Altitude')
-            else:
-                txt = '''Given altitude data is not monotonic. This is not possible (yet). Use force if you
-know what you are doing'''
-                raise ValueError(txt)
-
-        start_h = round(hk.data.Altitude.values.min() / layer_thickness) * layer_thickness
-        end_h = round(hk.data.Altitude.values.max() / layer_thickness) * layer_thickness
-
-        layer_edges = _np.arange(start_h, end_h, layer_thickness)
-        empty_frame = pd.DataFrame(columns=self.data.columns)
-        lays = SizeDist_LS(empty_frame, self.bins, self.distributionType, None)
-
-        for e, end_h_l in enumerate(layer_edges[1:]):
-            start_h_l = layer_edges[e]
-            layer = hk.data.Altitude.iloc[
-                _np.where(_np.logical_and(start_h_l < hk.data.Altitude.values, hk.data.Altitude.values < end_h_l))]
-            start_t = layer.index.min()
-            end_t = layer.index.max()
-            dist_tmp = self.zoom_time(start=start_t, end=end_t)
-            avrg = dist_tmp.average_overAllTime()
-            # return avrg,lays
-            lays.add_layer(avrg, (start_h_l, end_h_l))
-        lays.parent_dist_TS = self
-        lays.parent_timeseries = hk
-
-        data = hk.data.copy()
-        data['Time_UTC'] = data.index
-        data.index = data.Altitude
-        data = data.sort_index()
-        if not data.index.is_unique: #this is needed in case there are duplicate indeces
-            grouped = data.groupby(level = 0)
-            data = grouped.last()
-
-        # lays.housekeeping = data
-        data = data.reindex(lays.layercenters,method = 'nearest')
-        lays.housekeeping = vertical_profile.VerticalProfile(data)
-        return lays
 
     @property
     def particle_number_concentration(self):
@@ -1438,8 +1506,8 @@ class SizeDist_LS(SizeDist):
 
     """
 
-    def __init__(self, data, bins, distributionType, layerbounderies, fixGaps=True):
-        super(SizeDist_LS, self).__init__(data, bins, distributionType, fixGaps=True)
+    def __init__(self, data, bins, distributionType, layerbounderies):
+        super(SizeDist_LS, self).__init__(data, bins, distributionType, fixGaps=False)
         if type(layerbounderies).__name__ == 'NoneType':
             self.layerbounderies = _np.empty((0, 2))
             # self.layercenters = _np.array([])

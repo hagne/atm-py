@@ -56,6 +56,9 @@ class ArmDataset(object):
             toff = self.netCDF.variables['time_offset']
             self.__time_stamps = _pd.to_datetime(0) + _pd.to_timedelta(bt[:].flatten()[0], unit ='s') + _pd.to_timedelta(toff[:], unit ='s')
             self.__time_stamps.name = 'Time'
+            # self._time_offset = (60, 'm')
+            if self._time_offset:
+                self.__time_stamps += np.timedelta64(int(self._time_offset[0]), self._time_offset[1])
         return self.__time_stamps
 
     @time_stamps.setter

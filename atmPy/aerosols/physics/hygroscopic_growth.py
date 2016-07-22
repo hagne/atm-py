@@ -76,7 +76,7 @@ def kappa_simple(k, RH, refractive_index = None, inverse = False):
     return out
 
 
-def kappa_from_fofrh_and_sizedist(f_of_RH, dist, wavelength, RH, verbose = False):
+def kappa_from_fofrh_and_sizedist(f_of_RH, dist, wavelength, RH, verbose = False, f_of_RH_collumn = None):
     """
     Calculates kappa from f of RH and a size distribution.
     Parameters
@@ -86,6 +86,8 @@ def kappa_from_fofrh_and_sizedist(f_of_RH, dist, wavelength, RH, verbose = False
     wavelength: float
     RH: float
         Relative humidity at which the f_of_RH is taken.
+    column: string
+        when f_of_RH has more than one collumn name the one to be used
     verbose: bool
 
     Returns
@@ -108,6 +110,14 @@ def kappa_from_fofrh_and_sizedist(f_of_RH, dist, wavelength, RH, verbose = False
             print('---------')
         return out
 
+    # make sure f_of_RH has only one collumn
+    if f_of_RH.data.shape[1] > 1:
+        if not f_of_RH_collumn:
+            txt = 'f_of_RH has multiple collumns (%s). Please name the one you want to use by setting the f_of_RH_collumn argument.'%(f_of_RH.data.columns)
+            raise ValueError(txt)
+        else:
+            f_of_RH = f_of_RH._del_all_columns_but(f_of_RH_collumn)
+
     n_values = dist.data.shape[0]
     gf_calc = _np.zeros(n_values)
     kappa_calc = _np.zeros(n_values)
@@ -119,7 +129,10 @@ def kappa_from_fofrh_and_sizedist(f_of_RH, dist, wavelength, RH, verbose = False
             gf_calc[e]  = _np.nan
             continue
 
-        ior = dist.index_of_refraction.iloc[e][0]
+        if type(dist.index_of_refraction).__name__ == 'float':
+            ior = dist.index_of_refraction
+        else:
+            ior = dist.index_of_refraction.iloc[e][0]
         if _np.isnan(ior):
             kappa_calc[e] = _np.nan
             gf_calc[e]  = _np.nan

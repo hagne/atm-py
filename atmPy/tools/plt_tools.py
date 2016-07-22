@@ -14,6 +14,19 @@ red = np.array([120.,17.,0.])/255.
 
 color_cycle = [blue,orange,green,purple,yellow,turques,red]
 
+def set_plot_size_aspect(a, aspect = 1):
+    """instead of adjusting the plot to the data, this will actually make the plot size to the wanted aspect, e.g. 1 is
+    a sqare
+
+    Parameters
+    ----------
+    a: matplotlib.axes._subplots.AxesSubplot instance
+    asp: int,float"""
+
+    x0,x1 = a.get_xlim()
+    y0,y1 = a.get_ylim()
+    a.set_aspect(aspect * (abs(x1-x0)/abs(y1-y0)))
+    return
 
 def setRcParams_fontsize(plt, style='paper'):
     textsizescale_paper = 2.
@@ -273,3 +286,35 @@ def get_formatter_minor_log():
 
     formatter = FuncFormatter(minor_log)
     return formatter
+
+
+def set_shared_ylabel(a, ylabel, labelpad = 0.01):
+    """Set a y label shared by multiple axes
+    Parameters
+    ----------
+    a: list of axes
+    ylabel: string
+    labelpad: float
+        Sets the padding between ticklabels and axis label"""
+
+    f = a[0].get_figure()
+    f.canvas.draw() #sets f.canvas.renderer needed below
+
+    # get the center position for all plots
+    top = a[0].get_position().y1
+    bottom = a[-1].get_position().y0
+
+    # get the coordinates of the left side of the tick labels
+    x0 = 1
+    for at in a:
+        at.set_ylabel('') # just to make sure we don't and up with multiple labels
+        bboxes, _ = at.yaxis.get_ticklabel_extents(f.canvas.renderer)
+        bboxes = bboxes.inverse_transformed(f.transFigure)
+        xt = bboxes.x0
+        if xt < x0:
+            x0 = xt
+    tick_label_left = x0
+
+    # set position of label
+    a[-1].set_ylabel(ylabel)
+    a[-1].yaxis.set_label_coords(tick_label_left - labelpad,(bottom + top)/2, transform=f.transFigure)

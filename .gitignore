@@ -10,3 +10,4 @@ examples/data/size_distribution.cvs
 setup.py.old
 .spyderworkspace
 *__pycache__/
+*/testresults.log
