@@ -30,15 +30,15 @@ def _read_PeakFile_Binary(fname, version = 'current', time_shift=0, skip_bites =
 
     if verbose:
         print('_read_PeakFile_Binary (version = {})'.format(version))
-    directory, filename = os.path.split(fname)
+    # directory, filename = os.path.split(fname)
     if version == 'labview':
         data = _binary2array_labview_clusters(fname, skip = skip_bites)
         if not np.any(data):
             return False
-        dataFrame = _PeakFileArray2dataFrame(data,filename, time_shift, log = False, since_midnight = False)
+        dataFrame = _PeakFileArray2dataFrame(data,fname, time_shift, log = False, since_midnight = False)
     elif version == '01':
         data = _BinaryFile2Array(fname)
-        dataFrame = _PeakFileArray2dataFrame(data,filename,time_shift)
+        dataFrame = _PeakFileArray2dataFrame(data,fname,time_shift)
     elif version == 'BBB': # Beaglebone system running POPS_BBB.c
         data = _bbb_binary2array(fname, 1, verbose = verbose)
         dataFrame = _PeakFileArray2dataFrame(data, fname, time_shift,
@@ -48,10 +48,11 @@ def _read_PeakFile_Binary(fname, version = 'current', time_shift=0, skip_bites =
                                              verbose = verbose)
     elif version == 'BBB_dt': # Beaglebone system running POPS_BBB_dt.c
         data = _bbb_binary2array(fname, 2)
-        dataFrame = _PeakFileArray2dataFrame(data, filename, time_shift,
+        dataFrame = _PeakFileArray2dataFrame(data, fname, time_shift,
                                              log=False,
                                              since_midnight=False,
                                              BBBtype=2)
+        dataFrame.rename({'Max': 'Amplitude'}, axis=1, inplace=True)
     else:
         txt = 'This version does not exist: '%version
         raise ValueError(txt)
