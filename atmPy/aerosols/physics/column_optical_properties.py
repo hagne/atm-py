@@ -152,3 +152,52 @@ class AOD_AOT(object):
         setattr(self, 'ang_exp_{}_{}'.format(column_1, column_2), out)
         return out
 
+    def cal_deviations(arglist):
+        #     print(arglist)
+        [idx, aod], [idxt, wls] = arglist
+
+        #         wls = sfr.wavelength_matching_table.data.loc[idx,:]
+        assert (len(wls) == len(aod))
+
+        sfr.ang_exp.data.loc[idx, :]
+
+        fitres = sp.stats.linregress(np.log10(wls.loc[[500, 870]]), np.log10(aod.loc[[500, 870]]))
+
+        ff = lambda x: 10 ** (np.log10(x) * fitres.slope + fitres.intercept)
+
+        aod_fit = ff(wls)
+        diff = (aod - aod_fit)
+        return diff
+
+    def calculate_deviation_from_angstrom(sfr, wl1=500, wl2=870):
+        """
+        calcu
+        Parameters
+        ----------
+        wl1
+        wl2
+
+        Returns
+        -------
+
+        """
+        pool = mp.Pool(6)
+
+        # out = pool.map(cal_deviations, sfr.AOD.data.iloc[135:140].iterrows())
+        out = pool.map(cal_deviations, zip(sfr.AOD.data.iterrows(), sfr.wavelength_matching_table.data.iterrows()))
+
+        # make dataframe from output
+        df = pd.concat(out, axis=1)
+        df = df.transpose()
+
+        # xarray does not like timezone ... remove it
+        df.index = pd.to_datetime(df.index.astype(str).str[:-6])
+
+        # xarray does not like integer column ames
+        df.columns = df.columns.astype(str)
+
+        # other stuff
+        df.sort_index(inplace=True)
+        df.index.name = 'datetime'
+        return df
+

@@ -14,16 +14,28 @@ class Statistics(object):
         self.seasonality = Seasonality(self)
         self.diurnality = Diurnality(self)
 
+    def define_custom(self,reference = 'index', frequency = 'M', bins = None):
+        self.custom = Climatology(self, reference = reference, frequency = frequency, bins = bins)
+
 
 class Climatology(object):
-    def __init__(self, parent_stats, frequency = 'M'):
+    def __init__(self, parent_stats, reference = 'index', frequency = 'M', bins = None):
         """
 
         Parameters
         ----------
         parent_stats
+        reference: str ['index']
+            if one wants to plot agains a particular column in the timeseries rather then the index.
         frequency: str (['M'], 'H')
+            originally this was written for things like seasonality, diurnality, with otherwords with anyting related
+            to the datetime.
+        bins: array like
+            This is only used if reference column (e.g. index) is not a datetime object, e.g. if other climatologic
+            indeces that are not datetime related are used.
         """
+        self._bins = bins
+        self._reference = reference
         self._parent_stats = parent_stats
         self._parent_ts = parent_stats._parent_ts
         self._frequency = frequency
@@ -46,12 +58,22 @@ class Climatology(object):
             #                                    # closed = 'left'
             #                                    )
             data = self._parent_ts.data.copy()
-            if self._timezone:
-                data.index += _pd.Timedelta(self._timezone, 'h')
-            if self.frequency == 'H':
-                data.index = data.index.hour
-            elif self.frequency == 'M':
-                data.index = data.index.month
+
+            # if another column instead of the index is to be used as a reference
+            if not self._reference == 'index':
+                data.index = data[self._reference]
+                data.drop(labels = [self._reference], axis = 1, inplace = True)
+
+            if type(data.index).__name__ == 'DatetimeIndex':
+                if self._timezone:
+                    data.index += _pd.Timedelta(self._timezone, 'h')
+                if self.frequency == 'H':
+                    data.index = data.index.hour
+                elif self.frequency == 'M':
+                    data.index = data.index.month
+            else:
+                data.index = _pd.Series(data.index).apply(lambda x: self._bins[abs(self._bins - x).argmin()])
+
             data.sort_index(inplace=True)
             rs = data.groupby(data.index)
             def percentile(x, q):

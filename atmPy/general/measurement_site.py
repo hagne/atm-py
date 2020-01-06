@@ -86,7 +86,7 @@ class Network(object):
                         station['abbreviation'] = station['abbreviation'][0]
                     # else:
                     #     abb = station['abbreviation']
-                    station['name'] = station['name'].replace(' ', '_').replace('.', '')
+                    station['name'] = station['name']#.replace(' ', '_').replace('.', '')
                     # site = Station(lat=station['lat'],
                     #                lon=station['lon'],
                     #                alt=station['alt'],
@@ -124,15 +124,16 @@ class Network(object):
         return extend
 
     def add_station(self, site_instance, key = 'name'):
-
-        setattr(self.stations, getattr(site_instance,key), site_instance)
+        attrname = getattr(site_instance, key)
+        attrname = attrname.replace(' ', '_').replace('.', '')
+        setattr(self.stations, attrname, site_instance)
         self.stations._stations_list.append(site_instance)
-
-        for network in self._networkstation_by_key_list:
-            inst = network['networkstation_inst']
-            key = network['key']
-            # name = network['name']
-            setattr(inst, getattr(site_instance,key), site_instance)
+        # not sure what the folling is to achieve
+        # for network in self._networkstation_by_key_list:
+        #     inst = network['networkstation_inst']
+        #     key = network['key']
+        #     # name = network['name']
+        #     setattr(inst, getattr(site_instance,key), site_instance)
 
     def add_subnetwork(self, network_instance):
         if not hasattr(self, 'subnetworks'):
@@ -141,6 +142,12 @@ class Network(object):
         self.subnetworks._network_list.append(network_instance)
 
     def plot(self, zoom = 1.1, **kwargs):
+        """Plots all station in network on map
+
+        Parameters
+        ----------
+        kwargs: dictionary with arguments that are passed to station.plot
+            """
         stl = self.stations._stations_list
         # a, bmap = stl[0].plot(plot_only_if_on_map = True, **kwargs)
         # kwargs['bmap'] = bmap
@@ -201,7 +208,7 @@ class Network(object):
 
 class Station(object):
     def __init__(self, lat = None, lon = None, alt = None, name = None, abbreviation = None, active = None,
-                 operation_period = None, info = None, **kwargs):
+                 operation_period = None, info = None, state = '', country = '', **kwargs):
         """
         Generates a Station instance
         Parameters
@@ -221,6 +228,10 @@ class Station(object):
         self.alt = alt
         self.name = name
         self.abb = abbreviation
+        self.state = state
+        self.country = country
+
+
         if info:
             self.info = info
         if active:
@@ -237,7 +248,7 @@ class Station(object):
              center = 'auto',
              width=400000 * 7,
              height=500000 * 3,
-             abbriviate_name = True,
+             station_label = '{abbr}',
              resolution='c',
              background='blue_marble',
              station_symbol_kwargs = None,
@@ -257,8 +268,17 @@ class Station(object):
         center: 'auto' or (lat, lon)
         width
         height
-        abbriviate_name
-        resolution
+        station_label: format str ('abbr', 'name', 'state')
+            This takes a fromat string with the given optional arguments. E.g. '{name}, {state}'.
+        station_annotation_kwargs: see doc of plt.annotate()
+            annodefaults = dict(xytext = (10, -10),
+                            size = 18,
+                            ha = "left",
+                            va = 'top',
+                            textcoords = 'offset points',
+                            bbox = dict(boxstyle="round", fc=[1, 1, 1, 0.5], ec='black'),
+                             )
+        resolution: str ('c','i','h'....
         background: str
             blue_marble: use the blue_marble provided by basemap
             "path_to_file_name": This will use the warpimage function to use the image in the filename ... works with the blue marble stuff (https://visibleearth.nasa.gov/view_cat.php?categoryID=1484)
@@ -279,10 +299,21 @@ class Station(object):
         if 'color' not in station_symbol_kwargs:
             station_symbol_kwargs['color'] = default_colors[1]
 
+        annodefaults = dict(xytext = (10, -10),
+                            size = 18,
+                            ha = "left",
+                            va = 'top',
+                            textcoords = 'offset points',
+                            bbox = dict(boxstyle="round", fc=[1, 1, 1, 0.5], ec='black'),
+                             )
         if isinstance(station_annotation_kwargs, type(None)):
             station_annotation_kwargs = {}
-        if 'fontsize' not in station_annotation_kwargs:
-            station_annotation_kwargs['size'] = 18
+
+        for ak in annodefaults:
+            if ak not in station_annotation_kwargs:
+                station_annotation_kwargs[ak] = annodefaults[ak]
+        # if 'fontsize' not in station_annotation_kwargs:
+        #     station_annotation_kwargs['size'] = 18
 
         if bmap:
             a = bmap.ax
@@ -355,17 +386,24 @@ class Station(object):
         # p.set_color(station_symbol_kwargs['color'])
         # p.set_markersize()
 
-        if abbriviate_name:
-            label = self.abb
-        else:
-            label = self.name
-        a.annotate(label, xy=(xpt, ypt),
+        # if station_label == 'abbr':
+        #     label = self.abb
+        # elif station_label == 'name':
+        #     label = self.name
+        # elif station_label == 'label':
+        #     label = self.label
+        # else:
+        #     raise ValueError('{} is not an option for station_label'.format(station_label))
+
+        label = station_label.format(abbr=self.abb, name=self.name, state=self.state, country=self.country)
+
+        a.annotate(label, xy=(xpt, ypt), **station_annotation_kwargs
                    #                 xycoords='data',
-                   xytext=(10 ,-10),
-                   size = station_annotation_kwargs['size'],
-                   ha="left",
-                   va = 'top',
-                   textcoords='offset points',
-                   bbox=dict(boxstyle="round", fc=[1 ,1 ,1 ,0.5], ec='black'),
+                   # xytext=(10 ,-10),
+                   # size = station_annotation_kwargs['size'],
+                   # ha="left",
+                   # va = 'top',
+                   # textcoords='offset points',
+                   # bbox=dict(boxstyle="round", fc=[1 ,1 ,1 ,0.5], ec='black'),
                    )
         return a,bmap

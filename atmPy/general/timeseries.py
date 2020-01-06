@@ -1553,7 +1553,7 @@ class TimeSeries(object):
             self.data[which] = data_ft
         return data_ft
 
-    def plot(self, columns2plot=None, ax = None, label = None, autofmt_xdate = True, times_of_interest = None, plot_engine = 'matplotlib', **kwargs):
+    def plot(self, columns2plot=None, ax = None, label = None, autofmt_xdate = True, times_of_interest = None, plot_engine = 'pandas', **kwargs):
         """Plot each parameter separately versus time
         Arguments
         ---------
@@ -1569,6 +1569,9 @@ class TimeSeries(object):
         plot_engine: str, ('pandas', ['matplotlib'])
             Depending on the pandas version plotting through pandas (its still matplotlib of course) can resultin errors
             or be beneficial ... decide for yourself.
+            Problems encountered 2019-11-25:
+                I had an dataframe with nan everywhere but the very end and plotted with matplotlib
+                -> it came up with a few timestamps that were not even present in the dataframe!!
         kwargs: keyword argurments passed to matplotlib plot function e.g.:
         picker: float
             in addition to the normal behaviour this will add text with the position to the plot and append the

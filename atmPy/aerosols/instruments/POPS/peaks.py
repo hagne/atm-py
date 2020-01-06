@@ -688,7 +688,7 @@ class peaks(object):
         # too_big = pd.DataFrame(too_big, columns=['# too big'])
         too_big = _timeseries.TimeSeries(pd.DataFrame(too_big, columns=['# too big'], index = unique))
         if distributionType == 'calibration':
-            return sizedistribution.SizeDist_TS(dataFrame, bins, 'calibration')
+            return sizedistribution.SizeDist_TS(dataFrame, bins, 'calibration',fill_data_gaps_with = fill_data_gaps_with, ignore_data_gap_error = ignore_data_gap_error)
         else:
             dist = sizedistribution.SizeDist_TS(dataFrame, bins, 'dNdDp',fill_data_gaps_with = fill_data_gaps_with, ignore_data_gap_error = ignore_data_gap_error)
             dist = dist.convert2dNdlogDp()
@@ -700,9 +700,24 @@ class peaks(object):
 #        
 #    def peak2numberconcentration(self, bins = defaultBins):
 #        return self._peak2Distribution(bins = bins)
-    def peak2peakHeightDistribution(self, bins = np.logspace(np.log10(35),np.log10(65000), 200)):
-        """see doc-string of _peak2Distribution"""
-        return self._peak2Distribution(bins = bins,distributionType = 'calibration',differentialStyle = 'dNdDp')
+    def peak2peakHeightDistribution(self, bins = 'default', fill_data_gaps_with = None, ignore_data_gap_error = False):
+        """
+
+        Parameters
+        ----------
+        bins:
+            if default: bins = np.logspace(np.log10(35),np.log10(65000), 200)
+        fill_data_gaps_with
+        ignore_data_gap_error
+
+        Returns
+        -------
+
+        """
+        if type(bins) == str:
+            if bins == 'default':
+                bins = np.logspace(np.log10(35),np.log10(65000), 200)
+        return self._peak2Distribution(bins = bins,distributionType = 'calibration',differentialStyle = 'dNdDp', fill_data_gaps_with = fill_data_gaps_with, ignore_data_gap_error = ignore_data_gap_error)
         
     def peak2sizedistribution(self, bins = 'default', fill_data_gaps_with = None, ignore_data_gap_error = False):
         """see doc-string of _peak2Distribution"""
