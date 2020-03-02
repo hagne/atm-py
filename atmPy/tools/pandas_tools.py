@@ -59,7 +59,7 @@ def plot_dataframe_meshgrid(df, xaxis = 0, ax = None, pc_kwargs = {}, cb_kwargs 
     pc = a.pcolormesh(x, y , z, **pc_kwargs)
 
 
-    if 'datetime' in df.index.dtype_str:
+    if 'datetime' in df.index.dtype.__str__():
         f.autofmt_xdate()
 
     if cb_kwargs:

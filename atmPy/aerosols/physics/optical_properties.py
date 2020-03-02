@@ -66,9 +66,11 @@ def size_dist2optical_properties(op, sd, aod=False, noOfAngles=100):
         n_multi = False
     if not n_multi:
         if isinstance(mie_result, type(None)):
+            # print('do mie', end=' ')
             mie, angular_scatt_func = _perform_Miecalculations(_np.array(sdls.bincenters / 1000.), wavelength / 1000., n,
                                                                noOfAngles=noOfAngles)
         else:
+            # print('no need for mie', end=' ')
             mie = mie_result['mie']
             angular_scatt_func = mie_result['angular_scatt_func']
 
@@ -454,8 +456,14 @@ class OpticalProperties(object):
             self._angular_scatt_func = data['angular_scatt_func']
 
             ####
-            self.parameters.mie_result = data['mie_result']
+            # self.parameters.mie_result = data['mie_result']
+            self._mie_result = data['mie_result']
         return self._optical_porperties_pv
+
+    @property
+    def mie_result(self):
+        self._optical_porperties
+        return self._mie_result
 
     @property
     def absorption_coeff(self):
