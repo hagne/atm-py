@@ -9,14 +9,11 @@ import numpy as _np
 # The following is to ensure that one can use as large of an image as one desires
 from PIL import Image as _image
 _image.MAX_IMAGE_PIXELS = None
-
 from matplotlib import path as _path
-
 import geopy as _geopy
+import plt_tools as _plt_tools
 
 default_colors = _plt.rcParams['axes.prop_cycle'].by_key()['color']
-
-
 
 class NetworkStations(object):
     def __init__(self):
@@ -116,8 +113,8 @@ class Network(object):
         center = (st_lat_max.lat + st_lat_min.lat) / 2, (st_lon_max.lon + st_lon_min.lon) / 2
         extend['center'] = center
 
-        height = _geopy.distance.vincenty((st_lat_min.lat, center[1]), (st_lat_max.lat, center[1]))
-        width = _geopy.distance.vincenty((center[0], st_lon_min.lon), (center[0], st_lon_max.lon))
+        height = _geopy.distance.geodesic((st_lat_min.lat, center[1]), (st_lat_max.lat, center[1]))
+        width = _geopy.distance.geodesic((center[0], st_lon_min.lon), (center[0], st_lon_max.lon))
 
         extend['width_m'] = width.m
         extend['height_m'] = height.m
@@ -406,4 +403,143 @@ class Station(object):
                    # textcoords='offset points',
                    # bbox=dict(boxstyle="round", fc=[1 ,1 ,1 ,0.5], ec='black'),
                    )
+        self._bmap = bmap
+        self._xpt, self._ypt = xpt, ypt
         return a,bmap
+
+    def plot_square_around_site(self, edgelength=10, print_distance = True, color = 'white',
+                                print_label = None):
+        """
+        Parameters
+        ----------
+        edgelength: in km
+        print_label: list
+            prints the distance to the edge of the box.
+            default: ['left', 'bottom']
+        """
+        col1 = color
+        if isinstance(print_label, type(None)):
+            print_label = ['left', 'bottom']
+        lat = self.lat
+        lon = self.lon
+        #     bmap = ...
+        point_c = (lat, lon)
+
+        dist = _geopy.distance.distance()  # thats just to get an instance of distance, can change the actual distance later in the destination function
+
+        # calculate distance from center to corner of square
+        #     el = 10 # edge length of square
+        dist2corner = _np.sqrt(2) * edgelength / 2
+
+        # compass bearings to the corners
+        bearings = [(i * 90) - 45 for i in (1, 2, 3, 4)]
+
+        # calculate the coordinates of the corners
+        corners = []
+        for bear in bearings:
+            point = dist.destination(point_c, bear, distance=dist2corner)
+            corners.append((point.longitude, point.latitude))
+
+        # convert coordinates to x, y
+        corners_pt = [self._bmap(*cco) for cco in corners]
+
+        #######
+        # repeat for distance text
+        # compass bearings to the corners
+        label_bearings = [(i * 90)  for i in (0, 1, 2, 3)]
+
+        # calculate the coordinates of the corners
+        label_pos = []
+        for bear in label_bearings:
+            point = dist.destination(point_c, bear, distance=edgelength/2)
+            label_pos.append((point.longitude, point.latitude))
+
+        # convert coordinates to x, y
+        label_pos_pt = [self._bmap(*cco) for cco in label_pos]
+
+        # plot it
+        square = _plt.Polygon(corners_pt)
+        square.set_linestyle('--')
+        square.set_edgecolor(col1)
+        square.set_facecolor([1, 1, 1, 0])
+        a = _plt.gca()
+        a.add_artist(square)
+
+        #######
+        ## plot the distanced on the edges of the square
+        labels = []
+        label_kwargs = dict(color = col1,
+                            fontsize = 'medium',
+                            textcoords = 'offset points',
+                            )
+        text_dist = 5
+        txt = f'{edgelength} km'
+        if 'top' in print_label:
+            lab = label_pos_pt[0]
+            anno = a.annotate(txt, (lab[0], lab[1]),
+                        xytext=(0, text_dist),va = 'bottom', ha = 'center', **label_kwargs)
+            labels.append(anno)
+
+        if 'bottom' in print_label:
+            lab = label_pos_pt[2]
+            anno = a.annotate(txt, (lab[0], lab[1]),
+                              xytext=(0, - text_dist), va='top', ha='center', **label_kwargs)
+            labels.append(anno)
+
+        if 'left' in print_label:
+            lab = label_pos_pt[3]
+            anno = a.annotate(txt, (lab[0], lab[1]),
+                              xytext=(- text_dist, 0), va='center', ha='right',
+                              rotation=90,
+                              **label_kwargs)
+            labels.append(anno)
+
+        if 'right' in print_label:
+            lab = label_pos_pt[1]
+            anno = a.annotate(txt, (lab[0], lab[1]),
+                              xytext=(text_dist, 0), va='center', ha='left',
+                              rotation=90,
+                              **label_kwargs)
+            labels.append(anno)
+            # a.text(lab[0], lab[1],
+            #        # 'bla',
+            #        f'{edgelength} km',
+            #        color = col1,
+            #        va = 'bottom', ha = 'center',
+            #        xytext=(0, 35))
+
+        # for lab in label_pos_pt:
+        #     a.text(lab[0], lab[1], 'bla')
+        # a.plot(x,y, zorder = 100, marker = 'o')
+        return square
+
+    def plot_distance2coordinate(self, point):
+        """ Plot a line between the site and an arbitrary point
+
+        Parameters
+        ----------
+        point: (lat, lon) or Station instance
+
+        Returns
+        -------
+        graph, text, bbox
+        """
+        if isinstance(point, Station):
+            pass
+        elif len(point) == 2:
+            point = Station(lat = point[0], lon=[1])
+
+        g, = self._bmap.plot([self._xpt, point._xpt], [self._ypt, point._ypt], color='white', zorder=1,
+                             linestyle='--',
+                             linewidth=2)
+        col = g.get_color()
+        dist = round(_geopy.distance.geodesic((self.lat, self.lon), (point.lat, point.lon)).km)
+        txt = f'{dist} km'
+        txt, fbp = _plt_tools.text.add_text_along_graph(g, txt, (self._xpt + point._xpt) / 2,
+                                                       txtkwargs=dict(va='bottom',
+                                                                      ha='center',
+                                                                      color=col,
+                                                                      fontsize='x-large'),
+                                                       bbox=False
+                                                       )
+        return g, txt, fbp
