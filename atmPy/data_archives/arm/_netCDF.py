@@ -1,4 +1,4 @@
-from netCDF4 import Dataset
+import warnings as _warnings
 import numpy as np
 import pandas as _pd
 from atmPy.general import timeseries as _timeseries
@@ -7,8 +7,10 @@ from atmPy.tools import plt_tools as _plt_tools
 import matplotlib.pylab as _plt
 from atmPy.aerosols.instruments.AMS import AMS as _AMS
 from atmPy.aerosols.size_distribution import sizedistribution as _sizedistribution
-import warnings as _warnings
-
+try:
+    from netCDF4 import Dataset
+except ModuleNotFoundError:
+    _warnings.warn('netCDF4 not installed. You might encounter some functionality limitations.')
 
 
 

@@ -1,5 +1,5 @@
 __author__ = 'htelg'
-
+import warnings as _warnings
 from copy import deepcopy as _deepcopy
 import atmPy.general.vertical_profile 
 
@@ -14,11 +14,12 @@ from atmPy.tools import plt_tools as _plt_tools
 from atmPy.tools import git as _git_tools
 from atmPy.general import data_structure
 
-
-from netCDF4 import Dataset as _Dataset
-# from netCDF4 import num2date as _num2date
-from netCDF4 import date2num as _date2num
-
+try:
+    from netCDF4 import Dataset as _Dataset
+    # from netCDF4 import num2date as _num2date
+    from netCDF4 import date2num as _date2num
+except ModuleNotFoundError:
+    _warnings.warn('netCDF4 not installed. You might encounter some functionality limitations.')
 import warnings as _warnings
 import datetime
 from matplotlib.ticker import FuncFormatter as _FuncFormatter
@@ -1293,8 +1294,13 @@ class TimeSeries(object):
         ---------
         altitude_column: str ['Altitude']
             column label which contains the altitude information
-        resolution: int or float
-            altitude resolution in the same unit as data in the altitude column
+        resolution: float or tuple of len == 3
+            if float: altitude resolution in the same unit as data in the altitude column
+            if tuple: (resolution, lower_limit, upper_limit)
+        return_std: bool
+            If to return an additional vertical profile which contains the
+            standard deviation rather than the mean of all values within a 
+            altitude bin.
         """
 
         ts_tmp = self.copy()

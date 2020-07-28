@@ -6,11 +6,21 @@ except:
 import matplotlib.pylab as _plt
 import os as _os
 import numpy as _np
+from atmPy.radiation import solar as _solar
+import datetime as _datetime
+import timezonefinder as _tzf
+import pytz as _pytz
 # The following is to ensure that one can use as large of an image as one desires
-from PIL import Image as _image
-_image.MAX_IMAGE_PIXELS = None
+try:
+    from PIL import Image as _image
+    _image.MAX_IMAGE_PIXELS = None
+except ModuleNotFoundError:
+    warnings.warn('PIL not installed. This is needed to plot images of arbitrary resolution, e.g. when plotting satellite images.')
 from matplotlib import path as _path
-import geopy as _geopy
+try:
+    import geopy as _geopy
+except ModuleNotFoundError:
+    warnings.warn('geopy not installed. You might encounter some functionality limitations.')
 import plt_tools as _plt_tools
 
 default_colors = _plt.rcParams['axes.prop_cycle'].by_key()['color']
@@ -54,7 +64,7 @@ class SubNetworks(object):
         return a, bmap
 
 class Network(object):
-    def __init__(self, network_stations, generate_subnetworks = True, by_keys = ['name']):
+    def __init__(self, network_stations, generate_subnetworks = True, name = None, abbr = None, by_keys = ['name']):
         """Generate a network of stations
         Parameters
         ----------
@@ -64,7 +74,8 @@ class Network(object):
         by_key: str
             stations within the network are givin by name by the self.stations attribute. In addition stations can be
             given by a given key which must be a key in network_stations"""
-
+        self.name = name
+        self.abbr = abbr
         self.stations = NetworkStations()
         self._networkstation_by_key_list = [{'networkstation_inst': self.stations, 'key': 'name'}]
         if len(by_keys) > 1:
@@ -138,12 +149,22 @@ class Network(object):
         setattr(self.subnetworks, network_instance.name, network_instance)
         self.subnetworks._network_list.append(network_instance)
 
-    def plot(self, zoom = 1.1, **kwargs):
+    def plot(self, zoom = 1.1, network_label_format = '{abbr}', network_label_kwargs = False,  **kwargs):
         """Plots all station in network on map
 
         Parameters
         ----------
+        network_label_kwargs: dict or False
+            font size, bbox, postion ... of the label. If False then no label is printed
+            defaults = dict(xytext=(0, 0),
+                            size=18,
+                            ha="center",
+                            va='center',
+                            textcoords='offset points',
+                            bbox=dict(boxstyle="round", fc=[1, 1, 1, 0.5], ec='black'),
+                            )
         kwargs: dictionary with arguments that are passed to station.plot
+
             """
         stl = self.stations._stations_list
         # a, bmap = stl[0].plot(plot_only_if_on_map = True, **kwargs)
@@ -178,6 +199,38 @@ class Network(object):
                 kwargs['station_symbol_kwargs']['color'] = default_colors[1]
             a, bmap = station.plot(plot_only_if_on_map = True, **kwargs)
             kwargs['bmap'] = bmap
+
+        if network_label_kwargs != False:
+            annodefaults = dict(xytext=(0, 0),
+                                size=18,
+                                ha="center",
+                                va='center',
+                                textcoords='offset points',
+                                bbox=dict(boxstyle="round", fc=[1, 1, 1, 0.5], ec='black'),
+                                )
+            if isinstance(network_label_kwargs, type(None)):
+                network_label_kwargs = {}
+
+            for ak in annodefaults:
+                if ak not in network_label_kwargs:
+                    network_label_kwargs[ak] = annodefaults[ak]
+
+            label = network_label_format.format(abbr=self.abbr, name=self.name)
+            center_lat = sum([station.lat for station in stl]) / len(stl)
+            center_lon = sum([station.lon for station in stl]) / len(stl)
+            xpt, ypt = bmap(center_lon, center_lat)
+            a.annotate(label, xy=(xpt, ypt), **network_label_kwargs
+                       #                 xycoords='data',
+                       # xytext=(10 ,-10),
+                       # size = station_annotation_kwargs['size'],
+                       # ha="left",
+                       # va = 'top',
+                       # textcoords='offset points',
+                       # bbox=dict(boxstyle="round", fc=[1 ,1 ,1 ,0.5], ec='black'),
+                       )
+
+
+
         return a,bmap
 
     def _operation_period2sub_network_active(self):
@@ -239,17 +292,34 @@ class Station(object):
             setattr(self, key, kwargs[key])
 
         self.name = self.name.strip().replace(',','_').replace('(','_').replace(')','_').strip('_')
+        
+        self._time_zone = None
+    
+    @property
+    def time_zone(self):
+        # get timezone
+        tz = _tzf.TimezoneFinder()
+        tz_str = tz.timezone_at(lng = self.lon, lat = self.lat)
+        now = _datetime.datetime.now(_pytz.timezone(tz_str))
+        tz_hr = now.utcoffset() / _datetime.timedelta(hours = 1)
+        return tz_str, tz_hr
+        
+    
+    def get_sun_position(self, datetime):
+        out = _solar.get_sun_position(self.lat, self.lon, datetime, elevation = self.alt)
+        return out
+        
 
     def plot(self,
              projection='lcc',
              center = 'auto',
              width=400000 * 7,
              height=500000 * 3,
-             station_label = '{abbr}',
+             station_label_format ='{abbr}',
+             station_label_kwargs = None,
              resolution='c',
              background='blue_marble',
              station_symbol_kwargs = None,
-             station_annotation_kwargs = None,
              # site_label_marker_size = 8,
              # site_label_font_size = 18,
              # site_label_color='auto',
@@ -265,10 +335,12 @@ class Station(object):
         center: 'auto' or (lat, lon)
         width
         height
-        station_label: format str ('abbr', 'name', 'state')
+        station_label_format: format str ('abbr', 'name', 'state')
             This takes a fromat string with the given optional arguments. E.g. '{name}, {state}'.
-        station_annotation_kwargs: see doc of plt.annotate()
-            annodefaults = dict(xytext = (10, -10),
+        station_label_kwargs: dict or bool
+            This defines the position, size ... of the label. If False no label will
+            be shown. See doc of plt.annotate() for details.
+            defaults = dict(xytext = (10, -10),
                             size = 18,
                             ha = "left",
                             va = 'top',
@@ -296,24 +368,9 @@ class Station(object):
         if 'color' not in station_symbol_kwargs:
             station_symbol_kwargs['color'] = default_colors[1]
 
-        annodefaults = dict(xytext = (10, -10),
-                            size = 18,
-                            ha = "left",
-                            va = 'top',
-                            textcoords = 'offset points',
-                            bbox = dict(boxstyle="round", fc=[1, 1, 1, 0.5], ec='black'),
-                             )
-        if isinstance(station_annotation_kwargs, type(None)):
-            station_annotation_kwargs = {}
-
-        for ak in annodefaults:
-            if ak not in station_annotation_kwargs:
-                station_annotation_kwargs[ak] = annodefaults[ak]
-        # if 'fontsize' not in station_annotation_kwargs:
-        #     station_annotation_kwargs['size'] = 18
-
         if bmap:
-            a = bmap.ax
+            # a = bmap.ax
+            a = _plt.gca()
         else:
             if ax:
                 a = ax
@@ -392,17 +449,37 @@ class Station(object):
         # else:
         #     raise ValueError('{} is not an option for station_label'.format(station_label))
 
-        label = station_label.format(abbr=self.abb, name=self.name, state=self.state, country=self.country)
 
-        a.annotate(label, xy=(xpt, ypt), **station_annotation_kwargs
-                   #                 xycoords='data',
-                   # xytext=(10 ,-10),
-                   # size = station_annotation_kwargs['size'],
-                   # ha="left",
-                   # va = 'top',
-                   # textcoords='offset points',
-                   # bbox=dict(boxstyle="round", fc=[1 ,1 ,1 ,0.5], ec='black'),
-                   )
+    # Station Label
+        if station_label_kwargs != False:
+            annodefaults = dict(xytext = (10, -10),
+                                size = 18,
+                                ha = "left",
+                                va = 'top',
+                                textcoords = 'offset points',
+                                bbox = dict(boxstyle="round", fc=[1, 1, 1, 0.5], ec='black'),
+                                 )
+            if isinstance(station_label_kwargs, type(None)):
+                station_label_kwargs = {}
+
+            for ak in annodefaults:
+                if ak not in station_label_kwargs:
+                    station_label_kwargs[ak] = annodefaults[ak]
+
+            label = station_label_format.format(abbr=self.abb, name=self.name, state=self.state, country=self.country)
+
+
+            a.annotate(label, xy=(xpt, ypt), **station_label_kwargs
+                           #                 xycoords='data',
+                           # xytext=(10 ,-10),
+                           # size = station_annotation_kwargs['size'],
+                           # ha="left",
+                           # va = 'top',
+                           # textcoords='offset points',
+                           # bbox=dict(boxstyle="round", fc=[1 ,1 ,1 ,0.5], ec='black'),
+                           )
+
+    # return
         self._bmap = bmap
         self._xpt, self._ypt = xpt, ypt
         return a,bmap

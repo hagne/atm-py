@@ -1,8 +1,12 @@
+import warnings as _warnings
 import pandas as _pd
 import numpy as _np
 import matplotlib.pylab as _plt
 from copy import deepcopy as _deepcopy
-from netCDF4 import Dataset as _Dataset
+try:
+    from netCDF4 import Dataset as _Dataset
+except ModuleNotFoundError:
+    _warnings.warn('netCDF4 not installed. You might encounter some functionality limitations.')
 # from netCDF4 import date2num as _date2num
 import atmPy.general.timeseries
 from atmPy.tools import plt_tools as _plt_tools

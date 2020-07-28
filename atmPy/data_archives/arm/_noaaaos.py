@@ -1,3 +1,4 @@
+import warnings as _warnings
 from atmPy.general import timeseries as _timeseries
 # from atmPy.data_archives.arm import _tools
 import pandas as _pd
@@ -8,8 +9,10 @@ from atmPy.aerosols.physics import hygroscopicity as hygrow
 from atmPy.aerosols.physics import hygroscopicity
 import atmPy.aerosols.instruments.nephelometer.nephelometer as nephelometer
 import atmPy.aerosols.instruments.photometer.photometer as photometer
-
-import xarray as _xr
+try:
+    import xarray as _xr
+except ModuleNotFoundError:
+    _warnings.warn('netCDF4 not installed. You might encounter some functionality limitations.')
 import os as _os
 from atmPy.data_archives.arm import _tools
 # data_archives.arm._tools as _tools

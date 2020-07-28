@@ -1,13 +1,14 @@
-__author__ = 'mrichardson, Hagen Telg'
-
-# from math import fmod, sin, cos, asin
-
-import ephem as _ephem
-import numpy as _np
-import pandas as _pd
 import warnings
 try:
+    import ephem as _ephem
+except ModuleNotFoundError:
+    warnings.warn('ephem is not installed. You might encounter some functionality limitations.')
+import numpy as _np
+import pandas as _pd
+import pytz
+try:
     from pysolar import solar as _solar
+    from pysolar import stime
 except:
     warnings.warn('There seams to be an issue with importing the pysolar library. Make sure it is installed and running correctly (try: "from Pysolar import solar as _solar"). For now conversion of the Atmospheric mass factor will not work.')
 # from atmPy.general.constants import a2r, r2a
@@ -119,6 +120,13 @@ def get_sun_position_deprecated(lat, lon, datetime_UTC, elevation=0):
     sun.compute(obs)
     return sun.alt, sun.az
 
+def get_sun_earth_distance(x):
+#     print(type(x))
+    jde = stime.get_julian_ephemeris_day(x)
+    jce = stime.get_julian_ephemeris_century(jde)
+    jme = stime.get_julian_ephemeris_millennium(jce)
+    au = _solar.get_sun_earth_distance(jme)
+    return au
 
 def get_sun_position(lat, lon, date, elevation=0):
     """returns sun altitude and azimuth angle as well as the air mass factor, tested against https://www.esrl.noaa.gov/gmd/grad/solcalc/
@@ -137,11 +145,25 @@ def get_sun_position(lat, lon, date, elevation=0):
         elevation and azimuth angle in radians.
     """
     def getpos(lat, lon, date, elevation=0):
-        date = _pd.to_datetime(date)
+        # print(lat, lon, date, elevation)
+        if type(date).__name__ == 'Timestamp':
+            date = date.to_pydatetime()
+        
+        if type(date).__name__ !='datetime':
+            txt = f'date is type {type(date).__name__} ... it should be datetime'
+            raise TypeError(txt)
+### make timezone aware
+        if isinstance(date.tzinfo, type(None)):
+            date = pytz.utc.localize(date)
         alt = _np.deg2rad(_solar.get_altitude(lat, lon, date, elevation=elevation))
         azi = _np.deg2rad(_np.mod(abs(_solar.get_azimuth(lat, lon, date, elevation=elevation)) - 180, 360))
         airmass = 1 / _np.sin(alt)
-        return alt, azi, airmass
+        au = get_sun_earth_distance(date)
+        return alt, azi, airmass, au
+
+    # in case this is based on an xarry.Dataset
+    if type(date).__name__ == 'DataArray':
+        date = date.to_pandas().index
 
     if (_np.ndarray in (type(lat), type(lon), type(elevation))) or (type(date) in (_pd.DatetimeIndex, _np.datetime64)):
         # lenth = False
@@ -158,11 +180,11 @@ def get_sun_position(lat, lon, date, elevation=0):
         if not hasattr(date, '__iter__'):
             date = _np.zeros(10, dtype=_np.timedelta64) + date
         pos = _np.array([getpos(la, lo, da, el) for la, lo, da, el in zip(lat, lon, date, elevation)])
-        pos = _pd.DataFrame(pos, columns=['altitude', 'azimuth', 'airmass'], index=date)
+        pos = _pd.DataFrame(pos, columns=['altitude', 'azimuth', 'airmass', 'sun_earth_distance'], index=date)
         return pos
     else:
         out = getpos(lat, lon, date, elevation)
-        pos = dict(zip(('altitude', 'azimuth', 'airmass'), out))
+        pos = dict(zip(('altitude', 'azimuth', 'airmass','sun_earth_distance'), out))
         return pos
 
 def get_sun_position_TS(timeseries):

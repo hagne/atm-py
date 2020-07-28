@@ -555,7 +555,13 @@ class peaks(object):
             self.data['Masked'] = 0
         
     def apply_calibration(self,calibrationInstance, verbose = False):
-        self.data['Diameter'] = pd.Series(calibrationInstance.calibrationFunction(self.data.Amplitude.values), index = self.data.index)
+        try: 
+            self.data['Diameter'] = pd.Series(calibrationInstance.calibrationFunction(self.data.Amplitude.values), index = self.data.index)
+        except ValueError as err: 
+            if err.__str__() == 'A value in x_new is below the interpolation range.':
+                raise ValueError(f'{err.__str__()} {self.data.Amplitude.min()} < {calibrationInstance.data.amp.min()}')
+        except:
+            raise
         
         where_tooBig = np.where(self.data.Amplitude > calibrationInstance.data.amp.max())
         where_tooSmall = np.where(self.data.Amplitude < calibrationInstance.data.amp.min())

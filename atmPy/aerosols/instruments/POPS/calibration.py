@@ -121,7 +121,7 @@ def generate_calibration(single_pnt_cali_d=508,
         # single_pnt_cali_d = 500
         single_pnt_cali_d *= 1e-3
         dt, mt = mie.makeMie_diameter(diameterRangeInMikroMeter=[single_pnt_cali_d, single_pnt_cali_d + 1e-3],
-                                      IOR=1.5,
+                                      IOR=single_pnt_cali_ior,
                                       noOfdiameters=2)
         single_pnt_cali_int_pre = mt[0]
 

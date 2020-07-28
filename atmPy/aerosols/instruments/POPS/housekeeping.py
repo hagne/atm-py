@@ -65,6 +65,8 @@ def read_file(path,
         return POPSHouseKeeping(df)
 
     def read_BBB(fname, skip_histogram = False, verbose = False):
+        if verbose:
+            print(f'read pops house keeping bbb file: {fname}')
         col_names = pd.read_csv(fname, sep=',', nrows=1, header=None,
                                 #             index_col=1,
                                 #             usecols=np.arange()

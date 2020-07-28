@@ -1,7 +1,10 @@
 import pandas as _pd
 import numpy as _np
 import warnings as _warnings
-from statsmodels import robust as _robust
+try:
+    from statsmodels import robust as _robust
+except ModuleNotFoundError:
+    _warnings.warn('statsmodels not installed. You might encounter some functionality limitations.')
 from functools import wraps as _wraps
 
 def close_gaps(ts, verbose = False):

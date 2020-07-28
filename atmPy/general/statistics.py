@@ -93,6 +93,9 @@ class Climatology(object):
                     # print([q/100.])
                     # print('--------')
                     pct = _array_tools.weighted_quantile(values, [q/100.], sample_weight = weights)[0]
+                else:
+                    txt = 'this currently works only for single column time series or 2 colmn if on of the columns give weights'
+                    raise ValueError(txt)
                 return pct
 
             def average(x):

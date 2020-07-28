@@ -21,8 +21,14 @@ from atmPy.aerosols.physics import optical_properties
 from atmPy.aerosols.size_distribution import moments
 from atmPy.gases import physics as _gas_physics
 from . import modes
-from statsmodels import robust as _robust
-import xarray as _xr
+try:
+    from statsmodels import robust as _robust
+except ModuleNotFoundError:
+    _warnings.warn('statsmodels not installed. You might encounter some functionality limitations.')
+try:
+    import xarray as _xr
+except ModuleNotFoundError:
+    _warnings.warn('xarray not installed. You might encounter some functionality limitations.')
 # from matplotlib.ticker import MultipleLocator
 from matplotlib import gridspec
 # from atmPy import atmosphere

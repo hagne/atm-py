@@ -1,5 +1,10 @@
+
+import warnings as _warnings
+try:
+    import xarray as _xr
+except ModuleNotFoundError:
+    _warnings.warn('xarray not installed. You might encounter some functionality limitations.')
 import numpy as _np
-import xarray as _xr
 from . import _tools
 from atmPy.aerosols.size_distribution import sizedistribution as _sd
 from atmPy.general import timeseries as _ts
