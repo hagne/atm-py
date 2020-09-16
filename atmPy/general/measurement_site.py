@@ -202,7 +202,7 @@ class Network(object):
 
         if network_label_kwargs != False:
             annodefaults = dict(xytext=(0, 0),
-                                size=18,
+                                size=12,
                                 ha="center",
                                 va='center',
                                 textcoords='offset points',
@@ -364,9 +364,12 @@ class Station(object):
         if 'marker' not in station_symbol_kwargs:
             station_symbol_kwargs['marker'] = 'o'
         if 'markersize' not in station_symbol_kwargs:
-            station_symbol_kwargs['markersize'] = 8
+            station_symbol_kwargs['markersize'] = 4
         if 'color' not in station_symbol_kwargs:
             station_symbol_kwargs['color'] = default_colors[1]
+        if 'zorder' not in station_symbol_kwargs:
+            station_symbol_kwargs['zorder'] = 100
+            
 
         if bmap:
             # a = bmap.ax
@@ -453,11 +456,12 @@ class Station(object):
     # Station Label
         if station_label_kwargs != False:
             annodefaults = dict(xytext = (10, -10),
-                                size = 18,
+                                size = 10,
                                 ha = "left",
                                 va = 'top',
                                 textcoords = 'offset points',
                                 bbox = dict(boxstyle="round", fc=[1, 1, 1, 0.5], ec='black'),
+                                zorder = 100
                                  )
             if isinstance(station_label_kwargs, type(None)):
                 station_label_kwargs = {}
