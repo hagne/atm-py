@@ -7,7 +7,8 @@ try:
 except KeyError:
     warnings.warn("An error accured while trying to import mpl_toolkits.basemap.Basemap. Plotting of maps will not work!")
 try:
-    from geopy.distance import vincenty
+    # from geopy.distance import vincenty
+    import geopy
 except ModuleNotFoundError:
     warnings.warn('geopy not installed. You might encounter some functionality limitations.')
 import matplotlib.pylab as plt
@@ -64,7 +65,8 @@ class FlightPath(object):
             location: tuple
                 (lat,lon)
                 """
-            dist = vincenty(location, (row['Lat'], row['Lon']))
+            # dist = vincenty(location, (row['Lat'], row['Lon']))
+            dist = geopy.distance.geodesic(location, (row['Lat'], row['Lon'])) # not sure if the syntax is right here 
             #     print(row)
             return dist.km
 
@@ -87,7 +89,7 @@ class FlightPath(object):
             location: tuple
                 (lat,lon)
                 """
-            dist = vincenty(location, (row['Lat'], row['Lon']))
+            dist = geopy.distance.geodesic(location, (row['Lat'], row['Lon']))
             #     print(row)
             return dist.km
 
@@ -131,8 +133,8 @@ class FlightPath(object):
                 distances_from_center_lat = np.zeros(points.shape[0])
                 distances_from_center_lon = np.zeros(points.shape[0])
                 for e, p in enumerate(points):
-                    distances_from_center_lat[e] = vincenty(p, (lat_center, p[1])).m
-                    distances_from_center_lon[e] = vincenty(p, (p[0], lon_center)).m
+                    distances_from_center_lat[e] = geopy.distance.geodesic(p, (lat_center, p[1])).m
+                    distances_from_center_lon[e] = geopy.distance.geodesic(p, (p[0], lon_center)).m
 
                 lat_radius = distances_from_center_lat.max()
                 lon_radius = distances_from_center_lon.max()

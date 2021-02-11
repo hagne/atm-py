@@ -19,6 +19,7 @@ except ModuleNotFoundError:
 from matplotlib import path as _path
 try:
     import geopy as _geopy
+    import geopy.distance as _gd #otherwise distance will not be available
 except ModuleNotFoundError:
     warnings.warn('geopy not installed. You might encounter some functionality limitations.')
 import plt_tools as _plt_tools
@@ -258,7 +259,7 @@ class Network(object):
 
 class Station(object):
     def __init__(self, lat = None, lon = None, alt = None, name = None, abbreviation = None, active = None,
-                 operation_period = None, info = None, state = '', country = '', **kwargs):
+                 operation_period = None, info = None, state = '', country = '', parent_network = None, **kwargs):
         """
         Generates a Station instance
         Parameters
@@ -281,6 +282,7 @@ class Station(object):
         self.state = state
         self.country = country
 
+        self.parent_network = parent_network
 
         if info:
             self.info = info
