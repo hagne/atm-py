@@ -1070,13 +1070,18 @@ class Inversion2SizeDistribution_scenario(object):
         for wl in channels:
             res = {}
             dt = dist.copy()
+            self.parent.tp_dt1 = dt.copy()
+            # print(type(self.parent))
             if isinstance(mie_info, type(None)):
                 dt.optical_properties.parameters.refractive_index = self.parent.aerosol_refractive_index
                 dt.optical_properties.parameters.wavelength = wl
             else:
                 dt.optical_properties.parameters.mie_result = mie_info[wl]
+            
             res['extcoeff'] = dt.optical_properties.extinction_coeff
-            res['mie_result'] = dt.optical_properties.parameters.mie_result
+            res['mie_result'] = dt.optical_properties.mie_result.copy()
+            # return res
+            self.parent.tp_dt2 = dt.copy()
             first_run_results[wl] = res
         #     break
 
@@ -1091,6 +1096,7 @@ class Inversion2SizeDistribution_scenario(object):
             args[1::2] *= factor
             out['args'] = args
             out['first_run_results'] = first_run_results
+            
             return out
         else:
             ext_coeff = [first_run_results[i]['extcoeff'].iloc[0, 0] for i in first_run_results]
