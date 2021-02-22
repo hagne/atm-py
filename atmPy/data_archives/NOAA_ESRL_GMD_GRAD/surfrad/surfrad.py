@@ -4,12 +4,79 @@ import os as _os
 import atmPy.general.timeseries as _timeseries
 import atmPy.aerosols.physics.column_optical_properties as _column_optical_properties
 import atmPy.general.measurement_site as _measurement_site
-import pathlib
+import pathlib as _pl
 import warnings as _warnings
 
 # from atmPy.general import measurement_site as _measurement_site
 # from atmPy.radiation import solar as _solar
 
+class DataSpecs(object):
+    def __init__(self, parent):
+        self.parent = parent
+        self._window = None
+        self.path = _pl.Path('/nfs/grad/surfrad/')
+        
+    def _reset_data(self):
+        """reset all the data so it will be reloaded"""
+        for station in self.parent.stations._stations_list:
+            station.data._reset()
+        
+    @property
+    def window(self):
+        
+        return self._window
+    
+    @window.setter
+    def window(self,value):
+        self._reset_data()
+        self._window = _pd.to_datetime(value)
+
+class Surfrad_Data(object):
+    def __init__(self, parent):
+        self._parent = parent
+        self._aod = None
+    
+    def _reset(self):
+        self._aod = None
+    
+    @property
+    def aod(self):
+        if isinstance(self._aod, type(None)):
+            self._aod = self.load_data(param = 'aod')
+        return self._aod
+            
+    def load_data(self, param = 'aod'):
+        # get_data function
+        
+        # check requried parameters
+        assert(not isinstance(self._parent.parent_network.data_specs.window, type(None))), "set data_specs"
+
+        window = self._parent.parent_network.data_specs.window
+
+        # assert(_np.unique([w.year for w in window]).shape[0] == 1), 'Data range spannes over more than one year ... programming required'
+
+        # # get path
+        p2f = self._parent.parent_network.data_specs.path.joinpath(param)
+
+        if self._parent.abb.lower() == 'bnd':
+            siteabb = 'bon'
+        else:
+            siteabb = self._parent.abb.lower()
+
+        # p2f = p2f.joinpath(siteabb)
+
+        # p2f = p2f.joinpath(str(window[0].year))
+
+        # assert(p2f.is_dir()), f'not an existing path: {p2f}'
+
+        # load data
+        if param == 'aod':
+            mfrsr = open_path(path = p2f, site = siteabb, window = window, local2UTC=True)
+        else:
+            assert(False), f'the param:{param} is not set up yet ... programming required'
+        return mfrsr
+    
+    
 _locations = [{'name': 'Bondville',
               'state' :'IL',
               'abbreviation': ['BND', 'bon'],
@@ -41,7 +108,7 @@ _locations = [{'name': 'Bondville',
               'type': 'permanent'},
               {'name': 'Fort Peck',
               'state': 'MT',
-              'abbreviation': ['FPK', 'fpk'],
+              'abbreviation': ['FPK', 'fpk', 'FPE'],
               'lon': -105.10170,
               'lat': 48.30783,
               'alt': 634,
@@ -85,6 +152,9 @@ _channel_labels = _np.array([415, 500, 614, 673, 870, 1625])
 
 network = _measurement_site.Network(_locations)
 network.name = 'surfrad'
+network.data_specs = DataSpecs(network)
+for station in network.stations._stations_list:
+    station.data = Surfrad_Data(station)
 
 #todo: remove the following dictionary ... its not used anymore
 _deprecated_col_label_trans_dict = {'OD413': 415,
@@ -137,9 +207,31 @@ _deprecated_col_label_trans_dict = {'OD413': 415,
                          }
 
 
-def _path2files(path2aod, site, window, perform_header_test, verbose):
+def _path2files(path2base_folder = '/nfs/grad/surfrad/aod/', site = 'bon', window = ('2020-07-31 00:00:00', '2020-10-30 23:00:00')):
+    path2base_folder = _pl.Path(path2base_folder)
+
+# first loading all files takes too long, so get site first
+    path2aodatsite = path2base_folder.joinpath(site)
+    assert(path2aodatsite.is_dir()), f'{path2aodatsite} not a directory'
+    
+    df = _pd.DataFrame([p for p in path2aodatsite.glob('**/*') if p.is_file()], columns=['path'])
+    df.index = df.apply(lambda row: _pd.to_datetime(''.join([i for i in row.path.name if i.isdigit()])), axis = 1)
+    df.sort_index(inplace=True)
+    df = df.truncate(window[0], window[1])
+    return df.path.values
+
+def _path2files_deprecated(path2aod, site, window, perform_header_test, verbose):
+    
+    assert(not isinstance(window, str))
+
+    if not isinstance(window, (tuple, list)):
+        try: 
+            window = [w.__str__() for w in window]
+        except:
+            raise ValueError(f'window has to be tuple or list, it is {type(window)}. Attempt to convert failed')
+    
     if type(path2aod) == str:
-        path2aod = pathlib.Path(path2aod)
+        path2aod = _pl.Path(path2aod)
 
     elif type(path2aod) == list:
         for path in path2aod:
@@ -174,24 +266,6 @@ def _path2files(path2aod, site, window, perform_header_test, verbose):
             raise ValueError
     files = paths
 
-
-
-
-
-
-    # folder or single file .... or list
-    # if _os.path.isdir(path):
-    #     folder = path
-    #     files = _os.listdir(folder)
-    #     if verbose:
-    #         print('{} files in folder'.format(len(files)))
-    # elif _os.path.isfile(path):
-    #     folder, file = _os.path.split(path)
-    #     files = [file]
-    # else:
-    #     raise ValueError('Provided path is neither folder nor file. Currently only folder and single files are allowed for the files argument. Provided path: {}'.format(path))
-
-    # select sites
     if site:
         files = [f for f in files if site in f.name]
         if verbose:
@@ -203,10 +277,6 @@ def _path2files(path2aod, site, window, perform_header_test, verbose):
         if verbose:
             print('{} of remaining files are in the selected time window.'.format(len(files)))
 
-    # if perform_header_test:
-    #     files = [f for f in files if _header_tests(folder, f)]
-    #     if verbose:
-    #         print('{} of remaining files passed the header test.'.format(len(files)))
     return files#, folder
 
 def _read_header(fname):
@@ -412,7 +482,7 @@ class Surfrad_AOD(_column_optical_properties.AOD_AOT):
 
 
 
-def open_path(path = '/Volumes/HTelg_4TB_Backup/SURFRAD/aftp/aod/bon',
+def open_path(path = '/nfs/grad/surfrad/aod/',
               site = 'bon',
               window = ('2017-01-01', '2017-01-02'),
               cloud_sceened = True,
@@ -426,7 +496,7 @@ def open_path(path = '/Volumes/HTelg_4TB_Backup/SURFRAD/aftp/aod/bon',
         if len([loc for loc in _locations if site in loc['abbreviation']]) == 0:
             raise ValueError('The site {} has not been set up yet. Add relevant data to the location dictionary'.format(site))
 
-    files = _path2files(path, site, window, perform_header_test, verbose)
+    files = _path2files(path, site, window)#, perform_header_test, verbose)
     file_content = _read_files(files, verbose, UTC=local2UTC, cloud_sceened=cloud_sceened)
     data = file_content['data']
     wl_match = file_content['wavelength_match']
@@ -466,7 +536,7 @@ def open_path(path = '/Volumes/HTelg_4TB_Backup/SURFRAD/aftp/aod/bon',
     else:
         saod._timezone = timezone
     ## select columns that show AOD
-    data_aod = data._del_all_columns_but(_channel_labels)
+    data_aod = data.drop(_channel_labels, inverse=True)
 
     ## rename columns
     data_aod.data.columns.name = 'AOD@wavelength(nm)'
@@ -476,12 +546,12 @@ def open_path(path = '/Volumes/HTelg_4TB_Backup/SURFRAD/aftp/aod/bon',
     saod.AOD = data_aod
 
     #Angstrom exponent
-    saod.ang_exp = data._del_all_columns_but('Ang_exp')
+    saod.ang_exp = data.drop('Ang_exp', inverse=True)
 
     # wavelength matching table
     saod.wavelength_matching_table = wl_match
 
     # errors
-    saod.AODerrors = data._del_all_columns_but([col for col in data.data.columns if 'E' in str(col)])
+    saod.AODerrors = data.drop([col for col in data.data.columns if 'E' in str(col)], inverse = True)
     saod.AODerrors.data.columns = [int(col.replace('E', '')) for col in saod.AODerrors.data.columns]
     return saod

@@ -29,6 +29,10 @@ default_colors = _plt.rcParams['axes.prop_cycle'].by_key()['color']
 class NetworkStations(object):
     def __init__(self):
         self._stations_list = []
+        
+    def __iter__(self):
+        for st in self._stations_list:
+            yield st
 
 class SubNetworks(object):
     def __init__(self):
@@ -133,6 +137,7 @@ class Network(object):
         return extend
 
     def add_station(self, site_instance, key = 'name'):
+        site_instance.parent_network = self
         attrname = getattr(site_instance, key)
         attrname = attrname.replace(' ', '_').replace('.', '')
         setattr(self.stations, attrname, site_instance)
