@@ -1356,8 +1356,39 @@ class TimeSeries(object):
         else:
             return out
 
+    def drop(self, collums, inverse = False, inplace = False):
+        """as it says, deletes all columns but ...
+        Parameters:
+        -----------
+        collumns: string or array-like
+            column name(s) to drop or keep
+        inverse: bool
+            if True the columns are the ones that are kept instead of deleted
+        """
+        if inplace:
+            ts = self
+        else:
+            ts = self.copy()
+        all_keys = list(ts.data.keys())
 
-    def _del_all_columns_but(self, keep, inplace = False):
+        if isinstance(collums, str):
+            collums = [collums]
+
+        if inverse:
+            for k in collums:
+                try:
+                    all_keys.remove(k)
+                except ValueError:
+                    pass
+            collums = all_keys
+
+        ts.data = ts.data.drop(labels=collums, axis=1)
+        if inplace:
+            return
+        else:
+            return ts
+
+    def _del_all_columns_but_deprecated(self, keep, inplace = False):
         """as it says, deletes all columns but ...
         Parameters:
         -----------
