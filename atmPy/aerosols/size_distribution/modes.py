@@ -7,7 +7,7 @@ from scipy import optimize
 from ...tools import math_functions
 
 
-def fit_normal_dist(sd, log=True, p0=[10, 180, 0.2]):
+def fit_normal_dist(sd, log=True, p0=[10, 180, 0.2], boundary_width = [0.1, 0.6]):
     """Fits a normal distribution to a """
     if not log:
         txt = 'sorry, this is not working right now ... programming requried'
@@ -64,8 +64,8 @@ def fit_normal_dist(sd, log=True, p0=[10, 180, 0.2]):
 
     start_width = 0.2
     tol = 0.9
-    width_ll = start_width * (1 - tol)
-    width_ul = start_width * (1 + tol)
+    # width_ll = start_width * (1 - tol)
+    # width_ul = start_width * (1 + tol)
     peak_args = find_peak_arg(x, y, start_w=start_width, tol=tol)
     out['peak_args'] = peak_args
 
@@ -90,8 +90,8 @@ def fit_normal_dist(sd, log=True, p0=[10, 180, 0.2]):
 
         # sig
         param.append(start_width)
-        bound_l.append(0.1)
-        bound_h.append(0.3)
+        bound_l.append(boundary_width[0])
+        bound_h.append(boundary_width[1])
 
     try:
         param, cm = optimize.curve_fit(multi_gauss, x, y, p0=param, bounds=(bound_l, bound_h))
@@ -204,7 +204,7 @@ class ModeAnalysis(object):
         """
         sizedist = self._parent
         boundary_accu_coars = 1000
-        boundary_aiken_accu = 100
+        boundary_aiken_accu = 50
 
         sdts_aiken = sizedist.copy()
         sdts_aiken._update()
