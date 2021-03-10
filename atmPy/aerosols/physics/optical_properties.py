@@ -998,6 +998,16 @@ class Inversion2SizeDistribution_scenario(object):
     """this handles how ..."""
     def __init__(self, parent, args):
         self.parent = parent
+        
+        if isinstance(args, _pd.DataFrame):
+            self.size_distribution_parameters = args
+            pos = args.diameter.values
+            numbers = args.number.values
+            args = [val for pair in zip(pos, numbers) for val in pair]
+        else:
+            # print(f'shape args: {args}')
+            self.size_distribution_parameters = _pd.DataFrame({'diameter': args[::2], 'number': args[1::2], 'width': self.parent.start_conditions.size_distribution_parameters.width.values})
+        
         self._args = args
 
         self.update()
@@ -1020,13 +1030,11 @@ class Inversion2SizeDistribution_scenario(object):
     @property
     def size_distribution(self):
         if isinstance(self._dist, type(None)):
-            self._dist = self.args2dist(self.args)
+            self._dist = self.args2dist()#self.args)
         return self._dist
 
 
-
-    # generate the initial size dist
-    def args2dist(self, args):
+    def args2dist_deprecated(self, args):
         self.tp_3 = args.copy()
         # print(args)
         assert(args.shape == (4,)), f'shape is {args.shape}'
@@ -1039,8 +1047,38 @@ class Inversion2SizeDistribution_scenario(object):
                 diameter=self.parent.diameter_range,
                 numberOfDiameters=self.parent.number_of_diameters,
                 centerOfAerosolMode=pos,
+                # widthOfAerosolMode=self.parent.width_of_aerosol_mode,
                 widthOfAerosolMode=self.parent.width_of_aerosol_mode,
                 numberOfParticsInMode=amp,
+            )
+            dist_list.append(dist)
+
+        # dist_new = sd.simulate_sizedistribution(new=True)
+        # sum em up
+
+        dist = dist_list[0]
+        for sdt in dist_list[1:]:
+            dist += sdt
+        return dist
+    
+    def args2dist(self):#, args):
+        # self.tp_3 = self.args.copy()
+        # print(self.size_distribution_parameters)
+        # assert(args.shape == (4,)), f'shape is {args.shape}'
+        # positions = args[::2]
+        # amplitudes = args[1::2]
+        dist_list = []
+        # #     print(args)
+        
+        # for pos, amp in zip(positions, amplitudes):
+        for idx, row in self.size_distribution_parameters.iterrows():
+            dist = sd.simulate_sizedistribution(
+                diameter=self.parent.diameter_range,
+                numberOfDiameters=self.parent.number_of_diameters,
+                centerOfAerosolMode=row.diameter,
+                # widthOfAerosolMode=self.parent.width_of_aerosol_mode,
+                widthOfAerosolMode=row.width,
+                numberOfParticsInMode=row.number,
             )
             dist_list.append(dist)
 
@@ -1057,6 +1095,7 @@ class Inversion2SizeDistribution_scenario(object):
         if isinstance(self._extcoeff, type(None)):
             self.parent.mie_info
             self._extcoeff = self.AOD_of_simulated_dist(self.parent.wavelengths, *self.args, mie_info=self.parent.mie_info)
+            # print(f'ext coeff: {self._extcoeff}')
         return self._extcoeff
 
     def AOD_of_simulated_dist(self, wavelengths, *args, is_initial_run=False, mie_info=None):
@@ -1064,7 +1103,7 @@ class Inversion2SizeDistribution_scenario(object):
         ## each size normal distribution separate
         # if isinstance(args, (list, tuple)):
         args = _np.array(args)
-        dist = self.args2dist(args)
+        dist = self.args2dist()#args)
         channels = wavelengths
         first_run_results = {}
 
@@ -1116,6 +1155,7 @@ class Inversion2SizeDistribution(object):
                  number_of_diameters = 100,
                  aerosol_refractive_index = 1.4,
                  width_of_aerosol_mode = 0.15,
+                 start_conditions = None,
                  verbose = False):
         self.diameter_range =diameter_range
         self.number_of_diameters = number_of_diameters
@@ -1127,7 +1167,7 @@ class Inversion2SizeDistribution(object):
         self.verbose = verbose
 
         #properties
-        self._start_conditions = None
+        self.start_conditions = start_conditions
         self._fit_result = None
         self._mie_info = None
 
@@ -1166,6 +1206,9 @@ class Inversion2SizeDistribution(object):
         None.
 
         """
+        if isinstance(value, type(None)):
+            # print('hasdfasdfasd')
+            args = [400, 2000., 800, 320] # if start conditions are not set this will be used ad a default
         args = value # if start conditions are not set this will be used ad a default
         self._start_conditions = Inversion2SizeDistribution_scenario(self, args)
 
@@ -1178,56 +1221,66 @@ class Inversion2SizeDistribution(object):
             self._fit_result.sigma = _np.sqrt(((self.sfr_AOD_test_dp.values-_np.array(self.fit_result.extinction_coeff))**2).sum())
         return self._fit_result
 
-    def fit_deprecaded(self):
-        self.mie_info
-        fit_res = curve_fit(lambda x, *params: self.start_conditions.AOD_of_simulated_dist(x, *params, mie_info=self.mie_info),
-                            self.sfr_AOD_test_dp.index,
-                            self.sfr_AOD_test_dp.values,
-                            p0=self.start_conditions.args,
-                            #                     sigma=None,
-                            #                     absolute_sigma=False,
-                            #                     check_finite=True,
-                            #                     bounds=(-inf, inf),
-                            method='trf',
-                            #                     method='lm',
-                            #                     jac=None,
-                            #                     maxfev=1,
-                            xtol=self.fit_cutoff,
-                            ftol=self.fit_cutoff,
-                            gtol=self.fit_cutoff,
-                            #                     callback=lambda x: print(x)
-                            #                     dict(kwx_scale = 'jac'),
-                            verbose=0,
-                            # x_scale='jac',
-                            # x_scale=[1,0.2,1,0.2],
-                            x_scale=[1,5,1,5],
-                            # diff_step=[ds ** 3, ds, ds ** 2, ds] # I don't think this is what I thought it is!! This has something to do with the computers resolution
-                            #                     col_deriv=True
-                            )
-        #         fit_res
-        return fit_res
     
     def fit(self):
-        fit_res = scipy.optimize.least_squares(lambda params: self.sfr_AOD_test_dp.values - self.start_conditions.AOD_of_simulated_dist(self.sfr_AOD_test_dp.index, *params, mie_info=self.mie_info),
+        # fit_res = scipy.optimize.least_squares(lambda params: self.sfr_AOD_test_dp.values - self.start_conditions.AOD_of_simulated_dist(self.sfr_AOD_test_dp.index, *params, mie_info=self.mie_info),
+        #                                 self.start_conditions.args,
+        #                             #                     sigma=None,
+        #                                 #                     absolute_sigma=False,
+        #                                 #                     check_finite=True,
+        #                                 #                     bounds=(-inf, inf)
+        #             #                     method='trf',
+        #                                                     method='lm',
+        #             #                                         jac=None,
+        #                                 #                     maxfev=1,
+                    #                     xtol=self.fit_cutoff,
+                    #                     ftol=self.fit_cutoff,
+                    #                     gtol=self.fit_cutoff,
+        #                                 #                     callback=lambda x: print(x)
+        #                                 #                     dict(kwx_scale = 'jac'),
+        #                                 verbose=0,
+        #                                 # x_scale='jac',
+        #             #                     x_scale=[1,0.2,1,0.2],
+        #             #                     x_scale=[1,5,1,5],
+        #             #                     diff_step=[ds ** 3, ds, ds ** 2, ds] # I don't think this is what I thought it is!! This has something to do with the computers resolution
+        #                                 #                     col_deriv=True
+        #                                 )
+        
+        
+        def cost_fun(*params):
+            measured = self.sfr_AOD_test_dp.values
+            scene = Inversion2SizeDistribution_scenario(self, *params).extinction_coeff
+            
+            # measured = _np.log10(measured)
+            # scene = _np.log10(scene)
+            
+            cost = measured - scene
+            self.tp_cost.append(_np.mean(cost))
+            return cost
+        self.tp_cost = []
+        # ds = 
+        mode_scale = 10
+        ds = 0.51
+        fit_res = scipy.optimize.least_squares(cost_fun,
                                         self.start_conditions.args,
                                     #                     sigma=None,
                                         #                     absolute_sigma=False,
                                         #                     check_finite=True,
                                         #                     bounds=(-inf, inf)
-                    #                     method='trf',
-                                                            method='lm',
+                                        method='trf',
+                                                            # method='lm',
                     #                                         jac=None,
                                         #                     maxfev=1,
-                    #                     xtol=self.fit_cutoff,
-                    #                     ftol=self.fit_cutoff,
-                    #                     gtol=self.fit_cutoff,
+                                        xtol=self.fit_cutoff,
+                                        ftol=self.fit_cutoff,
+                                        gtol=self.fit_cutoff,
                                         #                     callback=lambda x: print(x)
                                         #                     dict(kwx_scale = 'jac'),
                                         verbose=0,
                                         # x_scale='jac',
-                    #                     x_scale=[1,0.2,1,0.2],
-                    #                     x_scale=[1,5,1,5],
-                    #                     diff_step=[ds ** 3, ds, ds ** 2, ds] # I don't think this is what I thought it is!! This has something to do with the computers resolution
+                                        # x_scale=[1,0.2,1,0.2],
+                                        x_scale=_np.array([1,1.5,1, mode_scale]),#*1e-3,
+                                        diff_step=[ds ** 4, ds, ds ** 4, ds] # Although it sounds like its something different... it works!!!!!!I don't think this is what I thought it is!! This has something to do with the computers resolution
                                         #                     col_deriv=True
                                         )
         return fit_res
