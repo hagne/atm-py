@@ -392,6 +392,10 @@ def correlate(data, correlant, data_column = False, correlant_column = False, di
         correlant:
         data_column:
         correlant_column:
+        differenciate:
+            This will generate unique(differenciate) number of correlation.
+            differenciate needs to have the same shape as the rest of the data.
+            Data and correlant will be classified according to this array.
         remove_zeros:
         data_lim: tuple
             lower and upper limit of data values
@@ -399,17 +403,18 @@ def correlate(data, correlant, data_column = False, correlant_column = False, di
             lower and upper limit of correlant values
         weights: 'str' ([relative], absolute)
             odr only!
-            relative: the weights will scale with the x-data. Since we usually assume uncertainties to be relative to
-                    the data rather then absolute this is the standard setting
-            absolute:   bsically this means not weighted ... in principle you could apply different for x and y ... not
-                        implemented yet
+            relative: the weights will scale with the x-data. Since we usually
+                assume uncertainties to be relative to the data rather then 
+                absolute this is the standard setting
+            absolute: bsically this means not weighted ... in principle you 
+                could apply different for x and y ... not implemented yet
 
     Returns:
 
     """
     data = data.copy()
     correlant = correlant.copy()
-    assert(type(differenciate).__name__ in ['Series', 'NoneType'])
+    assert(type(differenciate).__name__ in ['Series', 'NoneType']), 'nneds to be one of the following types: Series, NoneType'
     if type(differenciate).__name__ == 'Series':
         differenciate = differenciate.values
         if any([align_timeseries, data_lim, correlant_lim]):
@@ -1536,7 +1541,7 @@ class TimeSeries(object):
         return ts
 
     align_to = align_to
-    align_to_new = align_to_old
+    align_to_old = align_to_old
     # def align_to(self, ts_other):
     #     return align_to(self, ts_other)
 
@@ -1643,7 +1648,10 @@ class TimeSeries(object):
             f.canvas.mpl_connect('pick_event', onclick)
 
         if plot_engine == 'pandas':
-            self.data.plot(ax = ax, **kwargs)
+            if not isinstance(columns2plot, type(None)):
+                self.data.loc[:,columns2plot].plot(ax = ax, **kwargs)
+            else:
+                self.data.plot(ax = ax, **kwargs)
 
         elif plot_engine == 'matplotlib':
             did_plot = False  # had to implement that since matploglib cept crashing when all where nan

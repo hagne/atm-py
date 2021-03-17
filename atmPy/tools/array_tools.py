@@ -139,7 +139,9 @@ class Correlation(object):
         data and correlant: 1D arry
             These are the two data set which are compared
         differenciate: array like
-
+            This will generate unique(differenciate) number of correlation.
+            differenciate needs to have the same shape as the rest of the data.
+            Data and correlant will be classified according to this array.
         remove_zeros: bool
             If zeros ought to be deleted. Datasets often contain zeros that are the
             result of invalid data. If there is the danger that this introduces a
@@ -590,6 +592,7 @@ class Correlation(object):
 
 
         if isinstance(self._subsets, list):
+            assert(isinstance(fit_res_kwargs, (type(None),bool))), 'make sure you set fit_res_kwargs to None or False, or do some programming :-)'
             if ax == None:
                 f,ax = _plt.subplots()
             hb = []
@@ -602,7 +605,7 @@ class Correlation(object):
             for e, subset in enumerate(self._subsets):
                 dots_kwargs_t = dots_kwargs.copy()
                 key = subset['key']
-                if dots_kwargs_t:
+                if isinstance(dots_kwargs_t, dict):
                     if 'color_gradient' in dots_kwargs_t.keys():
                         dots_kwargs_t['color'] = cm((key - distrange.min()) / (distrange.max() - distrange.min()))
                         dots_kwargs_t.pop('color_gradient')
