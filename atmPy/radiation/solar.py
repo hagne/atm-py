@@ -181,11 +181,13 @@ def get_sun_position(lat, lon, date, elevation=0):
             date = _np.zeros(10, dtype=_np.timedelta64) + date
         pos = _np.array([getpos(la, lo, da, el) for la, lo, da, el in zip(lat, lon, date, elevation)])
         pos = _pd.DataFrame(pos, columns=['altitude', 'azimuth', 'airmass', 'sun_earth_distance'], index=date)
-        return pos
+        # return pos
     else:
         out = getpos(lat, lon, date, elevation)
         pos = dict(zip(('altitude', 'azimuth', 'airmass','sun_earth_distance'), out))
-        return pos
+    
+    pos['ampm'] = pos.apply(lambda row: 'am' if row.azimuth >= _np.pi else "pm", axis = 1)
+    return pos
 
 def get_sun_position_TS(timeseries):
     """Returns the position, polar and azimuth angle, of the sun in the sky for a given time and location.
