@@ -14,6 +14,7 @@ class DataSpecs(object):
     def __init__(self, parent):
         self.parent = parent
         self._window = None
+        self._cloudscreened = True
         self.path = _pl.Path('/nfs/grad/surfrad/')
         
     def _reset_data(self):
@@ -23,13 +24,21 @@ class DataSpecs(object):
         
     @property
     def window(self):
-        
         return self._window
     
     @window.setter
     def window(self,value):
         self._reset_data()
         self._window = _pd.to_datetime(value)
+        
+    @property
+    def cloud_screened(self):
+        return self._cloudscreened
+    
+    @cloud_screened.setter
+    def cloud_screened(self, value):
+        self._reset_data()
+        self._cloudscreened = value
 
 class Surfrad_Data(object):
     def __init__(self, parent):
@@ -42,7 +51,7 @@ class Surfrad_Data(object):
     @property
     def aod(self):
         if isinstance(self._aod, type(None)):
-            self._aod = self.load_data(param = 'aod')
+            self._aod = self.load_data(param = 'aod', )
         return self._aod
             
     def load_data(self, param = 'aod'):
@@ -71,7 +80,8 @@ class Surfrad_Data(object):
 
         # load data
         if param == 'aod':
-            mfrsr = open_path(path = p2f, site = siteabb, window = window, local2UTC=True)
+            mfrsr = open_path(path = p2f, site = siteabb, window = window, local2UTC=True, 
+                              cloud_sceened = self._parent.parent_network.data_specs.cloud_screened,)
         else:
             assert(False), f'the param:{param} is not set up yet ... programming required'
         return mfrsr
