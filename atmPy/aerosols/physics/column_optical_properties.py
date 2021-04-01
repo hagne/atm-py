@@ -3,7 +3,12 @@ import pandas as _pd
 import numpy as _np
 from atmPy.radiation import solar as _solar
 from atmPy.general import timeseries as _timeseries
+import multiprocessing as _mp
+import xarray as _xr
+import matplotlib.pyplot as _plt
+import scipy as _sp
 
+_colors = _plt.rcParams['axes.prop_cycle'].by_key()['color']
 
 class AOD_AOT(object):
     def __init__(self,
@@ -51,7 +56,7 @@ class AOD_AOT(object):
             self.site = _measurement_site.Station(lat, lon, elevation, name=name, abbreviation=name_short, info = site_info)
 
 
-
+        self.cloudmask = CloudDetection(self)
 
     @property
     def sun_position(self):
@@ -181,7 +186,7 @@ class AOD_AOT(object):
         -------
 
         """
-        pool = mp.Pool(6)
+        pool = _mp.Pool(6)
 
         # out = pool.map(cal_deviations, sfr.AOD.data.iloc[135:140].iterrows())
         out = pool.map(cal_deviations, zip(sfr.AOD.data.iterrows(), sfr.wavelength_matching_table.data.iterrows()))
@@ -201,3 +206,321 @@ class AOD_AOT(object):
         df.index.name = 'datetime'
         return df
 
+class CloudDetection(object):
+    def __init__(self, parent):
+        self.parent = parent
+        self._cloudmask_AOD = None
+        self._masked_data_AOD = None
+        self._cloud_classifyiers_AOD = None
+        self._cloudmask_angstrom = None
+        self._masked_data_angstrom = None
+        self._cloud_classifyiers_angstrom = None
+    
+    @property
+    def cloudmask_AOD(self):
+        if isinstance(self._cloudmask_AOD, type(None)):
+            self.get_custom_cloudmask_AOD()
+        return self._cloudmask_AOD        
+    
+    @property
+    def masked_data_AOD(self):
+        if isinstance(self._masked_data_AOD, type(None)):
+            self.get_custom_cloudmask_AOD()
+        return self._masked_data_AOD   
+    
+    @property
+    def cloud_classifyiers_AOD(self):
+        if isinstance(self._cloud_classifyiers_AOD, type(None)):
+            self.get_custom_cloudmask_AOD()
+        return self._cloud_classifyiers_AOD    
+        
+        
+    def get_custom_cloudmask_AOD(self, 
+                                      mean_discriminator = 0.035,
+                                      mean_window = 3,
+                                      linreg_discriminator = 0.00006,
+                                      linreg_window = 4,
+                                      min_consec_valid = 5,
+                                     ):
+        
+
+        settings = _pd.DataFrame({'mean':{'discriminator': mean_discriminator, 'window': mean_window, 'min_consec_valid': min_consec_valid},
+                      'linreg':{'discriminator': linreg_discriminator, 'window': linreg_window, 'min_consec_valid': min_consec_valid}})
+       
+
+        #settings = pd.DataFrame({'mean':{'discriminator': 0.035, 'window': 3, 'min_consec_valid': 5},'linreg':{'discriminator': 0.00006, 'window': 4, 'min_consec_valid': 5}})
+        
+        self._setting_AOD = settings
+        # settings
+
+        # cloudmask = pd.DataFrame()
+        # cloud_classifyiers = pd.DataFrame()
+        # masked_data = pd.DataFrame()
+
+        data = self.parent.AOD.data
+        channels = data.columns.values.astype(int)
+
+        masked_data = _xr.DataArray(coords= {'channel':channels,
+                                            'datetime': data.index.values,
+                                            'criteria': ['mean', 'linreg']}, dims = ['channel', 'datetime', 'criteria'])
+        cloudmask = _xr.DataArray(coords= {'channel':channels,
+                                            'datetime': data.index.values,
+                                            'criteria': ['mean', 'linreg']}, dims = ['channel', 'datetime', 'criteria'])
+
+        cloud_classifyiers = _xr.DataArray(coords= {'channel':channels,
+                                                   'datetime': data.index.values,
+                                                   'criteria': ['mean', 'linreg'],
+                                                   'direction': ['forward', 'backward']}, dims = ['channel', 'datetime', 'criteria', 'direction'])
+
+        for ch, data_ncs in data.iteritems():
+        #     break
+
+            for cn, ser in settings.iteritems():
+                rstd = self.get_classifyer(data_ncs, ctype = cn, window = ser.window)['classifyer']
+                cloud_classifyiers.loc[dict(channel = ch, criteria = cn, direction = 'forward')] = rstd
+
+                rstd_r = self.get_classifyer(data_ncs[::-1], ctype = cn, window = ser.window)['classifyer']
+                cloud_classifyiers.loc[dict(channel = ch, criteria = cn, direction = 'backward')] = rstd_r
+
+                # cloudmasked by discriminator
+                cloud_mask_t = _np.logical_and(rstd > ser.discriminator, rstd_r > ser.discriminator)
+                
+                # add to cloudmasked by minimum number of points
+                cloud_mask_t = self.check_min_consec_valid(cloud_mask_t, min_consec_valid=ser.min_consec_valid)
+                
+                cloudmask.loc[dict(channel = ch, criteria = cn)] = cloud_mask_t
+                
+                # apply coudmask to data, is can probably go?!?
+                data_cs_new_j = data_ncs.copy()
+                data_cs_new_j[cloud_mask_t == 1] = _np.nan
+                masked_data.loc[dict(channel = ch, criteria = cn)] = data_cs_new_j
+                # minimum number of points between cloud detection?
+#                 data_cs_new_j_mcv = check_min_consec_valid(data_cs_new_j, min_consec_valid=ser.min_consec_valid)
+            #     masked_data[cn] = data_cs_new_j_mcv
+                
+
+            #     cloudmask[cn] = cloud_mask_t
+#                 cloudmask.loc[dict(channel = ch, criteria = cn)] = cloud_mask_t
+                
+        self._cloudmask_AOD = cloudmask
+        self._masked_data_AOD = masked_data
+        self._cloud_classifyiers_AOD = cloud_classifyiers
+
+    def plot_classifyer_AOD(self, criteria = 'linreg', direction = 'forward'):
+        df = self.cloud_classifyiers_AOD.sel(criteria = criteria, direction = direction).to_pandas().transpose()
+        
+        a = df.plot()
+        for g in a.get_lines():
+            g.set_linestyle('')
+            g.set_marker('.')
+        a.set_title(f'classifyer - criteria: {criteria}, direction: {direction}')
+        a.set_xlabel('')
+        a.axhline(self._setting_AOD.loc['discriminator', criteria], color = 'black', ls = '--')
+        a.set_yscale('log')
+        a.legend(fontsize = 'small', title = 'channel (nm)')
+        return a
+        
+    @property
+    def cloudmask_angstrom(self):
+        if isinstance(self._cloudmask_angstrom, type(None)):
+            self.get_custom_cloudmask_angstrom()
+        return self._cloudmask_angstrom        
+    
+    @property
+    def masked_data_angstrom(self):
+        if isinstance(self._masked_data_angstrom, type(None)):
+            self.get_custom_cloudmask_angstrom()
+        return self._masked_data_angstrom   
+    
+    @property
+    def cloud_classifyiers_angstrom(self):
+        if isinstance(self._cloud_classifyiers_angstrom, type(None)):
+            self.get_custom_cloudmask_angstrom()
+        return self._cloud_classifyiers_angstrom    
+        
+        
+    def get_custom_cloudmask_angstrom(self, 
+                                      mean_discriminator = 0.1,
+                                      mean_window = 3,
+                                      linreg_discriminator = 20e-05,
+                                      linreg_window = 4,
+                                      min_consec_valid = 5,
+                                     ):
+        
+
+        settings = _pd.DataFrame({'mean':{'discriminator': mean_discriminator, 'window': mean_window, 'min_consec_valid': min_consec_valid},
+                      'linreg':{'discriminator': linreg_discriminator, 'window': linreg_window, 'min_consec_valid': min_consec_valid}})
+        self._setting_angstrom = settings
+        # settings
+
+        # cloudmask = pd.DataFrame()
+        # cloud_classifyiers = pd.DataFrame()
+        # masked_data = pd.DataFrame()
+
+        data_ncs = self.parent.ang_exp.data.iloc[:,0]
+#         channels = data.columns.values.astype(int)
+
+        masked_data = _xr.DataArray(coords= {#'channel':channels,
+                                            'datetime': data_ncs.index.values,
+                                            'criteria': ['mean', 'linreg']}, dims = ['datetime', 'criteria'])
+        cloudmask = _xr.DataArray(coords= {#'channel':channels,
+                                            'datetime': data_ncs.index.values,
+                                            'criteria': ['mean', 'linreg']}, dims = ['datetime', 'criteria'])
+
+        cloud_classifyiers = _xr.DataArray(coords= {#'channel':channels,
+                                                   'datetime': data_ncs.index.values,
+                                                   'criteria': ['mean', 'linreg'],
+                                                   'direction': ['forward', 'backward']}, dims = ['datetime', 'criteria', 'direction'])
+
+#         for ch, data_ncs in aod_ncs.data.iteritems():
+        #     break
+
+        for cn, ser in settings.iteritems():
+            # get the values to be juged
+            rstd = abs(self.get_classifyer(data_ncs, ctype = cn, window = ser.window)['classifyer'])
+            cloud_classifyiers.loc[dict(criteria = cn, direction = 'forward')] = rstd
+
+            rstd_r = abs(self.get_classifyer(data_ncs[::-1], ctype = cn, window = ser.window)['classifyer'])
+            rstd_r = rstd_r[::-1]
+            cloud_classifyiers.loc[dict(criteria = cn, direction = 'backward')] = rstd_r
+
+            cloud_mask_t = _np.logical_and(rstd > ser.discriminator, rstd_r > ser.discriminator) 
+#             self.tp_mask = cloud_mask_t.copy()
+#             self.tp_disc = ser.discriminator
+#             self.tp_rstd = rstd.copy()
+#             self.tp_rstd_r = rstd_r.copy()
+#             self.tp_cn = cn
+#             self.tp_data_ncs = data_ncs
+            
+            cloud_mask_t = self.check_min_consec_valid(cloud_mask_t,  min_consec_valid=ser.min_consec_valid)
+            cloudmask.loc[dict(criteria = cn)] = cloud_mask_t
+
+            data_cs_new_j = data_ncs.copy()
+            data_cs_new_j[cloud_mask_t == 1] = _np.nan
+            masked_data.loc[dict(criteria = cn)] = data_cs_new_j
+            # minimum number of points between cloud detection?
+#             data_cs_new_j_mcv = check_min_consec_valid(data_cs_new_j, min_consec_valid=ser.min_consec_valid)
+        #     masked_data[cn] = data_cs_new_j_mcv
+
+        #     cloudmask[cn] = cloud_mask_t
+                
+        self._cloudmask_angstrom = cloudmask
+        self._masked_data_angstrom = masked_data
+        self._cloud_classifyiers_angstrom = cloud_classifyiers
+
+    def plot_classifyer_angstrom(self, criteria = 'linreg', direction = 'forward'):
+        df = self.cloud_classifyiers_angstrom.sel(criteria = criteria, direction = direction).to_pandas()#.transpose()
+        
+        a = df.plot()
+        for g in a.get_lines():
+            g.set_linestyle('')
+            g.set_marker('.')
+        a.set_title(f'classifyer - criteria: {criteria}, direction: {direction}')
+        a.set_xlabel('')
+        a.axhline(self._setting_angstrom.loc['discriminator', criteria], color = 'black', ls = '--')
+        a.set_yscale('log')
+        return a
+    
+    def plot_masked_data(self, data2plot = 'AOD', classifyer = False, data2discriminate = 'AOD', channel_plot = 500, channel_discriminate = None, criteria = 'mean', show_unmasked = True, ax = None, marker_size_scale = 2):
+        if isinstance(ax, type(channel_discriminate)):
+            channel_discriminate = channel_plot
+            
+        if isinstance(ax, type(None)):
+            a = _plt.subplot()
+        else:
+            a = ax
+
+        if data2discriminate == 'AOD':
+            cloudmask = self.cloudmask_AOD.sel(criteria = criteria, channel = channel_discriminate).values == 1
+
+        elif data2discriminate == 'angstrom':
+            cloudmask = self.cloudmask_angstrom.sel(criteria = criteria).values == 1
+
+        else:
+            assert(False), f'{data2discriminate} not an option for kwarg data2discriminate'
+
+        if data2plot == 'AOD':
+            if classifyer:
+                data_ncs = self.cloud_classifyiers_AOD.sel(criteria = criteria,  channel = channel_discriminate, direction = classifyer).to_pandas()
+            else:
+                data_ncs = self.parent.AOD.data.loc[:,channel_plot]
+            ylabel = f'AOD@{channel_plot}'
+    #         data_cs = self.masked_data_AOD.sel(criteria = criteria, channel = channel).to_pandas().transpose()
+
+        elif data2plot == 'angstrom':
+            if classifyer:
+                data_ncs = self.cloud_classifyiers_angstrom.sel(criteria = criteria, direction = classifyer).to_pandas()
+            else:
+                data_ncs = self.parent.ang_exp.data
+            ylabel = '$\\AA$'
+    #         data_cs = self.masked_data_angstrom.sel(criteria = criteria).to_pandas().transpose()
+        else:
+            assert(False), f'{data2plot} not an option for kwarg data2plot'
+
+    #     return data_ncs, cloudmask
+        #apply the cloudmask
+        data_cs = data_ncs.copy()
+        data_cs[cloudmask] = _np.nan
+
+        if show_unmasked:
+            data_ncs.plot(ax = a)
+
+    #     data = self.parent.AOD.data.loc[:,500].copy()
+    #     data
+
+        data_cs.plot(ax = a)
+        # data_cs.plot(ax = a)
+        # data_cs_new_j.plot(ax = a)
+        # data_cs_new_j_mcv.plot(ax = a)
+        for e,g in enumerate(a.get_lines()):
+            g.set_ls('')
+            g.set_marker('.')
+            ms = 8
+            g.set_markersize(ms - (marker_size_scale * e))
+            g.set_markerfacecolor(_colors[e])
+            g.set_markeredgewidth(0)
+
+        title = f'Cloudmask based on {data2discriminate} and {criteria}'
+        a.set_title(title)
+        a.set_ylabel(ylabel)
+        a.set_xlabel('')
+        return a
+    
+    @staticmethod
+    def get_classifyer(data, window = 3, ctype = 'mean'):
+        roll = data.rolling(int(window), 
+                            min_periods=int(window-1),
+        #                         center = True, 
+        #                         closed = 'both'
+                               )
+        
+        rm = roll.mean()
+        if ctype == 'linreg':
+            stderr = roll.apply(lambda grp: _sp.stats.linregress(abs(grp.index - grp.index[0]).seconds, grp.values).stderr)
+            rstd = stderr/rm
+        elif ctype == 'mean':
+            rstd = roll.std()/rm
+        else:
+            assert(False), f'ctype = {ctype} is not an option'
+        out = {}
+        out['classifyer'] = rstd.copy()
+        out['roll'] = roll
+        return out
+    
+    @staticmethod
+    def check_min_consec_valid(df, min_consec_valid = 5):
+        df = df.copy()
+        df_no_consec = df.copy()
+        df_no_consec[:] = 0
+        
+    #     group = df.notna().groupby(df.isna().cumsum())
+        group = df.groupby((df != 0).cumsum())
+        
+        # df.groupby()
+    
+        for grpidx, grp in group:
+            df_no_consec.loc[grp.index] = grp.shape[0]
+        #     break
+        df[df_no_consec <= min_consec_valid] = 1.
+        return df
+    #         leg = a.legend(fontsize = 'small', title = 'channel (nm)')
