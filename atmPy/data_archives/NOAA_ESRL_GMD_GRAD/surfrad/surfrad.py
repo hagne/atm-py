@@ -564,4 +564,5 @@ def open_path(path = '/nfs/grad/surfrad/aod/',
     # errors
     saod.AODerrors = data.drop([col for col in data.data.columns if 'E' in str(col)], inverse = True)
     saod.AODerrors.data.columns = [int(col.replace('E', '')) for col in saod.AODerrors.data.columns]
+    saod.files_opened = files
     return saod
