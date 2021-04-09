@@ -501,13 +501,51 @@ def open_path(path = '/nfs/grad/surfrad/aod/',
               verbose = False,
               fill_gaps= False,
               keep_original_data = False):
+    """
+    
 
-    if site:
-        if len([loc for loc in _locations if site in loc['abbreviation']]) == 0:
-            raise ValueError('The site {} has not been set up yet. Add relevant data to the location dictionary'.format(site))
+    Parameters
+    ----------
+    path : TYPE, optional
+        Path to data. If directory this is considered the base directory 
+        (without site). If this is a file name, only this file will be opened.
+        The default is '/nfs/grad/surfrad/aod/'.
+    site : TYPE, optional
+        DESCRIPTION. The default is 'bon'.
+    window : TYPE, optional
+        DESCRIPTION. The default is ('2017-01-01', '2017-01-02').
+    cloud_sceened : TYPE, optional
+        DESCRIPTION. The default is False.
+    local2UTC : TYPE, optional
+        DESCRIPTION. The default is False.
+    perform_header_test : TYPE, optional
+        DESCRIPTION. The default is False.
+    verbose : TYPE, optional
+        DESCRIPTION. The default is False.
+    fill_gaps : TYPE, optional
+        DESCRIPTION. The default is False.
+    keep_original_data : TYPE, optional
+        DESCRIPTION. The default is False.
 
-    files = _path2files(path, site, window)#, perform_header_test, verbose)
-    file_content = _read_files(files, verbose, UTC=local2UTC, cloud_sceened=cloud_sceened)
+    Raises
+    ------
+    ValueError
+        DESCRIPTION.
+
+    Returns
+    -------
+    saod : TYPE
+        DESCRIPTION.
+
+    """
+    
+    path = _pl.Path(path)
+    if path.is_file():
+        files = [path]
+        site = path.name[:3]
+    else:
+        files = _path2files(path, site, window)#, perform_header_test, verbose)
+    file_content = _read_files(files, verbose, UTC=local2UTC, cloud_sceened=cloud_sceened)   
     data = file_content['data']
     wl_match = file_content['wavelength_match']
     header_first = file_content['header_first']
@@ -520,6 +558,9 @@ def open_path(path = '/nfs/grad/surfrad/aod/',
             print('done')
 
     # add Site class to surfrad_aod
+    if site:
+        if len([loc for loc in _locations if site in loc['abbreviation']]) == 0:
+            raise ValueError('The site {} has not been set up yet. Add relevant data to the location dictionary'.format(site))
     try:
         site = [l for l in _locations if header_first['site'] in l['name']][0]
     except IndexError:
