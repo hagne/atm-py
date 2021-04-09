@@ -495,7 +495,7 @@ class Surfrad_AOD(_column_optical_properties.AOD_AOT):
 def open_path(path = '/nfs/grad/surfrad/aod/',
               site = 'bon',
               window = ('2017-01-01', '2017-01-02'),
-              cloud_sceened = True,
+              cloud_sceened = False,
               local2UTC = False,
               perform_header_test = False,
               verbose = False,
@@ -565,4 +565,6 @@ def open_path(path = '/nfs/grad/surfrad/aod/',
     saod.AODerrors = data.drop([col for col in data.data.columns if 'E' in str(col)], inverse = True)
     saod.AODerrors.data.columns = [int(col.replace('E', '')) for col in saod.AODerrors.data.columns]
     saod.files_opened = files
+    
+    saod.cloudmask.cloudmask_nativ = data.drop('0=good', inverse = True)
     return saod
