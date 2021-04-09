@@ -557,7 +557,7 @@ class CloudDetection(object):
         out = {}
         if ctype in ['mean', 'linreg']:
             roll = data.rolling(int(window), 
-                                min_periods=int(window-1),
+                                # min_periods=int(window-1),
                                    ) 
         
             rm = roll.mean()
