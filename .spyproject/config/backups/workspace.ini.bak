@@ -6,5 +6,5 @@ save_non_project_files = False
 
 [main]
 version = 0.2.0
-recent_files = ['../../../../../home/hagen/.config/spyder-py3/temp.py', 'atmPy/general/timeseries.py', 'atmPy/data_archives/NOAA_ESRL_GMD_GRAD/baseline/baseline.py', 'atmPy/data_archives/NOAA_ESRL_GMD_GRAD/surfrad/surfrad.py', 'atmPy/data_archives/icartt.py']
+recent_files = ['atmPy/aerosols/physics/column_optical_properties.py', 'atmPy/data_archives/NOAA_ESRL_GMD_GRAD/surfrad/surfrad.py']
 
