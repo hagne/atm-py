@@ -481,6 +481,18 @@ class OpticalProperties(object):
         self._optical_porperties
         return self._scattering_coeff
 
+    @property
+    def backscattering(self):
+        """
+        Scattering at exactly pi (180°).
+
+        Returns
+        -------
+        TYPE
+            DESCRIPTION.
+
+        """
+        return self.angular_scatt_func.loc[:,_np.pi]
 
     @property
     def hemispheric_backscattering(self):
