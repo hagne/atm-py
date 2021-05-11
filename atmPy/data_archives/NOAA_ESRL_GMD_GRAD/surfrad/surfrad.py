@@ -15,13 +15,22 @@ class DataSpecs(object):
         self.parent = parent
         self._window = None
         self._cloudscreened = True
-        self.path = _pl.Path('/nfs/grad/surfrad/')
-        
+        self._path = _pl.Path('/nfs/grad/surfrad/')
+         
     def _reset_data(self):
         """reset all the data so it will be reloaded"""
         for station in self.parent.stations._stations_list:
             station.data._reset()
-        
+    
+    @property
+    def path(self):
+        return self._path
+    
+    @path.setter
+    def path(self, value):
+        self._reset_data()
+        self._path = _pl.Path(value)
+    
     @property
     def window(self):
         return self._window
@@ -226,8 +235,8 @@ def _path2files(path2base_folder = '/nfs/grad/surfrad/aod/', site = 'bon', windo
     
     df = _pd.DataFrame([p for p in path2aodatsite.glob('**/*') if p.is_file()], columns=['path'])
     df.index = df.apply(lambda row: _pd.to_datetime(''.join([i for i in row.path.name if i.isdigit()])), axis = 1)
-    df.sort_index(inplace=True)
-    df = df.truncate(window[0], window[1])
+    # df.sort_index(inplace=True)
+    df = df.sort_index().truncate(window[0], window[1])
     return df.path.values
 
 def _path2files_deprecated(path2aod, site, window, perform_header_test, verbose):
