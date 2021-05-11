@@ -21,6 +21,7 @@ from atmPy.aerosols.physics import optical_properties
 from atmPy.aerosols.size_distribution import moments
 from atmPy.gases import physics as _gas_physics
 from . import modes
+from atmPy.aerosols.size_distribution import diameter_binning as _diameter_binning
 try:
     from statsmodels import robust as _robust
 except ModuleNotFoundError:
@@ -1334,6 +1335,8 @@ class SizeDist(object):
             self._submicron_volume_ratio = self.zoom_diameter(end=1000).particle_volume_concentration / self.particle_volume_concentration
         return self._submicron_volume_ratio
 
+    re_bin = _diameter_binning.re_bin
+
     def reduce2temp_press_ambient(self, tmp_is = 'auto', tmp_is_column = 'Temperature_instrument', press_is_column = 'Pressure_Pa'):
         """This function corrects the particles concentrations to ambient conditions. This is necessary if the
         temperature of the instrument is different then ambient. When the instrument is adjusting the flow to a constant
@@ -1381,6 +1384,7 @@ class SizeDist(object):
         dist._update()
         dist._is_reduced_to_pt = True
         return dist
+    
 
     def correct4flowrate(self, flowrate):
         """This simply normalizes to to provided flow rate. In principle this could be the flow rate reported in the
