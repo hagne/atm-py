@@ -91,11 +91,42 @@ def read_file(path,
         hk = POPSHouseKeeping(data_hk, sampling_period=1)
         hk.data['Barometric_pressure'] = hk.data['P']
         return hk
+    
+    def read_BBB_02(fname, skip_histogram = False, verbose = False):
+        if verbose:
+            print(f'read pops house keeping bbb file: {fname}')
+        # col_names = pd.read_csv(fname, sep=',', nrows=1, header=None,
+        #                         #             index_col=1,
+        #                         #             usecols=np.arange()
+        #                         ).values[0][:-1].astype(str)
+        # col_names = _np.char.strip(col_names)
+
+        if skip_histogram:
+            usecols = list(range(27))
+        else:
+            usecols = None
+        data = pd.read_csv(fname, sep=',', skiprows=1, header=None, usecols = usecols
+                           #             index_col=1,
+                           #             usecols=np.arange()
+                           )
+        # data.columns = _np.char.strip(data.columns)
+        return data
+        data_hk = data#.iloc[:, :27]
+        # data_hk.columns = col_names
+        data_hk.index = pd.to_datetime(data_hk['DateTime'], unit='s')
+        data_hk.drop('DateTime', axis=1, inplace=True)
+        #     hk = atmPy.general.timeseries.TimeSeries(data_hk, sampling_period = 1)
+        return data_hk
+        hk = POPSHouseKeeping(data_hk, sampling_period=1)
+        hk.data['Barometric_pressure'] = hk.data['P']
+        return hk
 
     if version == 'sbRio':
         read = read_sbRio
     elif version == 'BBB_01':
         read = read_BBB
+    elif version == 'BBB_02':
+        read = read_BBB_02
     else:
         raise ValueError('Housekeeping version {} is unknown!'.format(version))
 
