@@ -1089,6 +1089,7 @@ class SizeDist(object):
 
         self._correct4ambient_LFE_tmp_difference = None
         self._correct4fowrate = None
+        self._mean_diameter = None
 
 
         # if fixGaps:
@@ -1217,6 +1218,14 @@ class SizeDist(object):
     @property
     def binwidth(self):
         return self.__binwidth
+    
+    @property
+    def mean_diameter_geometric(self):
+        if isinstance(self._mean_diameter, type(None)):
+            md = self.convert2numberconcentration().data.apply(lambda row:(row.index ** row.astype(_np.float128)).prod()**(1/row.sum()), axis = 1)
+            self._mean_diameter = md
+        return self._mean_diameter
+    
 
     @property
     def normal_distribution_fits(self):
