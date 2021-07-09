@@ -123,7 +123,7 @@ _locations = [{'name': 'Bondville',
               'lon': -116.01947,
               'lat': 36.62373,
               'alt': 1007,
-              'timezone': 8,
+              'timezone': -8,
               'type': 'permanent'},
               {'name': 'Fort Peck',
               'state': 'MT',
@@ -131,7 +131,7 @@ _locations = [{'name': 'Bondville',
               'lon': -105.10170,
               'lat': 48.30783,
               'alt': 634,
-              'timezone': 7,
+              'timezone': -7,
               'type': 'permanent'},
               {'name': 'Goodwin Creek',
               'state': 'MS',
@@ -139,7 +139,7 @@ _locations = [{'name': 'Bondville',
               'lon': -89.8729,
               'lat': 34.2547,
               'alt': 98,
-              'timezone': 6,
+              'timezone': -6,
               'type': 'permanent'},
               {'name': 'Penn. State Univ.',
               'state': 'PA',
@@ -147,7 +147,7 @@ _locations = [{'name': 'Bondville',
               'lon': -77.93085,
               'lat': 40.72012,
               'alt': 376,
-              'timezone': 5,
+              'timezone': -5,
               'type': 'permanent'},
               # {'name': 'ARM Southern Great Plains Facility',
               # 'state': 'OK',
@@ -233,7 +233,7 @@ def _path2files(path2base_folder = '/nfs/grad/surfrad/aod/', site = 'bon', windo
     path2aodatsite = path2base_folder.joinpath(site)
     assert(path2aodatsite.is_dir()), f'{path2aodatsite} not a directory'
     
-    df = _pd.DataFrame([p for p in path2aodatsite.glob('**/*') if p.is_file()], columns=['path'])
+    df = _pd.DataFrame([p for p in path2aodatsite.glob('**/*.aod') if p.is_file()], columns=['path'])
     df.index = df.apply(lambda row: _pd.to_datetime(''.join([i for i in row.path.name if i.isdigit()])), axis = 1)
     # df.sort_index(inplace=True)
     df = df.sort_index().truncate(window[0], window[1])
