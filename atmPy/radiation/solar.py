@@ -145,7 +145,6 @@ def get_sun_position(lat, lon, date, elevation=0):
         elevation and azimuth angle in radians.
     """
     def getpos(lat, lon, date, elevation=0):
-        # print(lat, lon, date, elevation)
         if type(date).__name__ == 'Timestamp':
             date = date.to_pydatetime()
         
@@ -155,11 +154,15 @@ def get_sun_position(lat, lon, date, elevation=0):
 ### make timezone aware
         if isinstance(date.tzinfo, type(None)):
             date = pytz.utc.localize(date)
+        # print(lat, lon, date)
+        # print(_solar.get_azimuth(lat, lon, date, elevation=elevation))
         alt = _np.deg2rad(_solar.get_altitude(lat, lon, date, elevation=elevation))
-        azi = _np.deg2rad(_np.mod(abs(_solar.get_azimuth(lat, lon, date, elevation=elevation)) - 180, 360))
+        #azi = _np.deg2rad(_np.mod(abs(_solar.get_azimuth(lat, lon, date, elevation=elevation)) - 180, 360)) # this is from a time when pysolar defined the azimuth differently (angle from south)
+        azi = _np.deg2rad(_solar.get_azimuth(lat, lon, date, elevation=elevation))
         airmass = 1 / _np.sin(alt)
         au = get_sun_earth_distance(date)
-        return alt, azi, airmass, au
+        ampm = 'am' if azi <= _np.pi else "pm"
+        return alt, azi, airmass, au, ampm
 
     # in case this is based on an xarry.Dataset
     if type(date).__name__ == 'DataArray':
@@ -180,13 +183,14 @@ def get_sun_position(lat, lon, date, elevation=0):
         if not hasattr(date, '__iter__'):
             date = _np.zeros(10, dtype=_np.timedelta64) + date
         pos = _np.array([getpos(la, lo, da, el) for la, lo, da, el in zip(lat, lon, date, elevation)])
-        pos = _pd.DataFrame(pos, columns=['altitude', 'azimuth', 'airmass', 'sun_earth_distance'], index=date)
-        # return pos
+        pos = _pd.DataFrame(pos, columns=['altitude', 'azimuth', 'airmass', 'sun_earth_distance', 'ampm'], index=date)
+        pos = pos.astype(dict(zip(pos.columns,([float]*(pos.shape[1] - 1)) + ['|S2',]))) #otherwise everthing is object ... ampm is to blame
+        # return pos        
+        # pos['ampm'] = pos.apply(lambda row: 'am' if row.azimuth <= _np.pi else "pm", axis = 1)
     else:
         out = getpos(lat, lon, date, elevation)
-        pos = dict(zip(('altitude', 'azimuth', 'airmass','sun_earth_distance'), out))
+        pos = dict(zip(('altitude', 'azimuth', 'airmass','sun_earth_distance', 'ampm'), out))
     
-    pos['ampm'] = pos.apply(lambda row: 'am' if row.azimuth >= _np.pi else "pm", axis = 1)
     return pos
 
 def get_sun_position_TS(timeseries):
