@@ -2561,17 +2561,15 @@ class SizeDist_TS(SizeDist):
         return dist
 
 
-    def average_time(self, window=(1, 's')):
-        """returns a copy of the sizedistribution_TS with reduced size by averaging over a given window
+    def average_time(self, window='10s'):
+        """returns a copy of the sizedistribution_TS with reduced size by 
+        averaging over a given window. Thesedays it is merely a wrap around
+        pandas resample function
 
         Arguments
         ---------
-        window: tuple
-            tuple[0]: periods
-            tuple[1]: frequency (Y,M,W,D,h,m,s...) according to:
-                http://docs.scipy.org/doc/numpy/reference/arrays.datetime.html#datetime-units
-                if error also check out:
-                http://pandas.pydata.org/pandas-docs/stable/timeseries.html#offset-aliases
+        window: str
+            see pandas resample doc
 
         Returns
         -------
