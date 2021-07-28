@@ -2317,7 +2317,7 @@ class SizeDist_TS(SizeDist):
         dist_ls.housekeeping = _vertical_profile.VerticalProfile(dfhk)
         return dist_ls
 
-    def fit_normal(self, log=True, p0=[10, 180, 0.2]):
+    def fit_normal_deprecated(self, log=True, p0=[10, 180, 0.2]):
         """ Fits a single normal distribution to each line in the data frame.
 
         Returns

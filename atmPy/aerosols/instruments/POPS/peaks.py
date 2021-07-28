@@ -57,7 +57,7 @@ def _read_PeakFile_Binary(fname, version = 'current', time_shift=0, skip_bites =
         txt = 'This version does not exist: '%version
         raise ValueError(txt)
 
-    peakInstance = peaks(dataFrame)
+    peakInstance = Peaks(dataFrame)
     return peakInstance
 
 
@@ -182,7 +182,7 @@ def _read_peak_file_csv(fname, deltaTime=0, log = True, since_midnight = True):
     data = _csv2array(fname)
     directory, fname = os.path.split(fname)
     dataFrame = _PeakFileArray2dataFrame(data, fname, deltaTime, log = log, since_midnight = since_midnight)
-    peakInstance = peaks(dataFrame)
+    peakInstance = Peaks(dataFrame)
     return peakInstance
 
 
@@ -546,7 +546,7 @@ def _cleanPeaksArray(PeakArray):
     report += 'All together %s (%.5f%%) datapoints removed.'%(pointsRem, pointsRem/float(startstartShape[0]))
     return BarrayClean, report
 
-class peaks(object):
+class Peaks(object):
     def __init__(self,dataFrame):
         self.data = dataFrame
 
@@ -570,7 +570,7 @@ class peaks(object):
         self.data.Masked.values[where_tooBig] = 2
         self.data.Masked.values[where_tooSmall] = 1
         if verbose:
-            misc.msg('\t %s from %s peaks (%.1i %%) are outside the calibration range (amplitude = [%s, %s], diameter = [%s, %s])'%(too_small + too_big, len(self.data.Amplitude),100 * float(too_small + too_big)/float(len(self.data.Amplitude)) , calibrationInstance.data.amp.min(),  calibrationInstance.data.amp.max(), calibrationInstance.data.d.min(), calibrationInstance.data.d.max()))
+            misc.msg('\t %s from %s Peaks (%.1i %%) are outside the calibration range (amplitude = [%s, %s], diameter = [%s, %s])'%(too_small + too_big, len(self.data.Amplitude),100 * float(too_small + too_big)/float(len(self.data.Amplitude)) , calibrationInstance.data.amp.min(),  calibrationInstance.data.amp.max(), calibrationInstance.data.d.min(), calibrationInstance.data.d.max()))
             misc.msg('\t\t %s too small'%(too_small))
             misc.msg('\t\t %s too big'%(too_big))
         self.particles_larger_than_pops_detection_range = too_big
