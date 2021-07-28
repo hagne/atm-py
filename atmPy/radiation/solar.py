@@ -6,6 +6,7 @@ except ModuleNotFoundError:
 import numpy as _np
 import pandas as _pd
 import pytz
+import atmPy.general.timeseries as _ts
 try:
     from pysolar import solar as _solar
     from pysolar import stime
@@ -134,7 +135,7 @@ def get_sun_position(lat, lon, date, elevation=0):
     ----------
     lat, lon: float, array-like
         latitude and longitude of the observer (e.g. Denver, lat = 39.7392, lon = -104.9903)
-    datetime_UTC: datetime instance or datetime64 array
+    date: datetime instance or datetime64 array
         time of interestes in UTC
     elevation: float, array-like.
         elevation of observer.
@@ -147,6 +148,8 @@ def get_sun_position(lat, lon, date, elevation=0):
     def getpos(lat, lon, date, elevation=0):
         if type(date).__name__ == 'Timestamp':
             date = date.to_pydatetime()
+            # date = date.to_datetime64()
+        
         
         if type(date).__name__ !='datetime':
             txt = f'date is type {type(date).__name__} ... it should be datetime'
@@ -167,6 +170,14 @@ def get_sun_position(lat, lon, date, elevation=0):
     # in case this is based on an xarry.Dataset
     if type(date).__name__ == 'DataArray':
         date = date.to_pandas().index
+        
+    # or a dataframe
+    elif isinstance(date, _pd.DataFrame):
+        date = date.index
+        
+    # or atmPy.general.timeseries.TimeSeries
+    elif isinstance(date, _ts.TimeSeries):
+        date = date.data.index
 
     if (_np.ndarray in (type(lat), type(lon), type(elevation))) or (type(date) in (_pd.DatetimeIndex, _np.datetime64)):
         # lenth = False
@@ -193,8 +204,9 @@ def get_sun_position(lat, lon, date, elevation=0):
     
     return pos
 
-def get_sun_position_TS(timeseries):
-    """Returns the position, polar and azimuth angle, of the sun in the sky for a given time and location.
+def get_sun_position_TS_deprecated(timeseries):
+    """20210728: I am pretty sure this is not used anymore!
+    Returns the position, polar and azimuth angle, of the sun in the sky for a given time and location.
 
     Arguments
     ---------
