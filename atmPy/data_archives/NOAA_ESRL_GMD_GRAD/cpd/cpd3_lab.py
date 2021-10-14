@@ -24,10 +24,47 @@ def fixtime(df):
 def generate_cpd3_export_command(num_days = None, 
                                  start = None, 
                                  end = None, #'2021-05-13T00:00:00'
+                                 status = 'clean',
                                  p2f_pops = None,#'/home/grad/htelg/cpd3_exports/cpd3_qc_qa_pops.csv',
                                  p2f_smps = None,#'/home/grad/htelg/cpd3_exports/cpd3_qc_qa_smps.csv',
                                  p2f_neph = None,#'/home/grad/htelg/cpd3_exports/cpd3_qc_qa_neph.csv',
                                 ):
+    """
+    Generate the command that needs to be executed in the commandline on aero
+
+    Parameters
+    ----------
+    num_days : TYPE, optional
+        DESCRIPTION. The default is None.
+    start : TYPE, optional
+        DESCRIPTION. The default is None.
+    end : TYPE, optional
+        DESCRIPTION. The default is None.
+    #'2021-05-13T00 : 00:00'                                 
+    status : 'str' ['clean', 'raw'], optional
+        Currently this effects only the POPS data (might not be true anymore). If raw, the data is not 
+        corrected (e.g. for T,P) and qa/qc has not been applied The default is 'clean'.
+    p2f_pops : TYPE, optional
+        DESCRIPTION. The default is None.
+    #'/home/grad/htelg/cpd3_exports/cpd3_qc_qa_pops.csv' : TYPE
+        DESCRIPTION.
+    p2f_smps : TYPE, optional
+        DESCRIPTION. The default is None.
+    #'/home/grad/htelg/cpd3_exports/cpd3_qc_qa_smps.csv' : TYPE
+        DESCRIPTION.
+    p2f_neph : TYPE, optional
+        DESCRIPTION. The default is None.
+    #'/home/grad/htelg/cpd3_exports/cpd3_qc_qa_neph.csv' : TYPE
+        DESCRIPTION.
+     : TYPE
+        DESCRIPTION.
+
+    Returns
+    -------
+    TYPE
+        DESCRIPTION.
+
+    """
     
     end_dt = None
     start_dt = None
@@ -72,13 +109,13 @@ def generate_cpd3_export_command(num_days = None,
     coms = []
     if not isinstance(p2f_pops, type(None)):
         p2f_pops = pl.Path(p2f_pops)
-        coms.append(f"da.export bos '.*_N21' {start} {end}  > {p2f_pops}")
+        coms.append(f"da.export bos '.*_N21' {start} {end} {status}  > {p2f_pops}")
     if not isinstance(p2f_smps, type(None)):
         p2f_smps = pl.Path(p2f_smps)
-        coms.append(f"da.export bos '.*_N11' {start} {end}  > {p2f_smps}")
+        coms.append(f"da.export bos '.*_N11' {start} {end} {status} > {p2f_smps}")
     if not isinstance(p2f_smps, type(None)):
         p2f_neph = pl.Path(p2f_neph)
-        coms.append(f"da.get bos S11a {start} {end} raw | da.avg --interval=5m | da.export --mode=R --fill=1h > {p2f_neph}")
+        coms.append(f"da.get bos S11a {start} {end} {status} | da.avg --interval=5m | da.export --mode=R --fill=1h > {p2f_neph}")
 
 
     # com_pops = f"da.export bos '.*_N21' {start} {end}  > {p2f_pops}"
