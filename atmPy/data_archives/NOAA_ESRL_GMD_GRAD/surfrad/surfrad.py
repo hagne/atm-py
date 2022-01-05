@@ -617,4 +617,5 @@ def open_path(path = '/nfs/grad/surfrad/aod/',
     saod.files_opened = files
     
     saod.cloudmask.cloudmask_nativ = data.drop('0=good', inverse = True)
+    saod.aerosolmask.cloudmask_nativ = data.drop('0=good', inverse = True)
     return saod
