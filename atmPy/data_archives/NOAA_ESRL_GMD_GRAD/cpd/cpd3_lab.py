@@ -95,14 +95,6 @@ def generate_cpd3_export_command(num_days = None,
     else:
         assert(False), "not possible"
         
-    # if isinstance(end, type(None)):
-    #     assert(np.all([isinstance(end, type(None)), isinstance(start, type(None)))), 'end and start are not None, this should not happen'
-    #     end_dt = pd.Timestamp.now()
-    #     start_dt = end_dt - num_days_td
-    # else:
-    #     now = pd.to_datetime(now)
-        
-    # yd= now - pd.to_timedelta(num_days,'d')
     start = f'{start_dt.year}-{start_dt.month:02d}-{start_dt.day:02d}T00:00:00Z'
     end = f'{end_dt.year}-{end_dt.month:02d}-{end_dt.day:02d}T00:00:00Z'  
         
@@ -117,9 +109,4 @@ def generate_cpd3_export_command(num_days = None,
         p2f_neph = pl.Path(p2f_neph)
         coms.append(f"da.get bos S11a {start} {end} {status} | da.avg --interval=5m | da.export --mode=R --fill=1h > {p2f_neph}")
 
-
-    # com_pops = f"da.export bos '.*_N21' {start} {end}  > {p2f_pops}"
-    # com_smps = f"da.export bos '.*_N11' {start} {end}  > {p2f_smps}"
-    # com_neph = f"da.get bos S11a {start} {end} raw | da.avg --interval=5m | da.export --mode=R --fill=1h > {p2f_neph}"
-    # coms = [com_pops, com_smps, com_neph]
     return '; '.join(coms)

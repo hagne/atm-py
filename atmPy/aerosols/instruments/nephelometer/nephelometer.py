@@ -45,17 +45,17 @@ class TandemNephelometer(object):
 class Channels(object):
     def __init__(self):
         buff = _StringIO(data.data_450)
-        df_450 = _pd.read_csv(buff, sep='  ', index_col=1, names=['450'], engine='python')
+        df_450 = _pd.read_csv(buff, sep='  ', index_col=1, names=['450', 'wavelength'], engine='python')
         df_450.sort_index(inplace=True)
         self.channel_450 = df_450
 
         buff = _StringIO(data.data_550)
-        df_550 = _pd.read_csv(buff, sep='  ', index_col=1, names=['550'], engine='python')
+        df_550 = _pd.read_csv(buff, sep='  ', index_col=1, names=['550', 'wavelength'], engine='python')
         df_550.sort_index(inplace=True)
         self.channel_550 = df_550
 
         buff = _StringIO(data.data_700)
-        df_700 = _pd.read_csv(buff, sep='  ', index_col=1, names=['700'], engine='python')
+        df_700 = _pd.read_csv(buff, sep='  ', index_col=1, names=['700', 'wavelength'], engine='python')
         df_700.sort_index(inplace=True)
         self.channel_700 = df_700
 
