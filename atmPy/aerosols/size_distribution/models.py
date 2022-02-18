@@ -15,10 +15,10 @@ import numpy as np
 
 
 class Model(object):
-    def __init__(self, model_params, name = None):
+    def __init__(self, model_params, name = None, diameter_range = [2, 2e5]):
         
         self._model_params = model_params
-        self._diameter_range = [2, 1e5] # nanometer
+        self._diameter_range = diameter_range # nanometer
         self._number_of_diameters = 100
         
         self._reset()
@@ -80,7 +80,7 @@ class Model(object):
   
 
 class SeignfeldAndPandas(object):
-    def __init__(self):
+    def __init__(self, **kwargs):
         """
         From Siegnfeld and Pandas, third edition, Page 343. Table 8.3.
         Note, not all of the size distributions that are depected on the 
@@ -99,7 +99,7 @@ class SeignfeldAndPandas(object):
         """
         self._model_list = self._get_model_list()
         for mod in self._model_list:
-            model = Model(mod['model_params'], name = mod['zone'])
+            model = Model(mod['model_params'], name = mod['zone'], **kwargs)
             setattr(self, mod['zone'], model)
             mod['model'] = model
         
