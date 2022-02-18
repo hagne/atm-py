@@ -30,7 +30,10 @@ def fit_normal_dist(sd, log=True, p0=[10, 180, 0.2], boundary_width = [0.1, 0.6]
 
         low = np.floor((start_w * (1 - tol)) / med)
         top = np.ceil((start_w * (1 + tol)) / med)
-
+        
+        if low < 1:
+            low = 1
+        
         widths = np.arange(low, top)
         peakind = signal.find_peaks_cwt(y, widths)
         return peakind
