@@ -4,7 +4,7 @@ import numpy as _np
 import os as _os
 import pandas as _pd
 from atmPy.aerosols.physics import column_optical_properties as _column_optical_properties
-
+import datetime
 
 def _read_header(folder, fname):
     """Read the header of file in folder and reterns a dict with relevant data"""
@@ -125,7 +125,7 @@ def _read_files(folder, files, verbose):
         """
         if not header:
             header = _read_header(folder, filename)
-        dateparse = lambda x: _pd.datetime.strptime(x, "%d:%m:%Y %H:%M:%S")
+        dateparse = lambda x: datetime.datetime.strptime(x, "%d:%m:%Y %H:%M:%S")
         df = _pd.read_csv(folder + '/' + filename, skiprows=header['header_size'],
                           #                      na_values=['N/A'],
                           parse_dates={'times': [0, 1]},
@@ -208,7 +208,7 @@ def open_path(path='/Volumes/HTelg_4TB_Backup/AERONET/',
         site_name = data.header['site']
         ## select columns that show AOD
         aodcols = [col for col in data.data.columns if (col[:3] == 'AOT')]
-        data_aot = data._del_all_columns_but(aodcols)
+        data_aot = data.drop(aodcols, inverse = True)
         newcol = _np.array([c.replace('AOT_', '') for c in aodcols]).astype(int)
     else:
         raise HeaderError('version {} not defined'.format(data.header['version']))
@@ -229,7 +229,7 @@ def open_path(path='/Volumes/HTelg_4TB_Backup/AERONET/',
     ## add the resulting Timeseries to the class
     aaot.AOD = data_aot
 
-    aaot.ang_exp = data._del_all_columns_but([col for col in data.data.columns if 'Angstrom' in col])
+    aaot.ang_exp = data.drop([col for col in data.data.columns if 'Angstrom' in col], inverse = True)
     # The following might be different for different files, otherwise why would I have put it there in the first place?!?
     # aaot.ang_exp.data.columns = [col.replace('Angstrom', '_Angstrom_Exponent') for col in aaot.ang_exp.data.columns]
     return aaot

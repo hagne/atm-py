@@ -1362,7 +1362,8 @@ class TimeSeries(object):
             return out
 
     def drop(self, collums, inverse = False, inplace = False):
-        """as it says, deletes all columns but ...
+        """I made this to have the inverse option in the drop function ... its
+        possible this exist in pandas by now?!?
         Parameters:
         -----------
         collumns: string or array-like
