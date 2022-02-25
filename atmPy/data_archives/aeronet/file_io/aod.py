@@ -1,3 +1,11 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""
+Created on Fri Feb 25 11:37:23 2022
+
+@author: hagen
+"""
+
 from atmPy.general import measurement_site as _measurement_site
 from atmPy.general import timeseries as _timeseries
 import numpy as _np
@@ -165,7 +173,7 @@ class Aeronet_AOD(_column_optical_properties.AOD_AOT):
     pass
 
 
-def open_path(path='/Volumes/HTelg_4TB_Backup/AERONET/',
+def read_file(path='/Volumes/HTelg_4TB_Backup/AERONET/',
               site= None, #'BONDVILLE',
               window= None, #('2017-01-01', '2017-02-01'),
               perform_header_test=False,
@@ -175,6 +183,7 @@ def open_path(path='/Volumes/HTelg_4TB_Backup/AERONET/',
 
     files, folder = _path2files(path, site, window, perform_header_test, verbose)
     #     files = clean_up_files(files, None, None, None, verbose)
+    return files, folder
     data = _read_files(folder, files, verbose)
     if keep_original_data:
         data_orig = data.copy()
@@ -233,3 +242,4 @@ def open_path(path='/Volumes/HTelg_4TB_Backup/AERONET/',
     # The following might be different for different files, otherwise why would I have put it there in the first place?!?
     # aaot.ang_exp.data.columns = [col.replace('Angstrom', '_Angstrom_Exponent') for col in aaot.ang_exp.data.columns]
     return aaot
+

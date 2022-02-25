@@ -1,0 +1,1 @@
+from atmPy.data_archives.aeronet.aeronet import read_file

@@ -42,7 +42,7 @@ def uhsas2sizedist(df):
     dist = _sd.SizeDist_TS(data_trunc, bined, 'numberConcentration')
     return dist
 
-def read_file(fn, guess_product = True):
+def read_file(fn, guess_product = True, verbose = False):
     """
     Reads a file with the ICARTT format.
     https://www-air.larc.nasa.gov/missions/intexna/DataManagement_plan.htm
@@ -80,9 +80,19 @@ def read_file(fn, guess_product = True):
     df.index = df.apply(lambda row: date + _pd.to_timedelta(row.name, unit = 's'), axis = 1)
     df.index.name = 'datetime'
     df[df == -999999.00000] = _np.nan
-    df = df.drop('UTC_datetime', axis = 1)
+    # return 
+
+    if 'UTC_datetime' in df.columns:
+        df = df.drop('UTC_datetime', axis = 1)
     
     if header_lines[3].strip().lower() == 'uhsas':
+        if verbose:
+            print('guessed product: UHSAS')
         return uhsas2sizedist(df)
+    
+    elif 'smps' in header_lines[3].strip().lower():
+        if verbose:
+            print('guessed product: SMPS .... still programming needed')
+        
     
     return header_lines,df
