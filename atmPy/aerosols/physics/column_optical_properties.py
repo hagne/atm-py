@@ -31,6 +31,7 @@ class AOD_AOT(object):
             The dictionary translates column names to exact wavelength. If AOD is calculated and wavelengths is set
             wavelengths from this will be used instead of column names.
         site: atmPy.general.station instance
+            If site is given the remaining site relevant kwargs (lat, lon, elevation, name, name_short) are ignored.
         lat, lon: location of site
             lat: deg north, lon: deg east
             e.g. lat = 40.05192, lon = -88.37309 for Bondville, IL, USA

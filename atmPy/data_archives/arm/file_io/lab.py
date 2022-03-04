@@ -21,6 +21,9 @@ arm_products = {'aosaps':     {'module': aosaps},
                 'aipfitrh1ogrenC1': {'module': _aipfitrh1ogrenC1}
                 }
 
+def generic_arm_file_reader()
+
+
 def open_path(path, **kwargs):
     """
 
