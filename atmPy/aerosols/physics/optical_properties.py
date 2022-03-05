@@ -1008,19 +1008,24 @@ from atmPy.aerosols.size_distribution import sizedistribution as sd
 
 class Inversion2SizeDistribution_scenario(object):
     """this handles how ..."""
-    def __init__(self, parent, args):
+    def __init__(self, parent, arguments):
         self.parent = parent
         
-        if isinstance(args, _pd.DataFrame):
-            self.size_distribution_parameters = args
-            pos = args.diameter.values
-            numbers = args.number.values
-            args = [val for pair in zip(pos, numbers) for val in pair]
+        if isinstance(arguments, _pd.DataFrame):
+            # if self.parent.verbose:
+            #     print('initialize scenario: case dataframe')
+            self.size_distribution_parameters = arguments
+            pos = arguments.diameter.values
+            numbers = arguments.number.values
+            arguments = [val for pair in zip(pos, numbers) for val in pair]
         else:
-            # print(f'shape args: {args}')
-            self.size_distribution_parameters = _pd.DataFrame({'diameter': args[::2], 'number': args[1::2], 'width': self.parent.start_conditions.size_distribution_parameters.width.values})
+            # if self.parent.verbose:
+            #     print('initialize scenario: else')
+            # width = self.parent.start_conditions.size_distribution_parameters.width.values # this cased a superloop
+            width = self.parent.width_of_aerosol_mode
+            self.size_distribution_parameters = _pd.DataFrame({'diameter': arguments[::2], 'number': arguments[1::2], 'width': width})
         
-        self._args = args
+        self._args = arguments
 
         self.update()
 
@@ -1162,12 +1167,12 @@ class Inversion2SizeDistribution_scenario(object):
 
 
 class Inversion2SizeDistribution(object):
-    def __init__(self, sfr_AOD_test_dp, 
-                 diameter_range = [50, 30000 * 2], 
+    def __init__(self, sfr_AOD_test_dp, # this is a row of a pandas frame
+                 diameter_range = [100, 30000], 
                  number_of_diameters = 100,
-                 aerosol_refractive_index = 1.4,
+                 aerosol_refractive_index = 1.5,
                  width_of_aerosol_mode = 0.15,
-                 start_conditions = None,
+                 start_conditions = [400, 2000., 800, 320],
                  verbose = False):
         self.diameter_range =diameter_range
         self.number_of_diameters = number_of_diameters
@@ -1179,6 +1184,7 @@ class Inversion2SizeDistribution(object):
         self.verbose = verbose
 
         #properties
+        self._start_conditions = None
         self.start_conditions = start_conditions
         self._fit_result = None
         self._mie_info = None
@@ -1198,7 +1204,7 @@ class Inversion2SizeDistribution(object):
     @property
     def start_conditions(self):
         if isinstance(self._start_conditions, type(None)):
-            print('hasdfasdfasd')
+            # print('hasdfasdfasd')
             args = [400, 2000., 800, 320] # if start conditions are not set this will be used ad a default
             self._start_conditions = Inversion2SizeDistribution_scenario(self, args)
         return self._start_conditions
@@ -1218,11 +1224,15 @@ class Inversion2SizeDistribution(object):
         None.
 
         """
+        if self.verbose:
+            print('setting start_conditions')
         if isinstance(value, type(None)):
-            # print('hasdfasdfasd')
-            args = [400, 2000., 800, 320] # if start conditions are not set this will be used ad a default
-        args = value # if start conditions are not set this will be used ad a default
-        self._start_conditions = Inversion2SizeDistribution_scenario(self, args)
+            if self.verbose:
+                print('start condition value is Non, use default')
+            arguments = [400, 2000., 800, 320] # if start conditions are not set this will be used ad a default
+        else:
+            arguments = value # if start conditions are not set this will be used ad a default
+        self._start_conditions = Inversion2SizeDistribution_scenario(self, arguments)
 
     @property
     def fit_result(self):

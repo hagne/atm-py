@@ -3,15 +3,19 @@ import pandas as _pd
 import numpy as _np
 from atmPy.radiation import solar as _solar
 from atmPy.general import timeseries as _timeseries
+import atmPy.aerosols.physics.optical_properties as _atmop
+import atmPy.aerosols.size_distribution.sizedistribution as _atmsd
 import multiprocessing as _mp
 import xarray as _xr
 import matplotlib.pyplot as _plt
 import scipy as _sp
 
+
 _colors = _plt.rcParams['axes.prop_cycle'].by_key()['color']
 
 class AOD_AOT(object):
     def __init__(self,
+                 AOD = None,
                  wavelengths = None,
                  site = None,
                  lat = None,
@@ -46,7 +50,8 @@ class AOD_AOT(object):
             ad some point"""
 
         self._aot = None
-        self._aod = None
+        # self._aod = None
+        self.AOD = AOD
         self._sunposition = None
         self._timezone = timezone
         self.wavelengths = wavelengths
@@ -102,6 +107,12 @@ class AOD_AOT(object):
 
     @ AOD.setter
     def AOD(self,value):
+        if isinstance(value, type(None)):            
+            self._aod = value
+            return
+        elif isinstance(value, _pd.DataFrame):
+            value = _timeseries.TimeSeries(value)
+            
         self._aod = value
         self._aod.data.columns.name = 'AOD@wavelength(nm)'
         self._timestamp_index = self._aod.data.index
@@ -213,6 +224,45 @@ class AOD_AOT(object):
         # df.sort_index(inplace=True)
         # df.index.name = 'datetime'
         # return df
+        
+    def derive_size_distribution(self, width_of_aerosol_mode = 0.15, verbose = True):
+        dist_df = _pd.DataFrame()
+        fit_res_df = _pd.DataFrame()
+        count_down = self.AOD.data.shape[0]
+        if verbose:
+            print(f'Starting to make inversion for {count_down} cases.')
+        for ts, test_dp in self.AOD.data.iterrows():
+            if verbose:
+                print(test_dp)
+            
+            inv = _atmop.Inversion2SizeDistribution(test_dp, width_of_aerosol_mode = width_of_aerosol_mode, verbose=verbose)
+            inv.fit_cutoff = 1e-8
+        # inv.start_conditions.size_distribution.convert2dVdlogDp().plot()
+        # inv.fit_result.size_distribution.convert2dVdlogDp().plot()
+        
+        # [0.0015510533, 0.0014759477, 0.0012328415, 0.00094773073, 0.00032288354]
+        # inv.start_conditions.extinction_coeff
+        
+            inv.fit_result.size_distribution.data.index = [ts]
+            sdt = inv.fit_result.size_distribution.data.copy()
+            dist_df = dist_df.append(sdt)
+        
+            data = _np.array([_np.append(inv.fit_result.args, inv.fit_result.sigma)])
+            fit_res_df = fit_res_df.append(_pd.DataFrame(data, columns=['pos1', 'amp1', 'pos2', 'amp2', 'sigma'], index = [ts]))
+            count_down -=1
+            print(count_down, end = ', ')
+        
+        
+        
+        distt = inv.fit_result.size_distribution.distributionType
+        bins = inv.fit_result.size_distribution.bins
+        # dist_ts = sd.SizeDist_TS(dist_df, bins, distt)
+        dist_ts = _atmsd.SizeDist_TS(dist_df, bins, distt, ignore_data_gap_error=True)
+        out= {}
+        out['dist_ts'] = dist_ts
+        out['last_inv_inst'] = inv
+        out['fit_res'] = fit_res_df
+        return out
 
 class CloudDetection(object):
     def __init__(self, parent):

@@ -3,27 +3,167 @@
 #
 # from atmPy.data_archives.arm._netCDF import ArmDataset as _Dataset
 import os as _os
-from atmPy.data_archives.arm import _tdmasize,_tdmaapssize,_tdmahyg,_aosacsm, _noaaaos, _1twr10xC1, _aipfitrh1ogrenC1, aosaps, aossmps
+# from atmPy.data_archives.arm.file_io.products import _tdmasize,_tdmaapssize,_tdmahyg,_aosacsm, _noaaaos, _1twr10xC1, _aipfitrh1ogrenC1, aosaps, aossmps
 import pandas as _pd
 import pylab as _plt
 import warnings
-from . import _tools
+# from atmPy.data_archives.arm import tools
+import pathlib as _pl
+import numpy as _np
+import xarray as _xr
 # import pdb as _pdb
 
-arm_products = {'aosaps':     {'module': aosaps},
-                'aossmps':     {'module': aossmps},
-                'tdmasize':   {'module': _tdmasize},
-                'tdmaapssize':{'module': _tdmaapssize},
-                'tdmahyg':    {'module': _tdmahyg},
-                'aosacsm':    {'module': _aosacsm},
-                'noaaaos':    {'module': _noaaaos},
-                '1twr10xC1':  {'module': _1twr10xC1},
-                'aipfitrh1ogrenC1': {'module': _aipfitrh1ogrenC1}
-                }
+arm_products = {}
+# arm_products = {'aosaps':     {'module': aosaps},
+#                 'aossmps':     {'module': aossmps},
+#                 'tdmasize':   {'module': _tdmasize},
+#                 'tdmaapssize':{'module': _tdmaapssize},
+#                 'tdmahyg':    {'module': _tdmahyg},
+#                 'aosacsm':    {'module': _aosacsm},
+#                 'noaaaos':    {'module': _noaaaos},
+#                 '1twr10xC1':  {'module': _1twr10xC1},
+#                 'aipfitrh1ogrenC1': {'module': _aipfitrh1ogrenC1}
+#                 }
 
-def generic_arm_file_reader()
+class Generic_Arm_Product(object):
+    def __init__(self, dataset):
+        self.dataset = dataset
+        pass
+    
+class Generic_Arm_Variable(object):
+    def __init__(self, parent, data, qc, instance_of_variable = None):
+        self.product = parent
+        self._orig_data = data
+        self.qc = qc
+        self._data_good = None
+        self._data_intermediate = None
+        self._data_intermediate_good= None
+        self._data_intermediate= None
+        self._data_bad= None
+        self._data_all = None
+        
+        if isinstance(instance_of_variable, type(None)):
+            self.instancifyer = lambda x: x
+        else:
+            self.instancifyer = lambda x: instance_of_variable(x)
+
+    @property
+    def data_all(self):
+        if isinstance(self._data_all, type(None)):
+            self._data_all = self.apply_mask([])
+        return self._data_all
+    
+    @property
+    def data_good(self):
+        if isinstance(self._data_good, type(None)):
+            self._data_good = self.apply_mask(['Bad', 'Indeterminate'])
+        return self._data_good
+    
+    @property
+    def data_intermediate_good(self):
+        if isinstance(self._data_intermediate_good, type(None)):
+            self._data_intermediate_good = self.apply_mask(['Bad',])
+        return self._data_intermediate_good
+    
+    @property
+    def data_intermediate(self):
+        if isinstance(self._data_intermediate, type(None)):
+            self._data_intermediate = self.apply_mask(['Bad', 'Good'])
+        return self._data_intermediate
+    
+    @property
+    def data_bad(self):
+        if isinstance(self._data_bad, type(None)):
+            self._data_bad = self.apply_mask(['Good', 'Indeterminate'])
+        return self._data_bad
+    
+    def apply_mask(self, dataqualit2mask):
+        data_masked = self._orig_data.copy()
+        for bd in dataqualit2mask:
+            data_masked[self.qc == bd] = _np.nan
+        return self.instancifyer(data_masked)
+    
+class Mfrsr7nchaod1michC1_AOD(Generic_Arm_Variable):
+    def __init__(self,*args, **kwargs):
+        import atmPy.aerosols.physics.column_optical_properties as atmcop
+        kwargs['instance_of_variable'] = atmcop.AOD_AOT
+        super().__init__(*args, **kwargs)
+        ds = self.product.dataset
+        wavelength_nominal_nm = {k.split('_')[0]: int(ds.attrs[k].split()[0]) for k in ds.attrs if 'CWL_nominal' in k}
+        wavelength_measured_nm = {k.split('_')[0]: float(ds.attrs[k].split()[0]) for k in ds.attrs if 'CWL_measured' in k}
+
+        self._orig_data.rename(wavelength_nominal_nm, axis = 1, inplace = True)
+        self.qc.rename(wavelength_nominal_nm, axis = 1, inplace = True)
+
+def generic_arm_file_reader(path2file, variables = [], variable_names = [], 
+                            variable_instance = Generic_Arm_Variable,
+                            mask_data = ['Bad', 'Indeterminate'],
+                            verbose = True):
+
+    p2f = _pl.Path(path2file)
+
+    ds = _xr.open_dataset(p2f)
+    
+    if ds.attrs['platform_id'] == 'mfrsr7nchaod1mich':
+        if verbose:
+            print('product is mfrsr7nchaod1mich')
+        variable_instance = Mfrsr7nchaod1michC1_AOD
+        variables = ['aerosol_optical_depth_filter']
+        variable_names = ['AOD']
+    else:
+        variable_instance = Generic_Arm_Variable
+        variables = None
+        
+        
+    prod = Generic_Arm_Product(ds)
+    
+    if isinstance(variables, str):
+        variables = [variables,]
+    
+    for e,variable in enumerate(variables):
+        aod_vars = [v for v in list(ds.variables) if variable in v]
+        aod_vars_qc = [v for v in aod_vars if 'qc_' in v]
+        aod_vars = [v for v in aod_vars if 'qc_' not in v]
+
+        aod_df = ds[aod_vars].to_pandas()
+        aod_df_qc = ds[aod_vars_qc].to_pandas()
+
+        aod_df = _pd.DataFrame()
+        aod_assess_df = _pd.DataFrame()
+
+        for var in aod_vars:
+            # break
+
+            # column name simplification
+            col = var.split('_')[-1]
+
+            # variable
+            aod_df[col] = ds[var].to_pandas()
+
+            # qc
+            qc = ds[f'qc_{var}'].to_pandas()
+
+            # how many bits are there?
+            noofbits = _np.max([int(k.split('_')[1]) for k in ds[f'qc_{var}'].attrs if 'bit' in k])
+
+            #qc to bits
+            qcb = qc.apply(lambda q: _np.binary_repr(q,width=noofbits))
+
+            # get the bit assessment (good, intermediate, bad)
+            bitassemsments = [ds[f'qc_{var}'].attrs[k] for k in ds[f'qc_{var}'].attrs if ('bit' in k) and ('assessment' in k)]
+            qca = qcb.apply(lambda val: sorted([bitassemsments[e] if qa == '1' else 'Good' for e,qa in enumerate(val[::-1])])[0])
+            aod_assess_df[col] = qca
 
 
+
+        var  = variable_instance(prod, aod_df, aod_assess_df)
+        setattr(prod, variable_names[e], var)
+        
+    return prod
+
+
+
+#### older stuff
 def open_path(path, **kwargs):
     """
 
