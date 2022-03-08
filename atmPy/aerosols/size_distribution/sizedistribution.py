@@ -404,7 +404,11 @@ def save_netcdf(sizedist, fname, housekeeping = True, value_added_products = Tru
         ds['sizedistribution'] = sizedist.data.loc[0, :]
     elif type(sizedist).__name__ == 'SizeDist_TS':
         ds['sizedistribution'] = sizedist.data
-        ds.attrs['data_period'] = sizedist._data_period
+        if isinstance(sizedist._data_period, type(None)):
+            dp = 'None'
+        else:
+            dp = sizedist._data_period
+        ds.attrs['data_period'] = dp
     elif type(sizedist).__name__ == 'SizeDist_LS':
         sizedist.data.index.name = 'altitude'
         ds['sizedistribution'] = sizedist.data
@@ -2579,7 +2583,8 @@ class SizeDist_TS(SizeDist):
 
         dist = self.copy()
         dist.data = dist.data.resample(window, label='left').mean()
-        dist._data_period = _np.timedelta64(window[0], window[1]) / _np.timedelta64(1, 's')
+        # dist._data_period = _np.timedelta64(window[0], window[1]) / _np.timedelta64(1, 's')
+        dist._data_period = int(pd.to_timedelta(window)/pd.to_timedelta('1s'))
         if dist.distributionType == 'calibration':
             dist.data.values[_np.where(_np.isnan(self.data.values))] = 0
 

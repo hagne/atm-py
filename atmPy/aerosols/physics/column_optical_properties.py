@@ -9,6 +9,7 @@ import multiprocessing as _mp
 import xarray as _xr
 import matplotlib.pyplot as _plt
 import scipy as _sp
+import pathlib as _pl
 
 
 _colors = _plt.rcParams['axes.prop_cycle'].by_key()['color']
@@ -225,7 +226,28 @@ class AOD_AOT(object):
         # df.index.name = 'datetime'
         # return df
         
-    def derive_size_distribution(self, width_of_aerosol_mode = 0.15, verbose = True):
+    def derive_size_distribution(self, width_of_aerosol_mode = 0.15, all_valid = True, verbose = True, test = False):
+        """
+        get the size distribution
+
+        Parameters
+        ----------
+        width_of_aerosol_mode : TYPE, optional
+            DESCRIPTION. The default is 0.15.
+        all_valid : TYPE, optional
+            All AOD values need to be valid for a retrieval to be derived. Otherwise fit results are invalid. The default is True.
+        verbose : TYPE, optional
+            DESCRIPTION. The default is True.
+        test : TYPE, optional
+            DESCRIPTION. The default is False.
+
+        Returns
+        -------
+        TYPE
+            DESCRIPTION.
+
+        """
+        assert(all_valid), 'all_valid needs to be true, programming required if you insist on False.'
         dist_df = _pd.DataFrame()
         fit_res_df = _pd.DataFrame()
         count_down = self.AOD.data.shape[0]
@@ -245,12 +267,18 @@ class AOD_AOT(object):
         
             inv.fit_result.size_distribution.data.index = [ts]
             sdt = inv.fit_result.size_distribution.data.copy()
-            dist_df = dist_df.append(sdt)
+            # dist_df = dist_df.append(sdt)
+            dist_df =_pd.concat([dist_df, sdt])
         
             data = _np.array([_np.append(inv.fit_result.args, inv.fit_result.sigma)])
-            fit_res_df = fit_res_df.append(_pd.DataFrame(data, columns=['pos1', 'amp1', 'pos2', 'amp2', 'sigma'], index = [ts]))
+            # fit_res_df = fit_res_df.append(_pd.DataFrame(data, columns=['pos1', 'amp1', 'pos2', 'amp2', 'sigma'], index = [ts]))
+            dft = _pd.DataFrame(data, columns=['pos1', 'amp1', 'pos2', 'amp2', 'sigma'], index = [ts])
+            fit_res_df = _pd.concat([fit_res_df, dft])
             count_down -=1
             print(count_down, end = ', ')
+            
+            if test:
+                break
         
         
         
@@ -261,8 +289,27 @@ class AOD_AOT(object):
         out= {}
         out['dist_ts'] = dist_ts
         out['last_inv_inst'] = inv
+        fit_res_df.index.name = 'Time'
+        fit_res_df.columns.name = 'fit_params'
         out['fit_res'] = fit_res_df
-        return out
+        return InversionSizeDistribution(self, dist_ts, fit_res_df, width_of_aerosol_mode)
+
+class InversionSizeDistribution(object):
+    def __init__(self, parent, size_distribution, fit_result, width_of_aerosol_mode):
+        self.parent = parent
+        self.size_distribution = size_distribution
+        self.fit_result = fit_result
+        self.width_of_aerosol_mode = width_of_aerosol_mode
+        
+    def save(self, path2fld, fileformat = '{dt.year:04d}{dt.month:02d}{dt.day:02d}.nc'):
+        path2fld = _pl.Path(path2fld)
+        distds = self.size_distribution.save_netcdf('bla',test = True)
+        distds['fit_results'] = self.fit_result 
+        distds.attrs['width_of_aerosol_mode'] = self.width_of_aerosol_mode
+        dt = _pd.to_datetime(distds.Time.values[0])
+        distds.to_netcdf(path2fld.joinpath(fileformat.format(dt = dt)))
+        return distds
+        
 
 class CloudDetection(object):
     def __init__(self, parent):

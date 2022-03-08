@@ -1010,6 +1010,8 @@ class Inversion2SizeDistribution_scenario(object):
     """this handles how ..."""
     def __init__(self, parent, arguments):
         self.parent = parent
+        # if arguments == False:
+        #     self.size_distribution_parameters = arguments
         
         if isinstance(arguments, _pd.DataFrame):
             # if self.parent.verbose:
@@ -1079,32 +1081,38 @@ class Inversion2SizeDistribution_scenario(object):
         return dist
     
     def args2dist(self):#, args):
-        # self.tp_3 = self.args.copy()
-        # print(self.size_distribution_parameters)
-        # assert(args.shape == (4,)), f'shape is {args.shape}'
-        # positions = args[::2]
-        # amplitudes = args[1::2]
         dist_list = []
-        # #     print(args)
         
-        # for pos, amp in zip(positions, amplitudes):
-        for idx, row in self.size_distribution_parameters.iterrows():
+        if self.size_distribution_parameters.iloc[0,0] == _np.nan:
+            # create a dummy size dist and set all values to nan
             dist = sd.simulate_sizedistribution(
-                diameter=self.parent.diameter_range,
-                numberOfDiameters=self.parent.number_of_diameters,
-                centerOfAerosolMode=row.diameter,
-                # widthOfAerosolMode=self.parent.width_of_aerosol_mode,
-                widthOfAerosolMode=row.width,
-                numberOfParticsInMode=row.number,
-            )
-            dist_list.append(dist)
-
-        # dist_new = sd.simulate_sizedistribution(new=True)
-        # sum em up
-
-        dist = dist_list[0]
-        for sdt in dist_list[1:]:
-            dist += sdt
+                                diameter=self.parent.diameter_range,
+                                numberOfDiameters=self.parent.number_of_diameters,
+                                centerOfAerosolMode=100,
+                                # widthOfAerosolMode=self.parent.width_of_aerosol_mode,
+                                widthOfAerosolMode=0.2,
+                                numberOfParticsInMode=100,
+                                )
+            dist.data[:] = _np.nan
+        
+        else:
+            for idx, row in self.size_distribution_parameters.iterrows():
+                dist = sd.simulate_sizedistribution(
+                    diameter=self.parent.diameter_range,
+                    numberOfDiameters=self.parent.number_of_diameters,
+                    centerOfAerosolMode=row.diameter,
+                    # widthOfAerosolMode=self.parent.width_of_aerosol_mode,
+                    widthOfAerosolMode=row.width,
+                    numberOfParticsInMode=row.number,
+                )
+                dist_list.append(dist)
+    
+            # dist_new = sd.simulate_sizedistribution(new=True)
+            # sum em up
+    
+            dist = dist_list[0]
+            for sdt in dist_list[1:]:
+                dist += sdt
         return dist
 
     @property
@@ -1238,9 +1246,14 @@ class Inversion2SizeDistribution(object):
     def fit_result(self):
         if isinstance(self._fit_result, type(None)):
             fitrs = self.fit()
-            self._fit_result = Inversion2SizeDistribution_scenario(self, fitrs.x)
-            self._fit_result.full_result = fitrs
-            self._fit_result.sigma = _np.sqrt(((self.sfr_AOD_test_dp.values-_np.array(self.fit_result.extinction_coeff))**2).sum())
+            if fitrs == False:
+                args = [_np.nan]*4
+                self._fit_result = Inversion2SizeDistribution_scenario(self, args)
+                self._fit_result.sigma = _np.nan
+            else:
+                self._fit_result = Inversion2SizeDistribution_scenario(self, fitrs.x)
+                self._fit_result.full_result = fitrs
+                self._fit_result.sigma = _np.sqrt(((self.sfr_AOD_test_dp.values-_np.array(self.fit_result.extinction_coeff))**2).sum())
         return self._fit_result
 
     
@@ -1268,6 +1281,11 @@ class Inversion2SizeDistribution(object):
         #                                 #                     col_deriv=True
         #                                 )
         
+        if _np.isnan(self.sfr_AOD_test_dp.values).sum() > 0:
+            # out = _np.zeros(self.start_conditions.args.shape[0])
+            # out = _np.zeros(self.start_conditions.args.shape[0])
+            # out[:] = _np.nan
+            return False
         
         def cost_fun(*params):
             measured = self.sfr_AOD_test_dp.values
