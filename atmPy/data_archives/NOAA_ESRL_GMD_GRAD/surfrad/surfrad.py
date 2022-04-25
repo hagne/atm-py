@@ -6,7 +6,7 @@ import atmPy.aerosols.physics.column_optical_properties as _column_optical_prope
 import atmPy.general.measurement_site as _measurement_site
 import pathlib as _pl
 import warnings as _warnings
-
+import xarray as _xr
 # from atmPy.general import measurement_site as _measurement_site
 # from atmPy.radiation import solar as _solar
 
@@ -15,7 +15,7 @@ class DataSpecs(object):
         self.parent = parent
         self._window = None
         self._cloudscreened = True
-        self._path = _pl.Path('/nfs/grad/surfrad/')
+        self._path = _pl.Path('/nfs/grad/')
          
     def _reset_data(self):
         """reset all the data so it will be reloaded"""
@@ -74,8 +74,8 @@ class Surfrad_Data(object):
         # assert(_np.unique([w.year for w in window]).shape[0] == 1), 'Data range spannes over more than one year ... programming required'
 
         # # get path
-        p2f = self._parent.parent_network.data_specs.path.joinpath(param)
-
+        # p2f = self._parent.parent_network.data_specs.path.joinpath(param)
+        p2f = self._parent.parent_network.data_specs.path
         if self._parent.abb.lower() == 'bnd':
             siteabb = 'bon'
         else:
@@ -226,77 +226,22 @@ _deprecated_col_label_trans_dict = {'OD413': 415,
                          }
 
 
-def _path2files(path2base_folder = '/nfs/grad/surfrad/aod/', site = 'bon', window = ('2020-07-31 00:00:00', '2020-10-30 23:00:00')):
+def _path2files(path2base_folder = '/nfs/grad/surfrad/aod/', site = 'bon', window = ('2020-07-31 00:00:00', '2020-10-30 23:00:00'), product = 'aod'):
     path2base_folder = _pl.Path(path2base_folder)
 
 # first loading all files takes too long, so get site first
     path2aodatsite = path2base_folder.joinpath(site)
+    if product == 'albedo':
+        path2aodatsite = path2aodatsite.joinpath(product)
+        product = 'alb'
     assert(path2aodatsite.is_dir()), f'{path2aodatsite} not a directory'
     
-    df = _pd.DataFrame([p for p in path2aodatsite.glob('**/*.aod') if p.is_file()], columns=['path'])
+    df = _pd.DataFrame([p for p in path2aodatsite.glob(f'**/*.{product}') if p.is_file()], columns=['path'])
     df.index = df.apply(lambda row: _pd.to_datetime(''.join([i for i in row.path.name if i.isdigit()])), axis = 1)
     # df.sort_index(inplace=True)
     df = df.sort_index().truncate(window[0], window[1])
     return df.path.values
 
-def _path2files_deprecated(path2aod, site, window, perform_header_test, verbose):
-    
-    assert(not isinstance(window, str))
-
-    if not isinstance(window, (tuple, list)):
-        try: 
-            window = [w.__str__() for w in window]
-        except:
-            raise ValueError(f'window has to be tuple or list, it is {type(window)}. Attempt to convert failed')
-    
-    if type(path2aod) == str:
-        path2aod = _pl.Path(path2aod)
-
-    elif type(path2aod) == list:
-        for path in path2aod:
-            assert (type(path).__name__ == 'PosixPath')
-            assert (path.is_file())
-        paths = path2aod
-
-    elif type(path2aod).__name__ == 'PosixPath':
-        pass
-
-    else:
-        raise ValueError('{} is nknown type for path2surfrad (str, list, PosixPath)'.format(path2aod))
-
-    if type(path2aod).__name__ == 'PosixPath':
-        if not (path2aod.is_file() or path2aod.is_dir()):
-            raise ValueError('File or directory not found: {}'.format(path2aod))
-        if path2aod.is_file():
-            paths = [path2aod]
-        elif path2aod.is_dir():
-            paths = list(path2aod.glob('*'))
-            keep_going = True
-            while keep_going:
-                keep_going = False
-                for path in paths:
-                    if path.is_file():
-                        continue
-                    elif path.is_dir():
-                        dropped = paths.pop(paths.index(path))
-                        paths += list(dropped.glob('*'))
-                        keep_going = True
-        else:
-            raise ValueError
-    files = paths
-
-    if site:
-        files = [f for f in files if site in f.name]
-        if verbose:
-            print('{} files match site specifications.'.format(len(files)))
-    # select time window
-    if window:
-        start, end = window
-        files = [f for f in files if (start.replace('-', '') <= f.name.split('_')[1].split('.')[0] and end.replace('-', '') > f.name.split('_')[1].split('.')[0])]
-        if verbose:
-            print('{} of remaining files are in the selected time window.'.format(len(files)))
-
-    return files#, folder
 
 def _read_header(fname):
     """Read the header of file in folder and reterns a dict with relevant data"""
@@ -499,9 +444,108 @@ class Surfrad_AOD(_column_optical_properties.AOD_AOT):
 #     def AOD(self,value):
 #         self._aod = value
 
+def read_albedo(path2file, path2readme = '/nfs/grad/Inst/MFR/README.alb', verbose = True):
+    """
+    Read a path or list of paths to albedo files
+
+    Parameters
+    ----------
+    path2file : str, pathlib.Path, list
+        Where is the data: /nfs/grad/Inst/MFR/SURFRAD/tbl/albedo/2021/.
+    path2readme : TYPE, optional
+        This readme needs to be read to proved the column names. The default is '/nfs/grad/Inst/MFR/README.alb'.
+    verbose : TYPE, optional
+        DESCRIPTION. The default is True.
+
+    Returns
+    -------
+    TYPE
+        DESCRIPTION.
+
+    """
+    p2r = _pl.Path(path2readme)
+    if p2r.name.split('.')[-1] == 'preliminary':
+        filetype = 'preliminary'
+    elif p2r.name.split('.')[-1] == 'alb':
+        filetype = 'albedo'
+
+    def read_readme(p2r):
+        with open(p2r, 'r') as rein:
+            lines = rein.readlines()
+
+        clines = [l for l in lines if l[0].isnumeric()]
+        colnames = [l.split(' - ')[1] for l in clines]
+        colnames = [c.strip() for c in colnames]
+        return colnames
 
 
-def open_path(path = '/nfs/grad/surfrad/aod/',
+
+    def read_data(p2f, colnames):
+        df = _pd.read_csv(p2f, delim_whitespace=True,
+                    names = colnames,
+                   )
+
+
+        df.index = df.apply(lambda row: _pd.to_datetime(str(int(row.YYYYMMDDhhmmss)), format = '%Y%m%d%H%M%S'), axis = 1)
+        df.index.name = 'datetime'
+
+        # remove datetime collumns
+        df = df.iloc[:,5:].copy()
+
+        # get the albedo and channels
+        alb_cols = [c for c in df.columns if 'Albedo' in c]
+        alb_cols = [c for c in alb_cols if not 'Broadband' in c]
+        alb_df = df.loc[:,alb_cols]
+        alb_df[alb_df == -9.999] = _np.nan
+        # return {"alb_df": alb_df}
+        if filetype == 'preliminary':
+            wl_df = _pd.Series({e:int(c.split(':')[1].strip().split()[0]) for e,c in enumerate(alb_df.columns)}).transpose()
+        elif filetype == 'albedo':
+            wl_df = _pd.Series({e:int(c.split(':')[1].strip().replace('615nm/','').replace('nm','')) for e,c in enumerate(alb_df.columns)}).transpose()
+        wl_df.index.name = 'channel'
+        alb_df.columns = wl_df.index
+
+        # df without albedo and columnames change
+
+        dfwoa = df.drop(alb_cols, axis=1)
+        dfwoa.rename({'NDVI "Normailized Difference Vegetation Index"': 'NDVI'}, axis = 1, inplace=True)
+        dfwoa.columns = [c.replace(' ', '_') for c in dfwoa.columns]
+
+        # change dtypes
+        dfwoa = dfwoa.astype(_np.float32)
+        alb_df = alb_df.astype(_np.float32)
+
+        # make dataset
+        ds = _xr.Dataset(dfwoa)
+
+        # add albedo and wavelength
+        ds['Albedo'] = alb_df
+
+        ds['Wavelength_nominal'] = wl_df
+        
+        ds = ds.rename_vars({v:v.replace('/','_') for v in ds.variables if '/' in v})
+
+        return ds
+    
+
+    if isinstance(path2file, (list, _np.ndarray, tuple)):
+        pass
+    elif _pl.Path(path2file).is_dir():
+        assert(False), 'just a little bit of programming needed to make this work!!'
+    elif isinstance(path2file, (str, _pl.Path)):
+        path2file = [path2file,]
+    else:
+        TypeError(f"Don't know what to do with type: {type(path2file).__name__}")
+        
+    colnames = read_readme(p2r) 
+    ds = read_data(path2file[0], colnames)
+    # return ds
+    ds = _xr.concat([read_data(fn, colnames) for fn in path2file], dim = 'datetime')
+    ds['Wavelength_nominal'] = ds.Wavelength_nominal[0].drop('datetime')
+    return ds
+
+def open_path(path = '/nfs/grad/',
+              product = 'aod',
               site = 'bon',
               window = ('2017-01-01', '2017-01-02'),
               cloud_sceened = False,
@@ -509,7 +553,8 @@ def open_path(path = '/nfs/grad/surfrad/aod/',
               perform_header_test = False,
               verbose = False,
               fill_gaps= False,
-              keep_original_data = False):
+              keep_original_data = False,
+              test = False):
     """
     
 
@@ -549,73 +594,95 @@ def open_path(path = '/nfs/grad/surfrad/aod/',
     """
     
     path = _pl.Path(path)
+    if product == 'aod':
+        path = path.joinpath('surfrad/aod/')
+    elif product == 'albedo':
+        path = path.joinpath('Inst/MFR/SURFRAD/')
+        
     if path.is_file():
         files = [path]
         site = path.name[:3]
     else:
-        files = _path2files(path, site, window)#, perform_header_test, verbose)
-    file_content = _read_files(files, verbose, UTC=local2UTC, cloud_sceened=cloud_sceened)   
-    data = file_content['data']
-    wl_match = file_content['wavelength_match']
-    header_first = file_content['header_first']
-    if fill_gaps:
-        if verbose:
-            print('filling gaps', end=' ... ')
-        data.data_structure.fill_gaps_with(what=_np.nan, inplace=True)
-        wl_match.data_structure.fill_gaps_with(what = _np.nan, inplace = True)
-        if verbose:
-            print('done')
-
-    # add Site class to surfrad_aod
-    if site:
-        if len([loc for loc in _locations if site in loc['abbreviation']]) == 0:
-            raise ValueError('The site {} has not been set up yet. Add relevant data to the location dictionary'.format(site))
-    try:
-        site = [l for l in _locations if header_first['site'] in l['name']][0]
-    except IndexError:
-        try:
-            site = [l for l in _locations if header_first['site'] in l['abbreviation']][0]
-        except IndexError:
-            raise ValueError('Looks like the site you trying to open ({}) is not set up correctly yet in "location"'.format(header_first['site']))
-
-    lon = site['lon']
-    lat = site['lat']
-    alt = site['alt']
-    timezone = site['timezone']
-    site_name = site['name']
-    abb = site['abbreviation'][0]
-    # saod.site = _measurement_site.Site(lat, lon, alt, name=site_name, abbreviation=abb)
-
-    # generate Surfrad_aod and add AOD to class
-    saod = Surfrad_AOD(lat = lat, lon = lon, elevation = alt, name=site_name, name_short=abb, timezone = timezone, site_info = site)
-    if keep_original_data:
-        saod.original_data = data
-
-    if local2UTC:
-        saod._timezone = 0
-    else:
-        saod._timezone = timezone
-    ## select columns that show AOD
-    data_aod = data.drop(_channel_labels, inverse=True)
-
-    ## rename columns
-    data_aod.data.columns.name = 'AOD@wavelength(nm)'
-    data_aod.data.sort_index(axis = 1, inplace=True)
-
-    ## add the resulting Timeseries to the class
-    saod.AOD = data_aod
-
-    #Angstrom exponent
-    saod.ang_exp = data.drop('Ang_exp', inverse=True)
-
-    # wavelength matching table
-    saod.wavelength_matching_table = wl_match
-
-    # errors
-    saod.AODerrors = data.drop([col for col in data.data.columns if 'E' in str(col)], inverse = True)
-    saod.AODerrors.data.columns = [int(col.replace('E', '')) for col in saod.AODerrors.data.columns]
-    saod.files_opened = files
+        files = _path2files(path, site, window, product)#, perform_header_test, verbose)
+    if test:
+        return files
     
-    saod.cloudmask.cloudmask_nativ = data.drop('0=good', inverse = True)
-    saod.aerosolmask.cloudmask_nativ = data.drop('0=good', inverse = True)
-    return saod
+    if files[0].name.split('.')[-1] == 'alb':
+        if verbose:
+            print('File type: albedo')
+        assert(_np.all([f.name.split('.')[-1] == 'alb' for f in files])), 'Not all files are of the same type (albedo).'
+        
+        ds = read_albedo(files)
+        return ds
+        
+    elif files[0].name.split('.')[-1] == 'aod':
+        if verbose:
+            print('File type: AOD')
+        assert(_np.all([f.name.split('.')[-1] == 'aod' for f in files])), 'Not all files are of the same type (AOD).'
+        file_content = _read_files(files, verbose, UTC=local2UTC, cloud_sceened=cloud_sceened)   
+        data = file_content['data']
+        wl_match = file_content['wavelength_match']
+        header_first = file_content['header_first']
+        if fill_gaps:
+            if verbose:
+                print('filling gaps', end=' ... ')
+            data.data_structure.fill_gaps_with(what=_np.nan, inplace=True)
+            wl_match.data_structure.fill_gaps_with(what = _np.nan, inplace = True)
+            if verbose:
+                print('done')
+    
+        # add Site class to surfrad_aod
+        if site:
+            if len([loc for loc in _locations if site in loc['abbreviation']]) == 0:
+                raise ValueError('The site {} has not been set up yet. Add relevant data to the location dictionary'.format(site))
+        try:
+            site = [l for l in _locations if header_first['site'] in l['name']][0]
+        except IndexError:
+            try:
+                site = [l for l in _locations if header_first['site'] in l['abbreviation']][0]
+            except IndexError:
+                raise ValueError('Looks like the site you trying to open ({}) is not set up correctly yet in "location"'.format(header_first['site']))
+    
+        lon = site['lon']
+        lat = site['lat']
+        alt = site['alt']
+        timezone = site['timezone']
+        site_name = site['name']
+        abb = site['abbreviation'][0]
+        # saod.site = _measurement_site.Site(lat, lon, alt, name=site_name, abbreviation=abb)
+    
+        # generate Surfrad_aod and add AOD to class
+        saod = Surfrad_AOD(lat = lat, lon = lon, elevation = alt, name=site_name, name_short=abb, timezone = timezone, site_info = site)
+        if keep_original_data:
+            saod.original_data = data
+    
+        if local2UTC:
+            saod._timezone = 0
+        else:
+            saod._timezone = timezone
+        ## select columns that show AOD
+        data_aod = data.drop(_channel_labels, inverse=True)
+    
+        ## rename columns
+        data_aod.data.columns.name = 'AOD@wavelength(nm)'
+        data_aod.data.sort_index(axis = 1, inplace=True)
+    
+        ## add the resulting Timeseries to the class
+        saod.AOD = data_aod
+    
+        #Angstrom exponent
+        saod.ang_exp = data.drop('Ang_exp', inverse=True)
+    
+        # wavelength matching table
+        saod.wavelength_matching_table = wl_match
+    
+        # errors
+        saod.AODerrors = data.drop([col for col in data.data.columns if 'E' in str(col)], inverse = True)
+        saod.AODerrors.data.columns = [int(col.replace('E', '')) for col in saod.AODerrors.data.columns]
+        saod.files_opened = files
+        
+        saod.cloudmask.cloudmask_nativ = data.drop('0=good', inverse = True)
+        saod.aerosolmask.cloudmask_nativ = data.drop('0=good', inverse = True)
+        return saod
+    else:
+        assert(False), 'noenoenoe'
