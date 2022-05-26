@@ -82,6 +82,8 @@ def read_mfrsr_cal(path2file):
     df_res = df.loc[:,[c for c in df.columns if not 'ERR' in c]]
     df_res.columns = [int(c) for c in df_res.columns]
     df_res.columns.name = 'channel'
+    # when a scan section ends with a non-zero value convolution with e.g. a RTM irradiance spectum will lead to problems! Therefore -> 
+    df_res[df_res == 0] = np.nan # this can potenoally lead to nans where we don't want them .... consider interpolating afterwards ... as there is no extrapolating this should not lead to a reemergance of the above problem.
     ds['responds'] = df_res
     
     # respnds error
