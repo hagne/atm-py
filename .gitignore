@@ -51,3 +51,5 @@ examples/instruments_ARM-ceilm.ipynb
 .spyproject/config/workspace.ini
 *.bak
 .spyproject/config/workspace.ini
+.spyproject/config/backups/workspace.ini.bak
+.spyproject/config/workspace.ini

@@ -4,7 +4,7 @@ save_data_on_exit = True
 save_history = True
 save_non_project_files = False
 project_type = empty-project-type
-recent_files = ['atmPy/general/timeseries.py', 'atmPy/data_archives/aeronet/__init__.py', 'atmPy/aerosols/physics/column_optical_properties.py', 'atmPy/aerosols/physics/optical_properties.py', 'atmPy/aerosols/size_distribution/sizedistribution.py', 'atmPy/data_archives/arm/file_io/lab.py']
+recent_files = ['atmPy/data_archives/arm/file_io/lab.py', 'atmPy/aerosols/physics/column_optical_properties.py', 'atmPy/aerosols/physics/optical_properties.py']
 
 [main]
 version = 0.2.0
