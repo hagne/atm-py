@@ -380,7 +380,8 @@ def concat(ts_list):
     return ts
 
 
-def correlate(data, correlant, data_column = False, correlant_column = False, differenciate = None, remove_zeros=True, data_lim = None,
+def correlate(data, correlant, data_column = False, correlant_column = False, differenciate = None, remove_zeros=True, data_lim = None, 
+              skip_remove_nans = False,
               correlant_lim = None,
               align_timeseries = True,
               weights = 'relative'):
@@ -454,9 +455,7 @@ def correlate(data, correlant, data_column = False, correlant_column = False, di
         if correlant_lim[1]:
             correlant_values[correlant_values > correlant_lim[1]] = _np.nan
 
-    # import pdb
-    # pdb.set_trace()
-    out = _array_tools.Correlation(data_values, correlant_values, differenciate, remove_zeros=remove_zeros, index = data.data.index, weights = weights)
+    out = _array_tools.Correlation(data_values, correlant_values, differenciate, remove_zeros=remove_zeros, index = data.data.index, weights = weights, skip_remove_nans=skip_remove_nans)
     out._x_label_orig = 'DataTime'
     return out
 
