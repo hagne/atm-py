@@ -11,7 +11,7 @@ dependencies:
 - dask
 #- statsmodels
 # hysplit
-- geopy
+#- geopy
 # atmpy
 - timezonefinder
 - ephem
