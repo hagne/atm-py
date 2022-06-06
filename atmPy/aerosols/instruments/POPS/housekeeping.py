@@ -11,14 +11,17 @@ import os
 # from atmPy.tools import conversion_tools as ct
 from atmPy.general import timeseries
 from atmPy.atmosphere import standards as atm_std
-import pathlib
+import atmPy.aerosols.size_distribution.sizedistribution as atmsd
+import pathlib as pl
 
 
 
 def read_file(path,
-              version = 'BBB_01',
+              version = 'BBB_02',
               pattern = 'HK',
               skip_histogram = False,
+              size_bins = None,
+              # calibration_file = None,
               ignore_colums = [],  #['Flow_Rate_ccps', 'LED_P_MON', 'AI_4', 'AI_5', 'AI_7', 'AI_8', 'AI_9', 'AI_10', 'AI_11', 'LED_P_Mon_Therm', 'AO_Flow', 'AO_LaserPower', 'No_Pts', 'ValidParts', 'writeTime', 'currMax'],
               verbose = False):
     """
@@ -26,11 +29,15 @@ def read_file(path,
     ----------
     path: string or list of strings.
         This can either be a file name, a list of filenames or a folder.
-    version: string ['BBB_01']
-        BBB_01: Beagle bone
-        sbRio: sbRio
     pattern: str
-        if folder is given than this is the pattern housekeeping files will be identified by
+        if folder is given than this is the pattern housekeeping files will be identified by.
+    version: string ['BBB_01']
+        BBB_02: Hendix version, not sure since when. At least since 2022-06, but 
+                most likely way earlier ...
+        BBB_01: Beagle bone (original)
+        sbRio: sbRio
+    size_bins: int or pathlib.Path
+        Path to a file containing the bin edges (EDGES not CENTERS!!). Structure: currently one value per line.
     verbose: bool
     Returns
     -------
@@ -94,33 +101,27 @@ def read_file(path,
     
     def read_BBB_02(fname, skip_histogram = False, verbose = False):
         if verbose:
-            print(f'read pops house keeping bbb file: {fname}')
-        # col_names = pd.read_csv(fname, sep=',', nrows=1, header=None,
-        #                         #             index_col=1,
-        #                         #             usecols=np.arange()
-        #                         ).values[0][:-1].astype(str)
-        # col_names = _np.char.strip(col_names)
+            print(f'read pops house keeping file: {fname}')
 
         if skip_histogram:
             usecols = list(range(27))
         else:
             usecols = None
-        data = pd.read_csv(fname, sep=',', skiprows=1, header=None, usecols = usecols
-                           #             index_col=1,
-                           #             usecols=np.arange()
+        data = pd.read_csv(fname, sep=',', 
+                           usecols = usecols
                            )
-        # data.columns = _np.char.strip(data.columns)
-        return data
-        data_hk = data#.iloc[:, :27]
-        # data_hk.columns = col_names
-        data_hk.index = pd.to_datetime(data_hk['DateTime'], unit='s')
-        data_hk.drop('DateTime', axis=1, inplace=True)
-        #     hk = atmPy.general.timeseries.TimeSeries(data_hk, sampling_period = 1)
-        return data_hk
-        hk = POPSHouseKeeping(data_hk, sampling_period=1)
+
+        data.columns = [col.strip() for col in data.columns]
+        data.index = pd.to_datetime(data['DateTime'], unit='s')
+        data.drop('DateTime', axis=1, inplace=True)
+
+        hk = POPSHouseKeeping(data, sampling_period=1)
         hk.data['Barometric_pressure'] = hk.data['P']
         return hk
-
+    
+    dist = f'Extraction of the sizedistribution is currently not implemented for the file_version {version}'
+    
+    #### assign version
     if version == 'sbRio':
         read = read_sbRio
     elif version == 'BBB_01':
@@ -130,8 +131,8 @@ def read_file(path,
     else:
         raise ValueError('Housekeeping version {} is unknown!'.format(version))
 
-
-    path = pathlib.Path(path)
+    #### workplan
+    path = pl.Path(path)
     if path.is_dir():
         file_paths = sorted(list(path.glob('*{}*'.format(pattern))))
     elif path.is_file():
@@ -140,89 +141,23 @@ def read_file(path,
         file_paths = path
     else:
         raise TypeError('fname is of unknown type: {}'.format(type(path).__name__))
-        # print(path)
 
     file_paths.sort()
-
-    first = True
+    
+    #### read files
     hk_data = []
     for file in file_paths:
-        # for i in houseKeeping_file_endings:
-        #     if i in file:
-        #         is_hk = True
-        #         break
-        #     else:
-        #         is_hk = False
-        #     if verbose and not is_hk:
-        #         print('%s is not a housekeeping file ... continue' % file)
 
-        # if is_hk:
         hktmp = read(file, skip_histogram=skip_histogram, verbose=verbose)
-        if not hktmp:
-            print('%s is empty ... next one' % file)
         hk_data.append(hktmp.data)
-
-        # elif first:
-        #     print('first')
-        #     # data = hktmp.data.copy()
-        #     first = False
-        #     hk = hktmp  # POPSHouseKeeping(data)
-        #     # continue
-        # else:
-        #     print('not first')
+        
     data = pd.concat(hk_data)
+    
+
+        
+            
+    #### generate POPSHouseKeeping instance and condition data
     hk = POPSHouseKeeping(data)
-
-
-
-
-
-
-
-
-#     if type(path).__name__ == 'list':
-#         for file in path:
-#             for i in houseKeeping_file_endings:
-#                 if i in file:
-#                     is_hk = True
-#                     break
-#                 else:
-#                     is_hk = False
-#                 if verbose and not is_hk:
-#                     print('%s is not a housekeeping file ... continue'%file)
-#
-#             if is_hk:
-#                 hktmp = read(foldername+file, verbose=verbose)
-#                 if not hktmp:
-#                     print('%s is empty ... next one' % file)
-#                 elif first:
-#                     print('first')
-#                     # data = hktmp.data.copy()
-#                     first = False
-#                     hk = hktmp #POPSHouseKeeping(data)
-#                     # continue
-#                 else:
-#                     print('not first')
-#                     data = pd.concat((hk.data, hktmp.data))
-#                     hk = POPSHouseKeeping(data)
-#         if first:
-#             txt = """Either the prvided list of names is empty, the files are empty, or none of the file names end on
-# the required ending (*HK.csv)"""
-#             raise ValueError(txt)
-#     elif isinstance(path, str):
-#         hk = read(path)
-#
-#     else:
-#         txt = 'fname is of unknown type: {}'.format(type(path).__name__)
-#         raise TypeError(txt)
-
-
-
-
-
-
-
-
     hk.data = hk.data.dropna(how='all')  # this is necessary to avoid errors in further processing
 
     if ('P_Baro' in hk.data.keys()) or ('P_Ambient' in hk.data.keys()):
@@ -237,7 +172,26 @@ def read_file(path,
 
     if ignore_colums:
         hk.data = hk.data.drop(ignore_colums, axis=1)
-    return hk
+    
+    #### separate housekeeping and sizedistribution
+    if version == 'BBB_02':
+        data = hk.data
+        hist_cols  = [col for col in data.columns if (col[0] == 'b' and col[1:].isnumeric())]
+        dist = data.loc[:,hist_cols]
+        data.drop(hist_cols, axis=1, inplace = True)
+        
+        
+        #### read size bin file
+        fn = pl.Path(size_bins)
+        with open(fn, 'r') as rein:
+            lines = rein.readlines()
+        bins = _np.array([float(l) for l in lines])
+        
+        #### generate size distribution timeseries instance
+        dist = atmsd.SizeDist_TS(dist, bins, 'numberConcentration')
+        
+        dist.housekeeping = hk
+    return {'housekeeping': hk, 'sizedistribution': dist}
 
 
 class POPSHouseKeeping(timeseries.TimeSeries):
@@ -257,30 +211,4 @@ class POPSHouseKeeping(timeseries.TimeSeries):
         self.data['Altitude'] = alt
         return alt
 
-# todo: (low) this has never been actually implemented
-# def read_housekeeping_allInFolder(concatWithOther = False, other = False, skip=[]):
-# """Read all housekeeping files in current folder and concatinates them.
-#     Output: pandas dataFrame instance
-#     Parameters
-#         concatWithOther: bool, if you want to concat the created data with an older set given by other
-#         other: dataframe to concat the generated one
-#         skip: list of file which you want to exclude"""
-#
-#     files = os.listdir('./')
-#     if concatWithOther:
-#         counter = True
-#         hkdf = other.copy()
-#     else:
-#         counter = False
-#     for e,i in enumerate(files):
-#         if 'HK.csv' in i:
-#             if i in skip:
-#                 continue
-#             hkdf_tmp = read_housekeeping(i)
-#             if not counter:
-#                 hkdf = hkdf_tmp
-#             else:
-#                 hkdf = pd.concat([hkdf,hkdf_tmp])
-#             counter = True
-#     return hkdf
 

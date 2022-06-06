@@ -931,7 +931,7 @@ def _perform_Miecalculations(diam, wavelength, n, noOfAngles=100.):
         absorption_crossection[e] = values['extinction_crosssection'] - values['scattering_crosssection']
 
         # phase_function_natural[d] = values['phaseFct_natural']['Phase_function_natural'].values
-        angular_scattering_natural[d] = mie.get_angular_scatt_func().natural.values
+        angular_scattering_natural[float(d)] = mie.get_angular_scatt_func().natural.values
 
         # print('\n')
 

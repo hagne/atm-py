@@ -111,4 +111,5 @@ def re_bin(dist, number_of_bins = 50, spaced = 'log', bins = None):
     new_data = pd.DataFrame(new_data, index = data.index)
 
     dist_new = type(dist)(new_data, bn, 'numberConcentration')
+    dist_new.housekeeping = dist.housekeeping
     return dist_new
