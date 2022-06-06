@@ -1,0 +1,21 @@
+channels:
+- conda-forge
+dependencies:
+#- python=3.8
+# mapping
+- basemap
+- basemap-data-hires
+# data
+- xarray
+- netcdf4
+- dask
+#- statsmodels
+# hysplit
+- geopy
+# atmpy
+- timezonefinder
+- ephem
+- python-pptx
+- pysolar
+#satellite retrievals
+# - pyquery
