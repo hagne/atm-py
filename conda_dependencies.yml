@@ -9,7 +9,7 @@ dependencies:
 - xarray
 - netcdf4
 - dask
-#- statsmodels
+- statsmodels
 # hysplit
 #- geopy
 # atmpy
