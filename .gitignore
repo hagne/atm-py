@@ -57,3 +57,11 @@ examples/instruments_ARM-ceilm.ipynb
 .spyproject/config/workspace.ini
 .spyproject/config/backups/workspace.ini.bak
 .spyproject/config/workspace.ini
+.spyproject/config/codestyle.ini
+.spyproject/config/defaults/defaults-codestyle-0.2.0.ini
+.spyproject/config/defaults/defaults-encoding-0.2.0.ini
+.spyproject/config/defaults/defaults-workspace-0.2.0.ini
+.spyproject/config/encoding.ini
+.spyproject/config/vcs.ini
+.spyproject/config/vcs.ini
+.spyproject/config/defaults/defaults-vcs-0.2.0.ini

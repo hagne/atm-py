@@ -23,7 +23,8 @@ def read_file(path,
               size_bins = None,
               # calibration_file = None,
               ignore_colums = [],  #['Flow_Rate_ccps', 'LED_P_MON', 'AI_4', 'AI_5', 'AI_7', 'AI_8', 'AI_9', 'AI_10', 'AI_11', 'LED_P_Mon_Therm', 'AO_Flow', 'AO_LaserPower', 'No_Pts', 'ValidParts', 'writeTime', 'currMax'],
-              verbose = False):
+              verbose = False,
+              ):
     """
     Parameters
     ----------

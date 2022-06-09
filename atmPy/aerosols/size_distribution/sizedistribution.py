@@ -2131,7 +2131,7 @@ class SizeDist_TS(SizeDist):
          surface: 'dSdlogDp','dSdDp'
          volume: 'dVdlogDp','dVdDp'
        """
-    def __init__(self,  *args, fill_data_gaps_with = None, ignore_data_gap_error = False, **kwargs):
+    def __init__(self,  *args, fill_data_gaps_with = None, ignore_data_gap_error = True, **kwargs):
         super(SizeDist_TS,self).__init__(*args,**kwargs)
 
         self._data_period = None
