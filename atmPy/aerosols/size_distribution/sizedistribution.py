@@ -22,10 +22,7 @@ from atmPy.aerosols.size_distribution import moments
 from atmPy.gases import physics as _gas_physics
 from . import modes
 from atmPy.aerosols.size_distribution import diameter_binning as _diameter_binning
-try:
-    from statsmodels import robust as _robust
-except ModuleNotFoundError:
-    _warnings.warn('statsmodels not installed. You might encounter some functionality limitations.')
+
 try:
     import xarray as _xr
 except ModuleNotFoundError:
@@ -2168,6 +2165,12 @@ class SizeDist_TS(SizeDist):
     #     self._optical_properties = None
 
     def detect_gaps(self, toleranz=1.95, return_all=False):
+        try:
+            from statsmodels import robust as _robust
+        except ModuleNotFoundError:
+            raise ModuleNotFoundError('In order to use the detect_gaps function please install statsmodels. As of 20220609 installing statsmodel is causing a strange error in scipy ... hope that is resolved by now!')
+            # _warnings.warn('statsmodels not installed. You might encounter some functionality limitations.')
+            
         idx = self.data.index
         dt = (idx[1:] - idx[:-1]) / _np.timedelta64(1, 's')
 
