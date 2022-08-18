@@ -26,20 +26,25 @@ from copy import deepcopy
 from matplotlib import colors, cm
 import os
 
-year = '2015'
+# year = '2015'
 miniSASP_channels = [550.4, 460.3, 671.2, 860.7]
 
 
-def read_csv(fname, version = 'current', verbose=False):
+def read_csv(fname, year, version = 'current', verbose=False):
     """Creates a single ULR instance from one file or a list of files.
 
     Arguments
     ---------
     fname: string or list
+    year: str
+        I don't think the year is found in the miniSASP files. Correct me if I am wrong!
     version: str
         0.1: files till 2016-07-18 ... this includes Svalbard data
         current: files since 2016-07-18
     """
+    assert(isinstance(year, str)), 'argument year needs to be of type str and len == 4, e.g. "2022".'
+    assert(len(year) == 4), 'argument year needs to be of type str and len == 4, e.g. "2022".'
+    
     if type(fname).__name__ == 'list':
         first = True
         for file in fname:
@@ -54,7 +59,7 @@ def read_csv(fname, version = 'current', verbose=False):
             else:
                 ulr.data = pd.concat((ulr.data, ulrt.data))
     else:
-        ulr = miniSASP(fname, verbose=verbose)
+        ulr = miniSASP(fname, year, verbose=verbose)
     ulr.data = ulr.data.sort_index()
     return ulr
 
@@ -450,13 +455,13 @@ def _simplefill(series):
 
 # Todo: wouldn't it be better if that would be a subclass of timeseries?
 class miniSASP(object):
-    def __init__(self, fname, verbose=True):
+    def __init__(self, fname, year, verbose=True):
         self.verbose = verbose
         self.read_file(fname)
         # self.assureFloat()
         self.recover_negative_values()
         self.normalizeToIntegrationTime()
-        self.set_dateTime()
+        self.set_dateTime(year)
         self.remove_data_withoutGPS()
         self.remove_unused_columns()
         self.channels = miniSASP_channels
@@ -513,7 +518,8 @@ class miniSASP(object):
             warnings.warn('The height was not monotonic ant needed to be sorted!!!! This can be the origin of errors.')
             out = out.sort_index()
             out = out.reindex(np.linspace(low, heigh, no + 1), method='nearest')
-        out = pd.rolling_mean(out, window, min_periods=1, center=True)
+        # out = pd.rolling_mean(out, window, min_periods=1, center=True)# deprecated; fix below
+        out = out.rolling(window, min_periods=1, center=True).mean()
         out = out.reindex(np.arange(low + (window / 2), heigh, window), method='nearest')
         stack.data = out
         return stack
@@ -650,6 +656,8 @@ class miniSASP(object):
             out = pd.DataFrame()
             # return out
             # break
+            if pos_indx.shape[0] == 0:
+                continue
             out[str(self.channels[e])] = pd.Series(data.values[pos_indx], index=data.index.values[pos_indx])
 
             out['%s max' % self.channels[e]] = self._moving_max(out[str(self.channels[e])], window=moving_max_window)
@@ -677,8 +685,10 @@ class miniSASP(object):
         # return pd.Series(out, index = out_x)
 
         out = pd.DataFrame(ds, index=ds.index)
-        out = pd.rolling_max(out, window)
-        out = pd.rolling_mean(out, int(window / 5), center=True)
+        # out = pd.rolling_max(out, window) #deprecated; fix below
+        out = out.rolling(window).max()
+        # out = pd.rolling_mean(out, int(window / 5), center=True)#deprecated; fix below
+        out = out.rolling(int(window / 5), center = True).mean()
         return out
 
     def remove_data_withoutGPS(self, day='08', month='01'):
@@ -697,8 +707,9 @@ class miniSASP(object):
                          encoding="ISO-8859-1",
                          skiprows=16,
                          header=None,
-                         error_bad_lines=False,
-                         warn_bad_lines= False
+                         # error_bad_lines=False, #deprecated; replacement 2 below
+                         # warn_bad_lines= False, #deprecated; replacement below
+                         on_bad_lines = 'skip',
                         )
 
         #### set column labels
@@ -719,7 +730,8 @@ class miniSASP(object):
         df.columns = collabels
 
         #### Drop all lines which lead to errors
-        df = df.convert_objects(convert_numeric='force')
+        #df = df.convert_objects(convert_numeric='force') #function isdeprecated; replacement below
+        df = df.apply(pd.to_numeric, errors = 'coerce')
         df = df.dropna(subset=['Seconds'])
         # self.data = df
         # return
@@ -835,7 +847,7 @@ class miniSASP(object):
 
 
 
-    def set_dateTime(self, millisscale = 10):
+    def set_dateTime(self, year, millisscale = 10):
         self.data.Seconds *= (millisscale/1000.)
         self.data.index = self.data.Seconds
 
@@ -867,11 +879,17 @@ class miniSASP(object):
         self.data.GPSHr.interpolate(method='index', inplace= True)
         self.data.GPSHr.dropna(inplace=True)
         self.GPSHr_P_2 = self.data.GPSHr.copy()
-        self.data.GPSHr = self.data.GPSHr.apply(lambda x: '%02i:%02i:%09.6f'%(x,60 * (x % 1), 60* ((60 * (x % 1)) %1)))
+        #### TODO: below strategie is causing errors try new strategy
+        # self.data.GPSHr = self.data.GPSHr.apply(lambda x: '%02i:%02i:%09.6f'%(x,60 * (x % 1), 60* ((60 * (x % 1)) %1)))
+        # dateTime = year + '-' +  self.data.Month + '-' + self.data.Day +' ' + self.data.GPSHr
+        # self.data.index = pd.Series(pd.to_datetime(dateTime, format="%Y-%m-%d %H:%M:%S.%f"), name='Time_UTC')
 
-        ###### DateTime!!
-        dateTime = year + '-' +  self.data.Month + '-' + self.data.Day +' ' + self.data.GPSHr
-        self.data.index = pd.Series(pd.to_datetime(dateTime, format="%Y-%m-%d %H:%M:%S.%f"), name='Time_UTC')
+        #### NEW strategy
+        self.data.GPSHr = pd.to_timedelta(self.data.GPSHr, unit = 'H')
+        dateTime = pd.to_datetime(year + '-' +  self.data.Month + '-' + self.data.Day) + self.data.GPSHr
+        self.data.index = dateTime
+        self.data.index.name = 'Time_UTC'
+        #### NEW strategy end
 
         self.data = self.data[pd.notnull(self.data.index)]  # gets rid of NaT
     
