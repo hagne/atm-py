@@ -6,6 +6,7 @@ except:
 import matplotlib.pylab as _plt
 import os as _os
 import numpy as _np
+import pandas as _pd
 from atmPy.radiation import solar as _solar
 import datetime as _datetime
 import timezonefinder as _tzf
@@ -303,13 +304,23 @@ class Station(object):
         self._time_zone = None
     
     @property
-    def time_zone(self):
+    def time_zone(self, date ='now'):
         # get timezone
         tz = _tzf.TimezoneFinder()
         tz_str = tz.timezone_at(lng = self.lon, lat = self.lat)
-        now = _datetime.datetime.now(_pytz.timezone(tz_str))
-        tz_hr = now.utcoffset() / _datetime.timedelta(hours = 1)
-        return tz_str, tz_hr
+        
+        # now = _datetime.datetime.now(_pytz.timezone(tz_str))
+        # tz_hr = now.utcoffset() / _datetime.timedelta(hours = 1)
+        if date == 'now':
+            now = _pd.Timestamp.now(_pytz.timezone(tz_str))
+        else:
+            now = _pd.to_datetime(date).tz_localize(_pytz.timezone(tz_str))
+        out = {}
+        out['tz_str'] = tz_str
+        out['tz_name'] = now.tzname()
+        out['diff2UTC'] = now.utcoffset() / _pd.to_timedelta(1, unit = 'h')
+        out['diff2UTC_of_standard_time'] = (now.utcoffset() / _pd.to_timedelta(1,'h')) - (now.dst()/_pd.to_timedelta(1,'h'))
+        return out
         
     
     def get_sun_position(self, datetime):
