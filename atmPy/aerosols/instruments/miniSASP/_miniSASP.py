@@ -104,7 +104,7 @@ class MiniSASP(timeseries.TimeSeries):
             wl_list = np.array(sorted(self.wavelength_channels.items(), key=lambda x: x[1]))[:, 1]
             sun_max_list = []
             for channel in channel_list:
-                dft = self._del_all_columns_but(channel)
+                dft = self.drop(channel, inverse = True)
                 #         dft = dft.zoom_time(start = '2015-04-21 08:01:00.0000',end = '2015-04-21 08:04:00.0000')
                 dft = dft.data
 

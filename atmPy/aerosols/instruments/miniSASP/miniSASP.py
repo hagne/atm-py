@@ -16,7 +16,6 @@ from atmPy.tools import array_tools, plt_tools
 from atmPy.tools import math_linear_algebra as mla
 
 # from scipy import integrate
-from atmPy.radiation import solar
 from atmPy.radiation.rayleigh import bucholtz_rayleigh as bray
 from atmPy.general import timeseries
 from atmPy.atmosphere import standards as atmstd
@@ -25,10 +24,43 @@ from atmPy.tools import time_tools
 from copy import deepcopy
 from matplotlib import colors, cm
 import os
+import atmPy.radiation.solar as solar
+
 
 # year = '2015'
 miniSASP_channels = [550.4, 460.3, 671.2, 860.7]
 
+def get_sun_position(timeseries):
+    """This is only used my the miniSASP instrument and should only be kept for that purpose!
+    Returns the position, polar and azimuth angle, of the sun in the sky for a given time and location.
+
+    Arguments
+    ---------
+    timeseries: pandas.DataFrame instance with the index being of type datetime (e.g. atmPy.timeseries).
+        This is typically a housekeeping/telemetry timeseries. It must contain the columns
+        Lat, Lon, and Height
+
+    Returns
+    -------
+    pandas.DataFram with two collums for the elevation and azimuth angle
+    Furthermore the timeseries gets two new collumns with the two angles
+    """
+    lat = timeseries.data.Lat.values#.astype(str)
+    lon = timeseries.data.Lon.values#.astype(str)
+    alti = timeseries.data.Altitude.values
+    t = timeseries.data.Lat.index
+    sunpos = np.zeros((lat.shape[0], 2))
+    # sunpos = np.zeros((2,2))
+    for e, i in enumerate(lat):
+        if 0 == 1:
+            break
+        pos = solar.get_sun_position(lat[e], lon[e], t[e], elevation=alti[e])
+        sunpos[e] = [pos['altitude'],pos['azimuth']]
+    #     return sunpos
+    timeseries.data['Solar_position_elevation'] = pd.Series(sunpos[:, 0], index=timeseries.data.index)
+    timeseries.data['Solar_position_azimuth'] = pd.Series(sunpos[:, 1], index=timeseries.data.index)
+    # return pd.DataFrame(sunpos, columns=['elevation', 'azimuth'], index=timeseries.data.index)
+    return timeseries
 
 def read_csv(fname, year, version = 'current', verbose=False):
     """Creates a single ULR instance from one file or a list of files.
@@ -480,7 +512,7 @@ class miniSASP(object):
     # Todo: inherit docstring
     def get_sun_position(self):
         """read docstring of solar.get_sun_position_TS"""
-        out = solar.get_sun_position_TS(self)
+        out = get_sun_position(self)
         return out
 
     def merge(self, ts):
@@ -703,15 +735,19 @@ class miniSASP(object):
         self.data = self.data[((self.data.Day != day) & (self.data.Month != month))]
     
     def read_file(self,fname):
+        with open(fname, 'r', encoding="ISO-8859-1") as rein:
+            top = [rein.readline() for i in range(30)]
+        skiprows = [e for e,line in enumerate(top) if line == '$VNRRG,8*4B\n'][1] # the second occurence of '$VNRRG,8*4B\n' is where the header ends
+        
         df = pd.read_csv(fname,
                          encoding="ISO-8859-1",
-                         skiprows=16,
+                         skiprows=skiprows + 1, #typically 16
                          header=None,
                          # error_bad_lines=False, #deprecated; replacement 2 below
                          # warn_bad_lines= False, #deprecated; replacement below
                          on_bad_lines = 'skip',
                         )
-
+        
         #### set column labels
         collabels = ['PhotoAsh', 
                      'PhotoBsh',
@@ -924,6 +960,7 @@ def load_sunintensities_TS(fname):
     return Sun_Intensities_TS(data)
 
 
+
 class Sun_Intensities_TS(timeseries.TimeSeries):
     def plot(self, offset=[0, 0, 0, 0], airmassfct=True, move_max=True, legend=True, all_on_one_axis = False,
              additional_axes=False,
@@ -1040,7 +1077,12 @@ class Sun_Intensities_TS(timeseries.TimeSeries):
             atmp.xaxis.set_label_coords(2.05, -0.07)
         atmp.set_ylabel('Altitude (m)')
         return a
-
+    
+    def get_sun_position(self):
+        """read docstring of solar.get_sun_position_TS"""
+        out = get_sun_position(self)
+        return out
+    
     def add_sun_elevetion(self, picco):
         """
         doc is not correct!!!

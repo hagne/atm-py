@@ -250,7 +250,8 @@ def _read_file(fname):
     df.columns = collabels
 
     #### Drop all lines which lead to errors
-    df = df.convert_objects(convert_numeric='force')
+    # df = df.convert_objects(convert_numeric='force') # deprecated
+    df = df.apply(_pd.to_numeric, errors = 'coerce')
     df = df.dropna(subset=['Seconds'])
     # self.data = df
     # return
