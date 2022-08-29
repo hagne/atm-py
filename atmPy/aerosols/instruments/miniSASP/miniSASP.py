@@ -84,7 +84,8 @@ def read_csv(fname, year, version = 'current', verbose=False):
                 continue
             if verbose:
                 print(file)
-            ulrt = miniSASP(file, verbose=verbose)
+            # ulrt = miniSASP(file, verbose=verbose)
+            ulrt = miniSASP(file, year, verbose=verbose)
             if first:
                 ulr = ulrt
                 first = False
