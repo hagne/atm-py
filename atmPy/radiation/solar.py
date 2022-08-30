@@ -204,3 +204,8 @@ def get_sun_position_deprecated(lat, lon, datetime_UTC, elevation=0):
     sun = _ephem.Sun()
     sun.compute(obs)
     return sun.alt, sun.az
+
+
+
+
+

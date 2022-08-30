@@ -50,7 +50,13 @@ def read_mfrsr_cal(path2file):
     df.index.name = 'channel'
     df.drop('Band', axis = 1, inplace=True)
     df = df.loc[:,[c for c in df.columns if not 'Unnamed' in c]]
-    df.drop('Open', inplace = True)
+    if 'Open' in df.index:
+        df.drop('Open', inplace = True)
+    elif 'Thermopile' in df.index:
+        df.drop('Thermopile', inplace = True)
+    else:
+        assert(False), 'what else?'
+        
     df.index = df.index.astype(int)
     df.columns.name = 'stats'
     ds['statistics'] = df
@@ -73,10 +79,20 @@ def read_mfrsr_cal(path2file):
     df.index.name = 'wavelength'
     df.index = df.index.astype(np.float32)
     
-    # open responds, not sure what exactly this is?
-    ds['responds_open'] = df['0']
-    ds['responds_open_error'] = df['0']
-    df.drop(['0','0ERR'], axis = 1, inplace = True)
+    
+    # if 'responds_open' in df.columns:
+    #     # open responds, not sure what exactly this is?
+    #     ds['responds_open'] = df['0']
+    #     ds['responds_open_error'] = df['0ERR']
+    # elif 'Thermop' in df.columns:
+    #     ds['Thermop']
+    
+    # else:
+    #     assert(False), 'what else?'
+    if '0' in df.columns:
+        df.drop(['0','0ERR'], axis = 1, inplace = True)
+    elif 'Thermop' in df.columns:
+        df.drop(['Thermop','ThermopERR'], axis = 1, inplace = True)
     
     # responds
     df_res = df.loc[:,[c for c in df.columns if not 'ERR' in c]]

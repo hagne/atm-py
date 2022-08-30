@@ -7,6 +7,9 @@ import atmPy.general.measurement_site as _measurement_site
 import pathlib as _pl
 # import warnings as _warnings
 import xarray as _xr
+import atmPy.radiation.observations.spectral_irradiance as atmradobs
+import atmPy.data_archives.NOAA_ESRL_GMD_GRAD.cal_facility.lab as atmcucf
+
 # from atmPy.general import measurement_site as _measurement_site
 # from atmPy.radiation import solar as _solar
 
@@ -543,6 +546,97 @@ def read_albedo(path2file, path2readme = '/nfs/grad/Inst/MFR/README.alb', verbos
     ds = _xr.concat([read_data(fn, colnames) for fn in path2file], dim = 'datetime')
     ds['Wavelength_nominal'] = ds.Wavelength_nominal[0].drop('datetime')
     return ds
+
+        
+def get_mfrsr_filter_responds(serial_no, path2folder = '/nfs/grad/Calibration_facilities/cucf/Surfrad/working'):
+    p2fld_filter = _pl.Path(path2folder)
+    p2f_filter_resp = list(p2fld_filter.glob(f'*{serial_no:04d}*SPR.txt'))
+    assert(len(p2f_filter_resp) == 1), f'there should only be one responds function!! {len(p2f_filter_resp)} found'
+    p2f_filter_resp = p2f_filter_resp[0]
+
+    filter_resp = atmcucf.read_mfrsr_cal(p2f_filter_resp)
+    return filter_resp
+
+def read_ccc(p2f):
+    """
+    Reads surfrads ccc (cosine corrected) files typically located somewhere 
+    around here:
+    /nfs/grad/Inst/MFR/SURFRAD/dra/mfrsr/ccc/2019/dra20190728_0669.ccc
+
+    Parameters
+    ----------
+    p2f : TYPE
+        DESCRIPTION.
+
+    Returns
+    -------
+    ds : TYPE
+        DESCRIPTION.
+
+    """
+    site_abb = p2f.name[:3]
+    serial_no = int(p2f.name.split('_')[-1].split('.')[0])
+    instrument_type = 'MFRSR'
+    site = [s for s in network.stations._stations_list if s.abb == site_abb.upper()][0]
+    
+    cols = list(range(25))
+    cols[0] = 'datetime'
+    
+    df = _pd.read_csv(p2f,
+                names =cols,
+                delim_whitespace = True)
+
+    df.index = df.apply(lambda row: _pd.to_datetime('1900-01-01') + _pd.to_timedelta(row.datetime - 1, 'days'), axis = 1) # the -1 is bacause the year starts with day 1 not zero
+
+    df.sort_index(inplace = True)
+
+    df.index.name = 'datetime'
+
+    ds = _xr.Dataset()
+
+
+    ds['solar_elevation'] = df[1]
+    ds['instrument_temperature'] = df[23]
+    ds['instrument_power'] = df[24]
+    ds.solar_elevation.attrs['unit'] = 'radian'
+
+    groupnames = ['global_horizontal_irradiation', 'diffuse_horizontal_irradiation', 'direct_normal_irradiation']
+
+    for block in range(3):
+        # block = 0
+        no = 7
+        sel = df.iloc[:,2 + (block * no): 2 + (block * no) + no].copy()
+
+        #### TODO: assign a QF invalid due to ...
+        sel[sel == -9999.0] = _np.nan
+        sel[sel == -9998.0] = _np.nan
+
+        sel.columns = _np.array(range(len(sel.columns))) + 1
+        sel.columns.name = 'channel'
+
+        ds[groupnames[block]] = sel
+        ds[groupnames[block]].attrs['unit'] = 'mV'
+        ds[groupnames[block]].attrs['corrections'] = 'cosine'
+        
+    ds.attrs['info'] = 'Cosine corrected SURFRAD MFRSR measurments.'
+    
+    ds.attrs['site_latitude'] = site.lat
+    ds.attrs['site_longitude'] = site.lon
+    ds.attrs['site_elevation'] =  site.alt
+    ds.attrs['site_name'] = site.name
+    ds.attrs['site'] =site_abb
+    ds.attrs['instrument_type'] = instrument_type
+    ds.attrs['serial_no'] = serial_no
+    
+    # name channels and clean up
+    fresp = get_mfrsr_filter_responds(serial_no)
+    ds = ds.drop_sel({'channel':1}) #this is the broadband channel
+    ds = ds.assign_coords(channel = fresp.channel) 
+    ds['channel_center'] = fresp.statistics.sel(stats = 'CENT').to_pandas()
+    # return ds
+    out = atmradobs.CombinedGlobalDiffuseDirect(ds)
+    out.filter_functions = fresp
+    return out
 
 def open_path(path = '/nfs/grad/',
               product = 'aod',
