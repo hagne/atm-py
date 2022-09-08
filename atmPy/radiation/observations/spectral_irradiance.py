@@ -43,8 +43,80 @@ class DirectNormalIrradiation(object):
 
     #### TODO: New/changed, make it work!
     # this is more like apply calibration -> Make this a function that sets the self._transmission property
-    def appply_calibration(calib):
-        assert(False), 'work to be done here'
+    def apply_calibration(self, typeofcal = 'johns'):
+        # assert(False), 'work to be done here'
+        #### 
+        if typeofcal== 'sp02':
+            calibrations = atmlangcalib.load_calibration_history()
+            cal = calibrations[int(self.raw_data.serial_no.values)]
+            # use the mean and only the actual channels, other channels are artefacts
+            cal = cal.results['mean'].loc[:,self.raw_data.channle_wavelengths.values].sort_index()
+        
+            #### interpolate and resample calibration (V0s)
+            dt = self.raw_data.datetime.to_pandas()
+            calib_interp = pd.concat([cal,dt]).drop([0], axis = 1).sort_index().interpolate().reindex(dt.index)
+        
+            #### correct VOs for earth sun distance see functions above
+            calib_interp_secorr = calib_interp.divide(self.sun_position.sun_earth_distance**2, axis = 0)
+            
+            #### match channels for operation
+            channels = self.raw_data.channle_wavelengths.to_pandas()
+            raw_data = self.raw_data.raw_data.to_pandas().rename(columns = channels)
+            raw_data.columns.name = 'wl'
+            
+            #### get transmission
+            self._transmission = raw_data/calib_interp_secorr
+        elif typeofcal == 'johns':
+            def datetime2angulardate(dt):
+                if dt.is_leap_year:
+                    noofday = 366
+                else:
+                    noofday = 365
+                fract_year = dt.day_of_year / noofday
+                yyyy_frac = dt.year+fract_year
+                angular_date = yyyy_frac * 2 * np.pi
+                return angular_date
+            
+            site = self.site.abb
+            p2f=f'/home/grad/surfrad/aod/{site}_mfrhead'
+            langley_params = atmlangcalib.read_langley_params(p2f = p2f)
+            
+            # get V0 for that date
+            # get closesed calibration parameter set based on first timestamp
+            # TODO: ask John is this is the right way to do it
+            
+            dt = pd.to_datetime(self.raw_data.datetime.values[0])
+            
+            assert((langley_params.datetime.to_pandas()-dt).abs().min() < pd.to_timedelta(366, 'days')), 'the closest fit the Langleys is more than 1 year out. This probably means that John needs update fit parameter file.'
+            
+            idxmin = (langley_params.datetime.to_pandas()-dt).abs().argmin()
+            langley_params_sel = langley_params.isel(datetime = idxmin)
+            
+            # turn date into that johns angular_date (see definition of get_izero in aod_analysis.f 
+            
+            angular_date = datetime2angulardate(dt)
+            
+            # apply the parameters to get the V0 and V0_err
+            
+            # V0 =
+            cons_term = langley_params_sel.V0.sel(V0_params = 'const')
+            lin_term = langley_params_sel.V0.sel(V0_params = 'lin') * angular_date
+            sin_term = np.sin(langley_params_sel.V0.sel(V0_params = 'sin'))
+            cos_term = np.cos(langley_params_sel.V0.sel(V0_params = 'cos'))
+            V0 = cons_term + lin_term + sin_term + cos_term
+            
+            V0df = pd.DataFrame(V0.to_pandas())
+            
+            sedistcorr = pd.DataFrame(self.sun_position.sun_earth_distance**2)
+            sedistcorr.columns = [0]
+            
+            calib_interp_secorr = V0df.dot(1/sedistcorr.transpose()).transpose()
+            calib_interp_secorr.rename({936:940}, axis = 1, inplace=True)
+            calib_interp_secorr.columns.name = 'channel'
+            
+            raw_data = self.raw_data.direct_normal_irradiation.to_pandas()
+            self._transmission = raw_data/calib_interp_secorr
+
     
     @property
     def transmission(self):
@@ -152,16 +224,21 @@ class DirectNormalIrradiation(object):
         langley_am = raw_df_loc.copy()
         langley_pm = raw_df_loc.copy()
 
-        self.tp_sp_am = sunpos_am
-        self.tp_sp_pm = sunpos_pm
-        self.tp_df_am = langley_am[~sunpos_am.airmass.isna()].copy()
-        self.tp_df_pm = langley_am[~sunpos_pm.airmass.isna()].copy()
+        # self.tp_sp_am = sunpos_am
+        # self.tp_sp_pm = sunpos_pm
+        # self.tp_df_am = langley_am[~sunpos_am.airmass.isna()].copy()
+        # self.tp_df_pm = langley_am[~sunpos_pm.airmass.isna()].copy()
 
         langley_am.index = sunpos_am.airmass
+        langley_am = langley_am[~langley_am.index.isna()]
+        langley_am.sort_index(ascending=False, inplace=True)
+        
         langley_pm.index = sunpos_pm.airmass
+        langley_pm = langley_pm[~langley_pm.index.isna()]
+        langley_pm.sort_index(ascending=False, inplace=True)
 
-        self._am = atmlangcalib.Langley(self,langley_am[~langley_am.index.isna()], langley_fit_settings = self.langley_fit_settings)
-        self._pm = atmlangcalib.Langley(self,langley_pm[~langley_pm.index.isna()], langley_fit_settings = self.langley_fit_settings)
+        self._am = atmlangcalib.Langley(self,langley_am, langley_fit_settings = self.langley_fit_settings)
+        self._pm = atmlangcalib.Langley(self,langley_pm, langley_fit_settings = self.langley_fit_settings)
         return True
 
 class CombinedGlobalDiffuseDirect(object):

@@ -20,15 +20,91 @@ import io
 import statsmodels.api as sm
 # import sp02.products.raw_nc
 import copy
+import pathlib as pl
 
 colors = plt.rcParams['axes.prop_cycle'].by_key()['color']
 
+def read_langley_params(p2f = '/home/grad/surfrad/aod/tbl_mfrhead', verbose = False):
+    """
+    This reads the fit parameters that John is generating. These parameters can be used to 
+    reconstruct the V0s.
+
+    Parameters
+    ----------
+    p2f : TYPE, optional
+        DESCRIPTION. The default is '/home/grad/surfrad/aod/tbl_mfrhead'.
+    verbose : TYPE, optional
+        DESCRIPTION. The default is False.
+
+    Returns
+    -------
+    TYPE
+        DESCRIPTION.
+
+    """
+    p2f = pl.Path(p2f)
+
+    with open(p2f, 'r') as rein:
+        lines = rein.readlines()
+
+
+
+    blocksize = 15
+    # blocks = []
+    dsses = []
+    for i in range(100):
+        if verbose:
+            print(f'block: {i}')
+        block = lines[i * blocksize: (i+1) * blocksize]
+        if len(block) == 0:
+            if verbose:
+                print('done')
+            break
+        # blocks.append(block)
+        # break
+        dt = block[0].split('!')[0].strip()
+        dt = pd.to_datetime(dt, format = '%y%j%H%M')
+
+        mfrserial = int(block[1].strip())
+
+        V0 = pd.DataFrame([[float(i) for i in l.split('!')[0].strip().split(' ')] for l in block[3::2]], columns=['const', 'lin', 'sin', 'cos'], index = [l.split('!')[1].strip().split(' ')[0] for l in block[3::2]])
+
+        V0_err = pd.DataFrame([[float(i) for i in l.split('!')[0].strip().split(' ')] for l in block[4::2]], columns=['intercept', 'slope'], index = [l.split('!')[1].strip().split(' ')[0] for l in block[4::2]])
+        
+        if '614' in V0.index:
+            if verbose:
+                print('Has 614 nm channel -> continue')
+            continue
+        V0.rename({'162': '1625',
+                   '670': '673'}, inplace=True)
+        V0_err.rename({'162': '1625',
+                       '670': '673'}, inplace=True)
+        assert(np.all([wl in V0.index for wl in ['415', '500', '1625', '673', '870', '936']])), f'something is strange with the wavelength {V0.index}'
+        assert(np.all([wl in V0_err.index for wl in ['415', '500', '1625', '673', '870', '936']])), f'something is strange with the wavelength {V0_err.index}'
+        V0.index = [int(col) for col in V0.index]
+        V0.index.name = 'wavelength'
+        V0.columns.name= 'V0_params'
+        
+        V0_err.index = [int(col) for col in V0_err.index]
+        V0_err.index.name = 'wavelength'
+        V0_err.columns.name= 'V0_err_params'
+        
+        ds = xr.Dataset()
+        ds['V0'] = V0
+        ds['V0_err'] = V0_err
+        # ds = ds.expand_dims({'serial': [mfrserial]})
+        ds['serial'] = mfrserial
+        ds = ds.expand_dims({'datetime': [dt]})
+        if verbose:
+            print(dt)
+        dsses.append(ds)
+    return xr.concat(dsses, dim = 'datetime')
 # def fit_langley(langley):
 #     lrg_res = stats.linregress(langley.index, langley)
 #     lser=pd.Series({'slope': lrg_res.slope, 'intercept': lrg_res.intercept, 'stderr': lrg_res.stderr})
 #     return lser
 
-def fit_langley(langley, weighted = True):
+def fit_langley(langley, weighted = True, error_handling = 'skip'):
     """
     Parameters
     ----------
@@ -42,6 +118,7 @@ def fit_langley(langley, weighted = True):
     None.
 
     """
+    langley.sort_index(ascending=False, inplace=True) # otherwise the weigted fit will fail for pm
     y = langley
     x = langley.index
     x = sm.add_constant(x)
@@ -62,6 +139,8 @@ def fit_langley(langley, weighted = True):
         fitfailed = False
         
     except np.linalg.LinAlgError:
+        if error_handling == 'raise':
+            raise
         lser = {'slope': np.nan, 'intercept': np.nan, 'slope_stderr': np.nan, 'intercept_stderr': np.nan}
         fitfailed = True
         res = False
