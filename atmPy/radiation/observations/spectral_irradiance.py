@@ -7,8 +7,10 @@ Created on Thu Aug 25 16:30:35 2022
 """
 import numpy as np
 import pandas as pd
+import xarray as xr
 import atmPy.general.measurement_site as atmms
 import atmPy.radiation.observations.langley_calibration as atmlangcalib
+import atmPy.radiation.rayleigh.lab as atmraylab
 
 class GlobalHorizontalIrradiation(object):
     def __init__(self, dataset):
@@ -39,8 +41,38 @@ class DirectNormalIrradiation(object):
         # self._langleys_pm = None
         # self._langley_fitres_am = None
         # self._langley_fitres_pm = None
+        self._od_rayleigh = None
     
+    def attach_surface_met_data(self):
+        """
+        Loads the surfrad data (from my netcdf version), interpolates and adds 
+        to the dataset. Location is currently hardcoded, this will likey cause problems sooner or later
 
+        Returns
+        -------
+        None.
+
+        """
+        start_dt = pd.to_datetime(self.raw_data.direct_normal_irradiation.datetime.min().values)
+        end_dt = pd.to_datetime(self.raw_data.direct_normal_irradiation.datetime.max().values)
+        
+        # open relevant files
+        site = self.site.abb
+        fns = []
+        for dt in [start_dt, end_dt]:
+            fns.append(f'/mnt/telg/data/grad/surfrad/radiation/{site}/srf_rad_full_{site}_{dt.year:04d}{dt.month:02d}{dt.day:02d}.nc')
+        
+        ds = xr.open_mfdataset(np.unique(fns)) # unique in case start and end is the same
+        
+        # interpolate to mfrsr datetime index
+        pt_interp = ds[['pressure','temp']].interp({'datetime':self.raw_data.datetime})
+        
+        # add to dataset
+        for var in pt_interp:
+            self.raw_data[var] = pt_interp[var]
+        return
+            
+            
     #### TODO: New/changed, make it work!
     # this is more like apply calibration -> Make this a function that sets the self._transmission property
     def apply_calibration(self, typeofcal = 'johns'):
@@ -66,6 +98,8 @@ class DirectNormalIrradiation(object):
             
             #### get transmission
             self._transmission = raw_data/calib_interp_secorr
+            
+            
         elif typeofcal == 'johns':
             def datetime2angulardate(dt):
                 if dt.is_leap_year:
@@ -117,11 +151,18 @@ class DirectNormalIrradiation(object):
             raw_data = self.raw_data.direct_normal_irradiation.to_pandas()
             self._transmission = raw_data/calib_interp_secorr
 
-    
+    @property
+    def od_rayleigh(self):
+        if isinstance(self._od_rayleigh, type(None)):
+            odr = xr.concat([atmraylab.rayleigh_od_johnsmethod(self.raw_data.pressure, chan) for chan in self.raw_data.channel_center], 'channel')
+            self._od_rayleigh = odr
+        return self._od_rayleigh
+
     @property
     def transmission(self):
         if isinstance(self._transmission, type(None)):
             assert(False), 'apply a langley calibration first'
+            #### Deprecated!!! below is the old sp02 retrieval, remove when sp02 retrieval is adapted
             #### load calibrations
             calibrations = atmlangcalib.load_calibration_history()
             cal = calibrations[int(self.raw_data.serial_no.values)]

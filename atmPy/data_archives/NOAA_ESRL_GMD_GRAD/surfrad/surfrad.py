@@ -4,6 +4,7 @@ import pandas as _pd
 import atmPy.general.timeseries as _timeseries
 import atmPy.aerosols.physics.column_optical_properties as _column_optical_properties
 import atmPy.general.measurement_site as _measurement_site
+import atmPy.atmosphere.sounding as atmsound
 import pathlib as _pl
 # import warnings as _warnings
 import xarray as _xr
@@ -556,6 +557,80 @@ def get_mfrsr_filter_responds(serial_no, path2folder = '/nfs/grad/Calibration_fa
 
     filter_resp = atmcucf.read_mfrsr_cal(p2f_filter_resp)
     return filter_resp
+
+def read_sounding(p2f):
+    """
+    This reads the interpolated functions that John's code uses and which are
+    stored here: /nfs/grad/surfrad/sounding/
+
+    Parameters
+    ----------
+    p2f : TYPE
+        DESCRIPTION.
+
+    Returns
+    -------
+    None.
+
+    """
+    # outlist = []
+    # ds_sonde = xr.Dataset()
+    dt_sonde = _pd.to_datetime(p2f.name, format = '%Y%m%d_%H.int')
+    
+    with open(p2f, 'r') as rein:
+        lines = rein.readlines()
+
+    header = lines[0]
+    lines = lines[1:]
+    
+    sounding_no = int(header.split()[0])
+    
+    chsize = 39
+    sitechuncks = [lines[i * chsize: (i+1) * chsize] for i in range(sounding_no)]
+    
+    for e,sc in enumerate(sitechuncks):
+        # break
+        # print(sc[0].strip().split(' '))
+        site = ' '.join(sc[0].strip().split(' ')[:2]).strip()
+        # print(site)
+        # tp_1 = sc.copy()
+        sc = sc[1:]
+    
+        data = [[float(v) for v in l.strip().split()] for l in sc]
+    
+        columns = ['pressure', 'height', 'temperature', 'dewpoint', 'uwind', 'vwind']
+    
+        data = _pd.DataFrame(data, columns=columns)
+    
+        data[data == -999] = _np.nan
+    
+        data.dropna(inplace=True)
+    
+        # data.loc[:,'temperature']= data.temperature + 273.16
+        # tc = data.temperature - 273.16
+        # data['esat'] = 6.1078 * np.exp((17.2693882*tc)/(tc+237.3))
+        # data['water_massfrac'] = 621.97*data.esat/(data.pressure-data.esat)
+    
+        # tpw = spint.simps(data[::-1].water_massfrac, data[::-1].pressure)/980 #precipitable water in cm, no idea what that 980 is for?
+    
+        # outlist.append({'site': site, 'tpw': tpw})
+        
+        
+        # data.index = data.pressure
+        ds = data.to_xarray()
+        ds = ds.expand_dims({'site': [site,]})
+        
+        if e == 0:
+            ds_sonde = ds
+        else:
+            ds_sonde = _xr.concat([ds_sonde, ds], 'site')
+        # if site == 'Goodwin':
+        #     break
+    
+    # tpwdf = pd.DataFrame(outlist)
+    ds_sonde.attrs['datetime'] = dt_sonde
+    
+    return atmsound.BalloonSounding(ds_sonde)
 
 def read_ccc(p2f):
     """
