@@ -183,7 +183,7 @@ def read_file(path='/Volumes/HTelg_4TB_Backup/AERONET/',
 
     files, folder = _path2files(path, site, window, perform_header_test, verbose)
     #     files = clean_up_files(files, None, None, None, verbose)
-    return files, folder
+    # return files, folder
     data = _read_files(folder, files, verbose)
     if keep_original_data:
         data_orig = data.copy()
@@ -207,7 +207,7 @@ def read_file(path='/Volumes/HTelg_4TB_Backup/AERONET/',
         site_name = data.data['AERONET_Site_Name'].dropna().iloc[0]
         ## select columns that show AOD
         aodcols = [col for col in data.data.columns if (col[:3] == 'AOD' and 'Empty' not in col)]
-        data_aot = data._del_all_columns_but(aodcols)
+        data_aot = data.drop(aodcols, inverse = True)
         newcol = _np.array([c.replace('AOD_', '').replace('nm', '') for c in aodcols]).astype(int)
 
     elif data.header['version'] == '2':
@@ -225,7 +225,7 @@ def read_file(path='/Volumes/HTelg_4TB_Backup/AERONET/',
 
     # aaod.site = _measurement_site.Site(lat, lon, alt, name=site_name)
     # generate Aeronet_AOD and add AOD to class
-    aaot = Aeronet_AOD(lat, lon, elevation = alt, name = site_name, name_short = None, timezone = 0)
+    aaot = Aeronet_AOD(lat = lat, lon = lon, elevation = alt, name = site_name, name_short = None, timezone = 0)
     if keep_original_data:
         aaot.original_data = data_orig
 

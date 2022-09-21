@@ -10,7 +10,7 @@ import atmPy.data_archives.aeronet.file_io.aod as fileioaod
 import atmPy.data_archives.aeronet.file_io.inversion as fileioinv
 
 
-def read_file(path, verbose = False):
+def read_file(path, verbose = False, **kwargs):
     
     header = ''
     with open(path) as rein:
@@ -18,11 +18,11 @@ def read_file(path, verbose = False):
             header += rein.readline()
     
     if 'Direct Sun' in header:
-        out = fileioaod.read_file(path)
+        out = fileioaod.read_file(path, **kwargs)
         if verbose:
             print('read file as direct sun retrieval')
     elif 'Almucantar' in header:
-        out = fileioinv.read_file(path)
+        out = fileioinv.read_file(path, **kwargs)
         if verbose:
             print('read file as almucantar retrieval')
     return out
