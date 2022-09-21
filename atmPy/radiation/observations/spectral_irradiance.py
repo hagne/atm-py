@@ -11,6 +11,9 @@ import xarray as xr
 import atmPy.general.measurement_site as atmms
 import atmPy.radiation.observations.langley_calibration as atmlangcalib
 import atmPy.radiation.rayleigh.lab as atmraylab
+import pathlib as pl
+import atmPy.data_archives.NOAA_ESRL_GMD_GRAD.surfrad.surfrad as atmsrf
+import copy
 
 class GlobalHorizontalIrradiation(object):
     def __init__(self, dataset):
@@ -33,6 +36,8 @@ class DirectNormalIrradiation(object):
         else:
             self.site = site
         self.langley_fit_settings = langley_fit_settings
+        self.settings_calibration = 'johns'
+        self.settings_metdata = 'surfrad'
         self._sun_position = None
         self._am = None
         self._pm = None
@@ -42,8 +47,21 @@ class DirectNormalIrradiation(object):
         # self._langley_fitres_am = None
         # self._langley_fitres_pm = None
         self._od_rayleigh = None
+        self._od_co2ch4h2o = None
+        self._tpw = None
+        self._aod = None
+        self._metdata = None
     
-    def attach_surface_met_data(self):
+    @property
+    def met_data(self):
+        if isinstance(self._metdata, type(None)):
+            if self.settings_metdata == 'surfrad':
+                self._metdata = self._get_surface_met_data()
+            else:
+                assert(False), 'moeeeep!'
+        return self._metdata
+    
+    def _get_surface_met_data(self):
         """
         Loads the surfrad data (from my netcdf version), interpolates and adds 
         to the dataset. Location is currently hardcoded, this will likey cause problems sooner or later
@@ -66,123 +84,264 @@ class DirectNormalIrradiation(object):
         
         # interpolate to mfrsr datetime index
         pt_interp = ds[['pressure','temp']].interp({'datetime':self.raw_data.datetime})
-        
+        # self._metdata = pt_interp
         # add to dataset
-        for var in pt_interp:
-            self.raw_data[var] = pt_interp[var]
-        return
+        # for var in pt_interp:
+        #     self.raw_data[var] = pt_interp[var]
+        return pt_interp
             
             
     #### TODO: New/changed, make it work!
     # this is more like apply calibration -> Make this a function that sets the self._transmission property
-    def apply_calibration(self, typeofcal = 'johns'):
+    def _apply_calibration_sp02(self):
         # assert(False), 'work to be done here'
         #### 
-        if typeofcal== 'sp02':
-            calibrations = atmlangcalib.load_calibration_history()
-            cal = calibrations[int(self.raw_data.serial_no.values)]
-            # use the mean and only the actual channels, other channels are artefacts
-            cal = cal.results['mean'].loc[:,self.raw_data.channle_wavelengths.values].sort_index()
+        calibrations = atmlangcalib.load_calibration_history()
+        cal = calibrations[int(self.raw_data.serial_no.values)]
+        # use the mean and only the actual channels, other channels are artefacts
+        cal = cal.results['mean'].loc[:,self.raw_data.channle_wavelengths.values].sort_index()
+    
+        #### interpolate and resample calibration (V0s)
+        dt = self.raw_data.datetime.to_pandas()
+        calib_interp = pd.concat([cal,dt]).drop([0], axis = 1).sort_index().interpolate().reindex(dt.index)
+    
+        #### correct VOs for earth sun distance see functions above
+        calib_interp_secorr = calib_interp.divide(self.sun_position.sun_earth_distance**2, axis = 0)
         
-            #### interpolate and resample calibration (V0s)
-            dt = self.raw_data.datetime.to_pandas()
-            calib_interp = pd.concat([cal,dt]).drop([0], axis = 1).sort_index().interpolate().reindex(dt.index)
+        #### match channels for operation
+        channels = self.raw_data.channle_wavelengths.to_pandas()
+        raw_data = self.raw_data.raw_data.to_pandas().rename(columns = channels)
+        raw_data.columns.name = 'wl'
         
-            #### correct VOs for earth sun distance see functions above
-            calib_interp_secorr = calib_interp.divide(self.sun_position.sun_earth_distance**2, axis = 0)
+        #### get transmission
+        transmission = raw_data/calib_interp_secorr
+        transmission = xr.DataArray(transmission)
+        self.calibration = 'sp02'
+        self._transmission =transmission
             
-            #### match channels for operation
-            channels = self.raw_data.channle_wavelengths.to_pandas()
-            raw_data = self.raw_data.raw_data.to_pandas().rename(columns = channels)
-            raw_data.columns.name = 'wl'
-            
-            #### get transmission
-            self._transmission = raw_data/calib_interp_secorr
-            
-            
-        elif typeofcal == 'johns':
-            def datetime2angulardate(dt):
-                if dt.is_leap_year:
-                    noofday = 366
-                else:
-                    noofday = 365
-                fract_year = dt.day_of_year / noofday
-                yyyy_frac = dt.year+fract_year
-                angular_date = yyyy_frac * 2 * np.pi
-                return angular_date
-            
-            site = self.site.abb
-            p2f=f'/home/grad/surfrad/aod/{site}_mfrhead'
-            langley_params = atmlangcalib.read_langley_params(p2f = p2f)
-            
-            # get V0 for that date
-            # get closesed calibration parameter set based on first timestamp
-            # TODO: ask John is this is the right way to do it
-            
-            dt = pd.to_datetime(self.raw_data.datetime.values[0])
-            
-            assert((langley_params.datetime.to_pandas()-dt).abs().min() < pd.to_timedelta(366, 'days')), 'the closest fit the Langleys is more than 1 year out. This probably means that John needs update fit parameter file.'
-            
-            idxmin = (langley_params.datetime.to_pandas()-dt).abs().argmin()
-            langley_params_sel = langley_params.isel(datetime = idxmin)
-            
-            # turn date into that johns angular_date (see definition of get_izero in aod_analysis.f 
-            
-            angular_date = datetime2angulardate(dt)
-            
-            # apply the parameters to get the V0 and V0_err
-            
-            # V0 =
-            cons_term = langley_params_sel.V0.sel(V0_params = 'const')
-            lin_term = langley_params_sel.V0.sel(V0_params = 'lin') * angular_date
-            sin_term = np.sin(langley_params_sel.V0.sel(V0_params = 'sin'))
-            cos_term = np.cos(langley_params_sel.V0.sel(V0_params = 'cos'))
-            V0 = cons_term + lin_term + sin_term + cos_term
-            
-            V0df = pd.DataFrame(V0.to_pandas())
-            
-            sedistcorr = pd.DataFrame(self.sun_position.sun_earth_distance**2)
-            sedistcorr.columns = [0]
-            
-            calib_interp_secorr = V0df.dot(1/sedistcorr.transpose()).transpose()
-            calib_interp_secorr.rename({936:940}, axis = 1, inplace=True)
-            calib_interp_secorr.columns.name = 'channel'
-            
-            raw_data = self.raw_data.direct_normal_irradiation.to_pandas()
-            self._transmission = raw_data/calib_interp_secorr
+    def _apply_calibration_johns(self):
+        def datetime2angulardate(dt):
+            if dt.is_leap_year:
+                noofday = 366
+            else:
+                noofday = 365
+            fract_year = dt.day_of_year / noofday
+            yyyy_frac = dt.year+fract_year
+            angular_date = yyyy_frac * 2 * np.pi
+            return angular_date
+        
+        #### open file that contains the calibration parameters (the fit parameters from john)
+        site = self.site.abb
+        p2f=f'/home/grad/surfrad/aod/{site}_mfrhead'
+        langley_params = atmlangcalib.read_langley_params(p2f = p2f)
+        
+        #### get V0 for that date
+        # get closesed calibration parameter set based on first timestamp. 
+        # This was the wrong approach that I assumed 
+        # falsely. The right way is to use the coefficients from before that date
+        
+        #old:
+        # dt = pd.to_datetime(self.raw_data.datetime.values[0])
+        # assert((langley_params.datetime.to_pandas()-dt).abs().min() < pd.to_timedelta(1.5*365, 'days')), f'The closest fit the Langleys is more than 1 year out ({(langley_params.datetime.to_pandas()-dt).abs().min()}). This probably means that John needs update fit parameter file.'
+        # idxmin = (langley_params.datetime.to_pandas()-dt).abs().argmin()
+        # langley_params_sel = langley_params.isel(datetime = idxmin)
+        
+        #new:using the coefficients from the last datetime before the date of this .ccc file.
+        dt = pd.to_datetime(self.raw_data.datetime.values[0])
+        
+        dtmin = (dt - langley_params.datetime.to_pandas()) / pd.to_timedelta(1, 'day')
+        dtmin[dtmin < 0] = np.nan
+        idxmin = dtmin.argmin()
+        langley_params_sel = langley_params.isel(datetime = idxmin)
+        
+        # self.tp_dt = dt
+        # self.tp_langley_params = langley_params
+        
+        # turn date into that johns angular_date (see definition of get_izero in aod_analysis.f 
+        angular_date = datetime2angulardate(dt)
+        
+        # apply the parameters to get the V0 and V0_err
+        # V0 =
+        cons_term = langley_params_sel.V0.sel(V0_params = 'const')
+        lin_term = langley_params_sel.V0.sel(V0_params = 'lin') * angular_date 
+        sin_term = langley_params_sel.V0.sel(V0_params = 'sin') * np.sin(angular_date)
+        cos_term = langley_params_sel.V0.sel(V0_params = 'cos') * np.cos(angular_date)
+        V0 = cons_term + lin_term + sin_term + cos_term
+        
+        V0df = pd.DataFrame(V0.to_pandas())
+        
+        #### correct for earth sun distance
+        sedistcorr = pd.DataFrame(self.sun_position.sun_earth_distance**2)
+        sedistcorr.columns = [0]
+        
+        self.tp_V0df = V0df
+        self.tp_sedistcorr = sedistcorr
+        calib_interp_secorr = V0df.dot(1/sedistcorr.transpose()).transpose()
+        calib_interp_secorr.rename({936:940}, axis = 1, inplace=True)
+        calib_interp_secorr.columns.name = 'channel'
+        self.tp_calib_interp_secorr = calib_interp_secorr
+        
+        raw_data = self.raw_data.direct_normal_irradiation.to_pandas()
+        transmission = raw_data/calib_interp_secorr
+        transmission = xr.DataArray(transmission)     
+        self.calibration = 'johns'
+        self._transmission =transmission
 
     @property
     def od_rayleigh(self):
         if isinstance(self._od_rayleigh, type(None)):
-            odr = xr.concat([atmraylab.rayleigh_od_johnsmethod(self.raw_data.pressure, chan) for chan in self.raw_data.channel_center], 'channel')
+            odr = xr.concat([atmraylab.rayleigh_od_johnsmethod(self.met_data.pressure, chan) for chan in self.raw_data.channel_center], 'channel')
             self._od_rayleigh = odr
         return self._od_rayleigh
 
     @property
+    def precipitable_water(self):
+        if isinstance(self._tpw, type(None)):
+            sitedict = {'Bondville': 'BND', 
+                        'Fort Peck': 'FPK',
+                        'Goodwin Creek': 'GWN', 
+                        'Table Mountain': 'TBL',
+                        'Desert Rock': 'DRA',
+                        'Penn State': 'PSU', 
+                        'ARM SGP': 'sgp', 
+                        'Sioux Falls': 'SXF',
+                        'Canaan Valley': 'CVA',
+                       }
+
+            files = pd.DataFrame()
+            datetime = pd.to_datetime(self.raw_data.datetime.values[0])
+            for dt in [datetime, datetime + pd.to_timedelta(1, 'day')]:
+                # pass
+            
+                p2fld = pl.Path(f'/nfs/grad/surfrad/sounding/{dt.year}/')
+                searchstr = f'{dt.year}{dt.month:02d}{dt.day:02d}*.int'
+                df = pd.DataFrame(p2fld.glob(searchstr), columns=['p2f'])
+                files = pd.concat([files, df])
+            
+            files.sort_values('p2f', inplace = True)
+            
+            
+            
+            # soundings = []
+            tpwts = []
+            for p2f in files.p2f:
+                # pass
+            
+                soundi = atmsrf.read_sounding(p2f)
+            
+                tpwts.append(soundi.precipitable_water.expand_dims({'datetime': [soundi.data.attrs['datetime'],]}))
+            
+            tpw = xr.concat(tpwts, 'datetime')
+            tpw = tpw.assign_coords(site = [sitedict[str(s.values)].lower() for s in tpw.site])
+            tpw = tpw.sel(site = self.raw_data.site)
+            tpw = tpw.drop(['site'])
+            
+            tpw = tpw.interp({'datetime': self.raw_data.datetime})
+            self._tpw =tpw
+        return self._tpw
+        
+
+    @property
+    def od_co2_ch4_h2o(self):
+        if isinstance(self._od_co2ch4h2o, type(None)):
+            # get the 1625 filter info based on the MFRSR instrument serial no
+            fn = '/mnt/telg/projects/AOD_redesign/MFRSR_History.xlsx' 
+            mfrsr_info = pd.read_excel(fn, sheet_name='Overview')
+            inst_info = mfrsr_info[mfrsr_info.Instrument == self.raw_data.serial_no]
+            
+            fab = inst_info.Filter_1625nm.iloc[0]
+            filter_no = int(''.join([i for i in fab if i.isnumeric()]))
+            filter_batch = ''.join([i for i in fab if not i.isnumeric()]).lower()
+            
+            # open the lookup dabel for the Optical depth correction
+            correction_info = xr.open_dataset('1625nm_absorption_correction_coefficience.nc')
+            
+            ds = xr.Dataset()
+            for molecule in ['co2', 'ch4', 'h2o_5cm']:
+                params = correction_info.sel(filter_no = filter_no, batch = filter_batch, molecule = molecule)
+            
+                # apply the airmass dependence
+                da = params.OD.interp({'airmass': self.sun_position.airmass})
+                da = da.assign_coords(airmass = self.sun_position.index.values)
+                da = da.rename({'airmass': 'datetime'})
+                da = da.drop(['filter_no', 'molecule', 'batch'])
+                ds[molecule] = da
+            
+            ds = ds.expand_dims({'channel': [1625,]})
+            # normalize to the ambiant pressure ... less air -> less absorption, 
+            # only for ch4 and c02, water is scaled by the precipitable water
+            # TODO, this can probably done better? 
+            ds[['ch4', 'co2']] = ds[['ch4', 'co2']] * (self.met_data.pressure/1013.25)
+        
+            # self.tp_ds = ds.copy()
+            # self.tp_tpw = self.tpw.copy()
+            tpw = self.precipitable_water
+            ds['h2o_5cm'] = ds.h2o_5cm / 5 * tpw
+        
+            #### add 0 for all other channels
+            dstlist = [ds]
+            for cha in self.raw_data.channel:
+                if int(cha) == 1625:
+                    continue    
+                
+                dst = copy.deepcopy(ds)
+                dst = dst.assign_coords({'channel': [cha]})
+            
+                for var in dst:
+                    dst[var][:] = 0
+            
+                dstlist.append(dst)
+            ds = xr.concat(dstlist, 'channel')
+            self._od_co2ch4h2o = ds
+        return self._od_co2ch4h2o
+
+    @property
+    def od_total(self):
+        od = - np.log(self.transmission)/self.sun_position.airmass.to_xarray()
+        return od
+    
+    @property
+    def aod(self):
+        if isinstance(self._aod, type(None)):
+            odt = self.od_total
+            odr = self.od_rayleigh
+            odch4 = self.od_co2_ch4_h2o.ch4
+            odco2 = self.od_co2_ch4_h2o.co2
+            odh2o = self.od_co2_ch4_h2o.h2o_5cm
+            aod = odt - odr - odch4 - odco2 - odh2o
+            self._aod = aod
+            
+        return self._aod
+        
+    @property
     def transmission(self):
         if isinstance(self._transmission, type(None)):
-            assert(False), 'apply a langley calibration first'
-            #### Deprecated!!! below is the old sp02 retrieval, remove when sp02 retrieval is adapted
-            #### load calibrations
-            calibrations = atmlangcalib.load_calibration_history()
-            cal = calibrations[int(self.raw_data.serial_no.values)]
-            # use the mean and only the actual channels, other channels are artefacts
-            cal = cal.results['mean'].loc[:,self.raw_data.channle_wavelengths.values].sort_index()
-            
-            #### interpolate and resample calibration (V0s)
-            dt = self.raw_data.datetime.to_pandas()
-            calib_interp = pd.concat([cal,dt]).drop([0], axis = 1).sort_index().interpolate().reindex(dt.index)
-            
-            #### correct VOs for earth sun distance see functions above
-            calib_interp_secorr = calib_interp.divide(self.sun_position.sun_earth_distance**2, axis = 0)
-            
-            #### match channels for operation
-            channels = self.raw_data.channle_wavelengths.to_pandas()
-            raw_data = self.raw_data.raw_data.to_pandas().rename(columns = channels)
-            raw_data.columns.name = 'wl'
-            
-            #### get transmission
-            self._transmission = raw_data/calib_interp_secorr
+            if self.settings_calibration == 'johns':
+                self._apply_calibration_johns()
+            # assert(False), 'apply a langley calibration first'
+            if 0:
+                #### Deprecated!!! below is the old sp02 retrieval, remove when sp02 retrieval is adapted
+                #### load calibrations
+                #### TODO: remove once SP02 is working again
+                calibrations = atmlangcalib.load_calibration_history()
+                cal = calibrations[int(self.raw_data.serial_no.values)]
+                # use the mean and only the actual channels, other channels are artefacts
+                cal = cal.results['mean'].loc[:,self.raw_data.channle_wavelengths.values].sort_index()
+                
+                #### interpolate and resample calibration (V0s)
+                dt = self.raw_data.datetime.to_pandas()
+                calib_interp = pd.concat([cal,dt]).drop([0], axis = 1).sort_index().interpolate().reindex(dt.index)
+                
+                #### correct VOs for earth sun distance see functions above
+                calib_interp_secorr = calib_interp.divide(self.sun_position.sun_earth_distance**2, axis = 0)
+                
+                #### match channels for operation
+                channels = self.raw_data.channle_wavelengths.to_pandas()
+                raw_data = self.raw_data.raw_data.to_pandas().rename(columns = channels)
+                raw_data.columns.name = 'wl'
+                
+                #### get transmission
+                self._transmission = raw_data/calib_interp_secorr
         return self._transmission
     
     @property
