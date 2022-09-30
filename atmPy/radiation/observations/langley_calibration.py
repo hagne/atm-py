@@ -21,8 +21,77 @@ import statsmodels.api as sm
 # import sp02.products.raw_nc
 import copy
 import pathlib as pl
+from pygam import LinearGAM, s, l, GammaGAM
+from pygam import f as pgf
+import scipy.interpolate as scint
+import matplotlib.dates as pltdates
 
 colors = plt.rcParams['axes.prop_cycle'].by_key()['color']
+
+def weighted_mean_dt(dft, center_datetime, order_stderr = 1, oder_dt = 1, minperiods = 1, stderr_threshold = 0.02, dt_window = 60, approach = 1):
+    """I tried several approaches and to me the more suffisticated approaches did not yield the result that I would have hoped.
+    
+    approach 1 (default)
+    --------------------
+    simply 1/V0_stderr**order_stderr with order_stderr = 2 and stderr_threshold = 0.02
+    
+    approach 2
+    -----------
+    This considers in addition to the above the temporal distance (dt) of each V0 to the current date. 
+    Here dt is decreasing the weight of V0 that are further away. Note, A more realistic approach is the next 
+    one though which considers an increase in V0_stderr with dt. 
+    
+    approach 3
+    -----------
+    Temporal distance (dt) of each V0 to the current date increases V0_stderr. While this approach is probably the most reasist, 
+    it just does not seem to make a big difference, which is why I will probably with the first approach
+    """
+    dft = dft.copy()
+    dft[dft.intercept_stderr > stderr_threshold] = np.nan
+    out = {}
+    if dft.dropna().shape[0] < minperiods:
+        wm = np.nan
+        wmst = np.nan
+        
+    elif approach == 1: # approach 1
+        weights = (1/dft.intercept_stderr)**order_stderr
+        
+        wm = (np.e**(dft.intercept) * weights).sum() / weights.sum()
+        wmst = ((np.e**(dft.intercept) - wm)**2 * weights).sum() / weights.sum()
+        # print(wmst)
+        wmst = np.sqrt(wmst)
+    elif approach == 2: # approach 2
+        # Here I tried to 
+        weights_err = (1 - (dft.intercept_stderr/stderr_threshold))**order_stderr
+        td = abs(dft.index - center_datetime) / pd.to_timedelta(1, 'd')
+        weights_dt = pd.Series((1 - (td / (dt_window/2)))**oder_dt, index=dft.index)
+        weights = weights_err * weights_dt
+        
+        wm = (np.e**(dft.intercept) * weights).sum() / weights.sum()
+        wmst = ((np.e**(dft.intercept) - wm)**2 * weights).sum() / weights.sum()
+        wmst = np.sqrt(wmst)
+    elif approach == 3: # approach 3
+        td = abs(dft.index - center_datetime) / pd.to_timedelta(1, 'd')
+        weights_dt = pd.Series((td / (dt_window/2))**(1/(oder_dt+0.0001)), index=dft.index)
+        intererr = dft.intercept_stderr + (weights_dt * stderr_threshold * 0.25) # this will cause the uncertatinty to be increased by up to the stderr_threshold at the edge of the window
+        weights_err = 1/(intererr**order_stderr)
+        weights_err[weights_err < 0] = np.nan
+        weights = weights_err# * weights_dt
+        
+        wm = (np.e**(dft.intercept) * weights).sum() / weights.sum()
+        wmst = ((np.e**(dft.intercept) - wm)**2 * weights).sum() / weights.sum()
+        wmst = np.sqrt(wmst)
+    else:
+        assert(False), f'{approach} not a valid value for kwarg "approach".'
+
+    # out['weights_err'] = weights_err
+    # out['weights_dt'] = weights_dt
+    # out['weights'] = weights
+    # out['dft'] = dft
+        
+    out['weighted_mean'] = wm
+    out['weighted_std'] = wmst
+    return out
 
 def read_langley_params(p2f = '/home/grad/surfrad/aod/tbl_mfrhead', verbose = False):
     """
@@ -99,11 +168,302 @@ def read_langley_params(p2f = '/home/grad/surfrad/aod/tbl_mfrhead', verbose = Fa
             print(dt)
         dsses.append(ds)
     return xr.concat(dsses, dim = 'datetime')
-# def fit_langley(langley):
-#     lrg_res = stats.linregress(langley.index, langley)
-#     lser=pd.Series({'slope': lrg_res.slope, 'intercept': lrg_res.intercept, 'stderr': lrg_res.stderr})
-#     return lser
 
+def open_langley_dailys(start = None, #'20160101',  
+                        end = None, #'20220101',
+                        p2fld = '/mnt/telg/data/grad/surfrad/mfrsr/langleys_concat/tbl/',
+                        drop_variables = ['langley_residual_correlation_prop', 'valid_points', 'residual_stats', 'cleaning_iterations', 'status'], # they are not needed under normal conditions
+                       ):
+    p2fld = pl.Path(p2fld)
+    df = pd.DataFrame(p2fld.glob('*.nc'), columns=['p2f'])
+    df.index = df.apply(lambda row: pd.to_datetime(row.p2f.name.split('_')[4] + '01'), axis =1)
+    df.sort_index(inplace=True)
+    df = df.truncate(start, end)
+    
+    df['serial_no'] = df.apply(lambda row: row.p2f.name.split('_')[3], axis = 1)
+    assert(df.serial_no.unique().shape[0] == 1), f'Files indicate more then one serial number (found {df.serial_no.unique()}), which should not be the case unless you updated the langley processing ... did you? ... programmin grequired.'   
+    ds_langs = xr.open_mfdataset(df.p2f, drop_variables = drop_variables)
+    return Langley_Timeseries(ds_langs)
+
+class CalibrationPrediction(object):
+    def __init__(self, dataset):
+        self.dataset = dataset
+    
+    def plot(self, wl=500, 
+                 fitres = False, 
+                 ax = None,
+                 show_pm5 = True,
+                 show_uncertainty = True, 
+                 **kwargs):
+        
+        if isinstance(ax, type(None)):
+            a = plt.subplot()
+        else:
+            a = ax
+            
+        dst = self.dataset.sel(wavelength = wl)
+        if show_pm5:
+            perc = 0.05
+            a.fill_between(dst.datetime,  dst.V0 - ( dst.V0 * perc),  dst.V0 + ( dst.V0 * perc), 
+                           color = '0.9', zorder = 0)
+        
+        if 'label' in kwargs:
+            label = kwargs.pop('label')
+        else:
+            label = 'wl'
+        g, = a.plot(dst.datetime, dst.V0, label = label, zorder = 10, **kwargs)
+        if show_uncertainty:
+            col = g.get_color()
+            a.fill_between(dst.datetime, dst.confidence_interval.sel(interval_boundary = 'low'), dst.confidence_interval.sel(interval_boundary = 'high'), color = col, alpha = 0.3)
+            
+        a.set_ylim((dst.V0 - ( dst.V0 * perc)).min(), (dst.V0 + ( dst.V0 * perc)).max())
+        return a
+        
+
+class Langley_Timeseries(object):
+    def __init__(self, dataset):
+        self.dataset = dataset
+        end = self.dataset.datetime.values[-1] + pd.to_timedelta(60, 'days')
+        self.daterange2predict = pd.date_range(start = self.dataset.datetime.values[0], end = end, freq='D')
+        self._v0rol = None
+        self._v0gam = None
+        self._v0 = None
+        
+        
+        
+        
+    def plot(self, wl = 500, th = 0.2, order_stderr = 2, ax = None, **kwargs):
+        if isinstance(ax, type(None)):
+            a = plt.subplot()
+        else:
+            a = ax
+        intercept = np.exp(self.dataset.sel(wavelength = wl, fit_results = 'intercept').langley_fitres)
+        intercept_stdr = self.dataset.sel(wavelength = wl, fit_results = 'intercept_stderr').langley_fitres
+        weights = 1/intercept_stdr**order_stderr
+        intercept = intercept.where(intercept_stdr < th)
+        df = pd.DataFrame({'intercept':intercept.to_pandas(),
+                      'intercept_stderr': intercept_stdr.to_pandas(),
+                      'weights': weights.to_pandas()})#, columns=['basdf', 'asd'])
+    
+        df.sort_values('intercept_stderr', ascending=False, inplace=True)
+        a.scatter(df.index, df.intercept, s = 8, c = df.weights, cmap =plt.cm.Greens, **kwargs)
+        return a 
+    
+    def _get_v0_gam(self,
+                    th = 0.02, # this is about half the annual variability (winter vs summer) of ~0.035
+                    order_stderr = 2, # determines the weights
+                    lam_overtime = 5e5,
+                    ns_overtime = 4, # 4 per year -> 
+                    lam_season = 5e5,
+                    ns_season = int(12 * 1.5),
+                    ):
+        # assert(False), 'todo'
+        
+        ds_v0_list = []
+        
+        for wl in self.dataset.wavelength:
+            wl = int(wl)
+            
+            # if wl != 500:
+            #     continue
+            # break
+        
+            # wl = 500
+            ds_v0 = xr.Dataset()
+        
+            dfwl =self.dataset.langley_fitres.sel(wavelength = wl).to_pandas().copy() #not sure if the copy is needed, but have to make sure that I don't overwrite the dataset
+            no_of_years = (dfwl.iloc[-1].name - dfwl.iloc[0].name) / pd.to_timedelta(365, 'days')
+            # end = dfwl.index[-1]
+            # end = pd.Timestamp.now()
+            # new_daterange = pd.date_range(start = pd.to_datetime(dfwl.index[0].date()), end = end, 
+            #               # periods=1, 
+            #               freq='24h')
+            
+            dfwl[dfwl.intercept_stderr > th] = np.nan
+            dfwl.dropna(inplace=True)
+        
+            dfwl['doy']= dfwl.apply(lambda row: row.name.day_of_year, axis = 1)
+            dfwl['todmonth'] = dfwl.apply(lambda row: (row.name - dfwl.iloc[0].name) / pd.to_timedelta(1, 'days'), axis = 1) #total number of month
+        
+            # new_daterange
+            new_X = pd.DataFrame(index = self.daterange2predict, columns=['doy', 'todmonth'])
+            new_X['doy']= new_X.apply(lambda row: row.name.day_of_year, axis = 1)
+            new_X['todmonth'] = new_X.apply(lambda row: (row.name - new_X.iloc[0].name) / pd.to_timedelta(1, 'days'), axis = 1) #total number of month
+                
+            # gam parameters
+            lam = lam_overtime
+            n_splines = round(ns_overtime*no_of_years)
+            todmonth = s(0, lam =  lam,
+                        n_splines=n_splines,)
+            
+            lam = lam_season
+            n_splines = ns_season
+            doy = s(1, basis = 'cp', lam = lam, 
+                    n_splines=n_splines,)
+        
+            y = np.exp(dfwl.intercept).values
+            X = dfwl.loc[:, ['todmonth','doy',]].values
+        
+            weights = 1/dfwl.intercept_stderr**order_stderr
+        
+            # gam fit
+            gammod = LinearGAM(todmonth + doy)
+            gam = gammod.fit(X, y, 
+                             weights=weights, 
+                            )
+        
+            # prediction onto gap-less timeseries and extrapolate from last v0
+            X = new_X.loc[:, ['todmonth','doy',]].values
+            pred = gam.predict(X)
+            new_X['pred_w2'] = pred
+            conf = gam.confidence_intervals(X,width=0.99)
+            new_X['conv_w2_low']= conf[:,0]
+            new_X['conv_w2_high']= conf[:,1]
+        
+            new_X.index.name = 'datetime'
+        
+            ds_v0['V0'] = new_X.pred_w2
+        
+            ci = new_X.loc[:,['conv_w2_low', 'conv_w2_high']]
+            ci.columns = ['low', 'high']
+            ci.columns.name = 'interval_boundary'
+            ds_v0['confidence_interval'] = ci
+        
+            ds_v0 = ds_v0.expand_dims(wavelength = [wl,])
+        
+            ds_v0_list.append(ds_v0)
+        
+        ds_v0_all = xr.concat(ds_v0_list, 'wavelength')
+        self._v0gam = CalibrationPrediction(ds_v0_all)
+        return self._v0gam
+        
+    def _get_v0_rolling(self,
+                        th = 0.02, # this is about half the annual variability (winter vs summer) of ~0.035
+                        dt_window = 60,
+                        order_stderr = 2,
+                        oder_dt = None,
+                        approach = 1,
+                        smoothned = False, # smoothening does not work well, maybe for further development?
+                        ):
+
+        ds_list = []
+        wm_list = []
+        # new_daterange = pd.date_range(start = self.dataset.datetime.values[0], end = self.dataset.datetime.values[-1], freq='D')
+    
+        for wl in self.dataset.wavelength:
+            wl = int(wl)
+            # break
+        
+            # wl = 500
+        
+            dfwl =self.dataset.langley_fitres.sel(wavelength = wl).to_pandas()
+            rollw = dfwl.rolling(f'{dt_window}d', 
+                                center = True,
+                                   # min_periods =1,
+                                  )
+        
+            mean_wl = pd.DataFrame([weighted_mean_dt(ro, idx, approach = approach, order_stderr = order_stderr, oder_dt = order_stderr, stderr_threshold = th, dt_window = dt_window) for idx,ro in zip(rollw.max().index, rollw)], index = rollw.mean().index, 
+                                  columns = ['weighted_mean', 'weighted_std'],
+                                 )
+        
+            wm = mean_wl.weighted_mean
+            std = mean_wl.weighted_std
+            confint = pd.DataFrame({'low':wm-std, 'high':wm+std})
+            wm.index.name = 'datetime'
+            confint.index.name = 'datetime'
+            confint.columns.name = 'interval_boundary'
+            
+            ds = xr.Dataset()
+            ds['V0']  = wm
+            ds['confidence_interval'] = confint
+            ds = ds.assign_coords({'wavelength': [wl,]})
+            wm_list.append(ds)
+            
+            if smoothned:
+                #### TODO: do i use the smoothening? if not make optional!
+                assert(wm.isna().sum() == 0)
+                # new_daterange = pd.date_range(start = wm.index[0], end = wm.index[-1], 
+                #               # periods=1, 
+                #               freq='D')
+                spline = scint.UnivariateSpline(pltdates.date2num(wm.index), wm.values, 
+                                              # s = wm.shape[0] * 20, 
+                                              s = self.daterange2predict.shape[0] * 15,
+                                             )
+            
+                wmsmooth = spline(pltdates.date2num(self.daterange2predict))
+                wmsmooth = pd.Series(wmsmooth, index = self.daterange2predict)
+                    
+                spline = scint.UnivariateSpline(pltdates.date2num(std.index), std.values, 
+                                              # s = wm.shape[0] * 20, 
+                                              s = self.daterange2predict.shape[0] * 15,
+                                             )
+            
+                stdsmooth = spline(pltdates.date2num(self.daterange2predict))
+                stdsmooth = pd.Series(stdsmooth, index = self.daterange2predict)
+            
+            
+                confint = pd.DataFrame({'low':wmsmooth-stdsmooth, 'high':wmsmooth+stdsmooth})
+            
+                wmsmooth.index.name = 'datetime'
+                confint.index.name = 'datetime'
+                confint.columns.name = 'interval_boundary'
+            
+                ds = xr.Dataset()
+            
+                ds['V0']  = wmsmooth
+            
+                ds['confidence_interval'] = confint
+            
+                ds = ds.assign_coords({'wavelength': [wl,]})
+            
+                ds_list.append(ds)
+        
+
+        if smoothned:
+            ds_all = xr.concat(ds_list, 'wavelength')        
+            self._v0rol =   CalibrationPrediction(ds_all)
+        else:
+            wm_all = xr.concat(wm_list, 'wavelength')
+            #### interpolate and extrapolate
+            wm_all = wm_all.interp(datetime = self.daterange2predict,
+                                     method='nearest', 
+                                    kwargs={"fill_value": "extrapolate"})
+           
+            self._v0rol =   CalibrationPrediction(wm_all)
+        
+        return self._v0rol
+    
+    
+    @property
+    def v0prediction(self):
+        """
+        The idea is to have the programm to decide which of the two (gam or roll) to use
+
+        Returns
+        -------
+        None.
+
+        """
+        if isinstance(self._v0, type(None)):
+            if (self.dataset.datetime.values[-1] - self.dataset.datetime.values[0]) / pd.to_timedelta(365, 'days') < 2:
+                self._v0 = self.v0prediction_rolling
+            else:
+                self._v0 = self.v0prediction_gam
+        return self._v0
+        
+    @property
+    def v0prediction_gam(self):
+        if isinstance(self._v0gam, type(None)):
+            self._get_v0_gam()
+        return self._v0gam
+            
+    @property
+    def v0prediction_rolling(self):
+        if isinstance(self._v0rol, type(None)):
+            self._get_v0_rolling()
+        return self._v0rol
+        
+    
 def fit_langley(langley, weighted = True, error_handling = 'skip'):
     """
     Parameters
