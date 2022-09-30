@@ -51,6 +51,7 @@ class DirectNormalIrradiation(object):
         self._tpw = None
         self._aod = None
         self._metdata = None
+        self._od_ozone = None
     
     @property
     def met_data(self):
@@ -195,6 +196,29 @@ class DirectNormalIrradiation(object):
         return self._od_rayleigh
 
     @property
+    def od_ozone(self):
+        if isinstance(self._od_ozone, type(None)):
+            #### read ozon concentration file for particular site and extract data for this day
+            p2f = f'/home/grad/surfrad/aod/ozone/{self.site.abb}_ozone.dat'
+            ozone = atmsrf.read_ozon(p2f)
+            dt = pd.to_datetime(pd.to_datetime(self.raw_data.datetime.values[0]).date())
+            total_ozone = float(ozone.interp(datetime = dt).ozone)
+            
+            #### read spectral function of ozon absorption coeff and interpolate to exact filter wavelength
+            p2f = '/home/grad/surfrad/aod/ozone.coefs'
+            ozone_abs_coef = pd.read_csv(p2f, index_col= 0, sep = ' ', names=['wavelength', 'coeff'])
+            ozone_abs_coef = ozone_abs_coef.to_xarray()
+            
+            ozon2bychannel = ozone_abs_coef.interp(wavelength = self.raw_data.channel_center)
+            ozon2bychannel = ozon2bychannel.drop('wavelength')
+            
+            #### scale abs. coef. to total ozone to get OD_ozone
+            od_ozone = ozon2bychannel * (total_ozone/1000)
+            od_ozone = od_ozone.fillna(0)
+            self._od_ozone = od_ozone.coeff
+        return self._od_ozone
+    
+    @property
     def precipitable_water(self):
         if isinstance(self._tpw, type(None)):
             sitedict = {'Bondville': 'BND', 
@@ -308,7 +332,8 @@ class DirectNormalIrradiation(object):
             odch4 = self.od_co2_ch4_h2o.ch4
             odco2 = self.od_co2_ch4_h2o.co2
             odh2o = self.od_co2_ch4_h2o.h2o_5cm
-            aod = odt - odr - odch4 - odco2 - odh2o
+            odozone = self.od_ozone
+            aod = odt - odr - odch4 - odco2 - odh2o - odozone
             self._aod = aod
             
         return self._aod
