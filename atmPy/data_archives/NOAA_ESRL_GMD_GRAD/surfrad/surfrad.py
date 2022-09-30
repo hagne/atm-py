@@ -558,6 +558,32 @@ def get_mfrsr_filter_responds(serial_no, path2folder = '/nfs/grad/Calibration_fa
     filter_resp = atmcucf.read_mfrsr_cal(p2f_filter_resp)
     return filter_resp
 
+
+def read_ozon(p2f):
+    """
+    This reads the ozon files ({site}_ozone.dat) in /home/grad/surfrad/aod/ozone/
+
+    Parameters
+    ----------
+    p2f : TYPE
+        DESCRIPTION.
+
+    Returns
+    -------
+    ds : TYPE
+        DESCRIPTION.
+
+    """
+    df = _pd.read_csv(p2f, names=['year', 'month','day','epoch', 'ozone'])
+    df.index = df.apply(lambda row: _pd.to_datetime(f'{row.year:04d}{row.month:02d}{row.day:02d}'), axis = 1)
+    df = df.drop(['year', 'month', 'day', 'epoch'], axis=1)
+    df.sort_index(inplace=True)
+    df.index.name = 'datetime'
+    ds = df.to_xarray()
+    ds.ozone.attrs['unit'] = 'dobson'
+    ds.attrs['info'] = "Ozone absorption is accessed from a file that is written by a Perl script that gets daily ozone over the station being processed from NASA TOMS OMI or OMPS.(from documentation in aod_analysis.f)"
+    return ds
+
 def read_sounding(p2f):
     """
     This reads the interpolated functions that John's code uses and which are
@@ -717,7 +743,7 @@ def open_path(path = '/nfs/grad/',
               product = 'aod',
               site = 'bon',
               window = ('2017-01-01', '2017-01-02'),
-              cloud_sceened = False,
+              cloud_sceened = True,
               local2UTC = False,
               perform_header_test = False,
               verbose = False,
