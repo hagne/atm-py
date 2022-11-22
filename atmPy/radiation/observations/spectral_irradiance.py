@@ -52,6 +52,7 @@ class DirectNormalIrradiation(object):
         self._aod = None
         self._metdata = None
         self._od_ozone = None
+        self.path2absorption_correction_ceoff_1625 = '1625nm_absorption_correction_coefficience.nc'
     
     @property
     def met_data(self):
@@ -175,12 +176,12 @@ class DirectNormalIrradiation(object):
         sedistcorr = pd.DataFrame(self.sun_position.sun_earth_distance**2)
         sedistcorr.columns = [0]
         
-        self.tp_V0df = V0df
-        self.tp_sedistcorr = sedistcorr
+        # self.tp_V0df = V0df
+        # self.tp_sedistcorr = sedistcorr
         calib_interp_secorr = V0df.dot(1/sedistcorr.transpose()).transpose()
         calib_interp_secorr.rename({936:940}, axis = 1, inplace=True)
         calib_interp_secorr.columns.name = 'channel'
-        self.tp_calib_interp_secorr = calib_interp_secorr
+        # self.tp_calib_interp_secorr = calib_interp_secorr
         
         raw_data = self.raw_data.direct_normal_irradiation.to_pandas()
         transmission = raw_data/calib_interp_secorr
@@ -231,7 +232,8 @@ class DirectNormalIrradiation(object):
                         'Sioux Falls': 'SXF',
                         'Canaan Valley': 'CVA',
                        }
-
+            
+            #### get path to relevant soundings files
             files = pd.DataFrame()
             datetime = pd.to_datetime(self.raw_data.datetime.values[0])
             for dt in [datetime, datetime + pd.to_timedelta(1, 'day')]:
@@ -245,18 +247,20 @@ class DirectNormalIrradiation(object):
             files.sort_values('p2f', inplace = True)
             
             
-            
-            # soundings = []
             tpwts = []
+            # tpsoundis = []
             for p2f in files.p2f:
                 # pass
             
                 soundi = atmsrf.read_sounding(p2f)
-            
+                # tpsoundis.append({"sounding" : soundi, "fn":p2f})
                 tpwts.append(soundi.precipitable_water.expand_dims({'datetime': [soundi.data.attrs['datetime'],]}))
-            
+                
+            # self.tp_soundi = tpsoundis
             tpw = xr.concat(tpwts, 'datetime')
+            # self.tp_tpw_all_1 = tpw.copy()
             tpw = tpw.assign_coords(site = [sitedict[str(s.values)].lower() for s in tpw.site])
+            # self.tp_tpw_all_2 = tpw.copy()
             tpw = tpw.sel(site = self.raw_data.site)
             tpw = tpw.drop(['site'])
             
@@ -278,18 +282,22 @@ class DirectNormalIrradiation(object):
             filter_batch = ''.join([i for i in fab if not i.isnumeric()]).lower()
             
             # open the lookup dabel for the Optical depth correction
-            correction_info = xr.open_dataset('1625nm_absorption_correction_coefficience.nc')
+            correction_info = xr.open_dataset(self.path2absorption_correction_ceoff_1625)
             
             ds = xr.Dataset()
+            params_dict = {}
             for molecule in ['co2', 'ch4', 'h2o_5cm']:
                 params = correction_info.sel(filter_no = filter_no, batch = filter_batch, molecule = molecule)
-            
+                params_dict[molecule] = params
                 # apply the airmass dependence
                 da = params.OD.interp({'airmass': self.sun_position.airmass})
                 da = da.assign_coords(airmass = self.sun_position.index.values)
                 da = da.rename({'airmass': 'datetime'})
                 da = da.drop(['filter_no', 'molecule', 'batch'])
                 ds[molecule] = da
+                
+            # self.tp_params = params_dict
+            # self.tp_params_interp = ds.copy()
             
             ds = ds.expand_dims({'channel': [1625,]})
             # normalize to the ambiant pressure ... less air -> less absorption, 

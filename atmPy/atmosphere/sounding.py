@@ -26,6 +26,7 @@ class BalloonSounding(object):
     
             for site in self.data.site:
                 ds_sel = self.data.sel(site = site)
+                # ds_sel = ds_sel.dropna('index') # just to double check, this made no difference
                 pressure = ds_sel.pressure * metpy.units.units.hPa
                 dewpoint = ds_sel.dewpoint * metpy.units.units.degC
                 tpw = metpy.calc.precipitable_water(pressure, dewpoint)
