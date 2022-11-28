@@ -1,6 +1,6 @@
 import sys
 
-required_verion = (3,)
+required_verion = (3,7)
 if sys.version_info < required_verion:
     raise ValueError('atm-py needs at least python {}! You are trying to install it under python {}'.format('.'.join(str(i) for i in required_verion), sys.version))
 

@@ -11,14 +11,184 @@ from atmPy.general import vertical_profile as _vertical_profile
 from atmPy.radiation.mie_scattering import bhmie as _bhmie
 # import atmPy.aerosols.size_distribution.sizedistribution as _sizedistribution
 from  atmPy.aerosols.size_distribution import sizedistribution as _sizedistribution
-import warnings as _warnings
+# import warnings as _warnings
 
 
 # Todo: Docstring is wrong
 # todo: This function can be sped up by breaking it apart. Then have OpticalProperties
 #       have properties that call the subfunction on demand
+def _perform_tmatrixcalculations(ds, wl, n, axis_ratio):
+    import pytmatrix.tmatrix
+    import pytmatrix.scatter
+    rs = ds/2 * 1e-3 #radius in um 
+
+    scattcross = _np.zeros(ds.shape[0])
+    for e,r in enumerate(rs):
+        tparticle = pytmatrix.tmatrix.Scatterer(radius=r, wavelength= wl*1e-3, m=n, axis_ratio=axis_ratio)
+        scattcross[e] = (pytmatrix.scatter.sca_xsect(tparticle, h_pol = True) + pytmatrix.scatter.sca_xsect(tparticle, h_pol = False))/2 #this will get the average for both polarizations
+        print('.', end = '')
+
+    out = _pd.DataFrame({'scattering_crossection': scattcross}, index = rs*2)
+    return out
 
 def size_dist2optical_properties(op, sd, aod=False, noOfAngles=100):
+    """
+    !!!Tis Docstring need fixn
+    Calculates the extinction crossection, AOD, phase function, and asymmetry Parameter for each layer.
+    plotting the layer and diameter dependent extinction coefficient gives you an idea what dominates the overall AOD.
+
+    Parameters
+    ----------
+    wavelength: float.
+        wavelength of the scattered light, unit: nm
+    n: float.
+        Index of refraction of the scattering particles
+
+    noOfAngles: int, optional.
+        Number of scattering angles to be calculated. This mostly effects calculations which depend on the phase
+        function.
+
+    Returns
+    -------
+    OpticalProperty instance
+
+    """
+
+    # if not _np.any(sd.index_of_refraction):
+    #     txt = 'Refractive index is not specified. Either set self.index_of_refraction or set optional parameter n.'
+    #     raise ValueError(txt)
+    # if not sd.sup_optical_properties_wavelength:
+    #     txt = 'Please provied wavelength by setting the attribute sup_optical_properties_wavelength (in nm).'
+    #     raise AttributeError(txt)
+
+    sd.parameters4reductions._check_opt_prop_param_exist()
+    wavelength = sd.parameters4reductions.wavelength.value
+    n = sd.parameters4reductions.refractive_index.value
+    mie_result = sd.parameters4reductions.mie_result.value
+    asphericity = sd.parameters4reductions.asphericity.value
+    
+    out = {}
+    sdls = sd.convert2numberconcentration()
+    index = sdls.data.index
+    dist_class = type(sdls).__name__
+
+    if dist_class not in ['SizeDist','SizeDist_TS','SizeDist_LS']:
+        raise TypeError('this distribution class (%s) can not be converted into optical property yet!'%dist_class)
+
+    # determin if refractive index is changing  or if it is constant
+    if isinstance(n, _pd.DataFrame):
+        n_multi = True
+    else:
+        n_multi = False
+    if not n_multi:
+        if isinstance(mie_result, type(None)):
+            # print('do mie', end=' ')
+            if asphericity ==1:
+                mie, angular_scatt_func = _perform_Miecalculations(_np.array(sdls.bincenters / 1000.), wavelength / 1000., n,
+                                                               noOfAngles=noOfAngles)            
+            else:
+                tmatrix = _perform_tmatrixcalculations(sdls.bincenters, wavelength, n, asphericity)
+                mie = tmatrix
+        else:
+            # print('no need for mie', end=' ')
+            if asphericity != 1:
+                assert(False), 'currently only a constant refractive index can be considered for non-spherical particles'
+            mie = mie_result['mie']
+            angular_scatt_func = mie_result['angular_scatt_func']
+
+        out['mie_result'] = {'mie': mie}
+        if asphericity == 1:
+            out['angular_scatt_func'] = angular_scatt_func
+
+    if aod:
+        #todo: use function that does a the interpolation instead of the sum?!? I guess this can lead to errors when layers are very thick, since centers are used instea dof edges?
+        AOD_layer = _np.zeros((len(sdls.layercenters)))
+
+    extCoeffPerLayer = _np.zeros((len(sdls.data.index.values), len(sdls.bincenters)), dtype= _np.float32)
+    scattCoeffPerLayer = _np.zeros((len(sdls.data.index.values), len(sdls.bincenters)), dtype= _np.float32)
+    absCoeffPerLayer = _np.zeros((len(sdls.data.index.values), len(sdls.bincenters)), dtype= _np.float32)
+
+    angular_scatt_func_effective = _pd.DataFrame()
+    asymmetry_parameter_LS = _np.zeros((len(sdls.data.index.values)))
+
+    #calculate optical properties for each line in the dataFrame
+    for i, lc in enumerate(sdls.data.index.values):
+        laydata = sdls.data.iloc[i].values # picking a size distribution (either a layer or a point in time)
+
+        if n_multi:
+            mie, angular_scatt_func = _perform_Miecalculations(_np.array(sdls.bincenters / 1000.), wavelength / 1000., n.iloc[i].values[0],
+                                                               noOfAngles=noOfAngles)
+        scattering_coefficient = _get_coefficients(mie.scattering_crossection, laydata)
+        scattCoeffPerLayer[i] = scattering_coefficient
+        if asphericity == 1:
+            extinction_coefficient = _get_coefficients(mie.extinction_crossection, laydata)
+            absorption_coefficient = _get_coefficients(mie.absorption_crossection, laydata)
+            extCoeffPerLayer[i] = extinction_coefficient
+            absCoeffPerLayer[i] = absorption_coefficient
+        # out['test.extcross'] = mie.extinction_crossection.copy()
+        # out['test.extcoeff'] = extinction_coefficient.copy()
+        # out['test.laydata'] = laydata
+
+            if aod:
+                layerThickness = sdls.layerbounderies[i][1] - sdls.layerbounderies[i][0]
+                AOD_perBin = extinction_coefficient * layerThickness
+                AOD_layer[i] = AOD_perBin.values.sum()
+
+
+            scattering_cross_eff = laydata * mie.scattering_crossection
+    
+            pfe = (laydata * angular_scatt_func).sum(axis=1)  # sum of all angular_scattering_intensities
+    
+            x_2p = pfe.index.values
+            y_2p = pfe.values
+    
+            # limit to [0,pi]
+            y_1p = y_2p[x_2p < _np.pi]
+            x_1p = x_2p[x_2p < _np.pi]
+    
+            y_phase_func = y_1p * 4 * _np.pi / scattering_cross_eff.sum()
+            asymmetry_parameter_LS[i] = .5 * _integrate.simps(_np.cos(x_1p) * y_phase_func * _np.sin(x_1p), x_1p)
+            angular_scatt_func_effective[
+                lc] = pfe * 1e-12 * 1e6  # equivalent to extCoeffPerLayer # similar to  _get_coefficients (converts everthing to meter)
+    
+        if aod:
+            out['AOD'] = AOD_layer[~ _np.isnan(AOD_layer)].sum()
+            out['AOD_layer'] = _pd.DataFrame(AOD_layer, index=sdls.layercenters, columns=['AOD per Layer'])
+            out['AOD_cum'] = out['AOD_layer'].iloc[::-1].cumsum().iloc[::-1]
+
+    extCoeff_perrow_perbin = _pd.DataFrame(extCoeffPerLayer, index=index, columns=sdls.data.columns)
+    scattCoeff_perrow_perbin = _pd.DataFrame(scattCoeffPerLayer, index=index, columns=sdls.data.columns)
+    absCoeff_perrow_perbin = _pd.DataFrame(absCoeffPerLayer, index=index, columns=sdls.data.columns)
+
+    # if dist_class == 'SizeDist_TS':
+    #     out['extCoeff_perrow_perbin'] = timeseries.TimeSeries_2D(extCoeff_perrow_perbin)
+    # if dist_class == 'SizeDist':
+    #     out['extCoeff_perrow_perbin'] = _timeseries.TimeSeries(extCoeff_perrow_perbin)
+    #     out['scattCoeff_perrow_perbin'] = _timeseries.TimeSeries(scattCoeff_perrow_perbin)
+    #     out['absCoeff_perrow_perbin'] = _timeseries.TimeSeries(absCoeff_perrow_perbin)
+    # else:
+    out['extCoeff_perrow_perbin'] = extCoeff_perrow_perbin
+    out['scattCoeff_perrow_perbin'] = scattCoeff_perrow_perbin
+    out['absCoeff_perrow_perbin'] = absCoeff_perrow_perbin
+
+    out['parent_type'] = dist_class
+    out['asymmetry_param'] = _pd.DataFrame(asymmetry_parameter_LS, index=index,
+                                           columns=['asymmetry_param'])
+
+    out['wavelength'] = wavelength
+    out['index_of_refraction'] = n
+    out['bin_centers'] = sdls.bincenters
+    out['bins'] = sdls.bins
+    out['binwidth'] = sdls.binwidth
+    out['distType'] = sdls.distributionType
+    out['angular_scatt_func'] = angular_scatt_func_effective.transpose()
+
+    ### test values
+    # out['mie_curve_ext'] = mie.extinction_crossection
+    # out['mie_inst'] = mie
+    return out
+    
+def size_dist2optical_properties_old(op, sd, aod=False, noOfAngles=100):
     """
     !!!Tis Docstring need fixn
     Calculates the extinction crossection, AOD, phase function, and asymmetry Parameter for each layer.
@@ -60,7 +230,7 @@ def size_dist2optical_properties(op, sd, aod=False, noOfAngles=100):
     if dist_class not in ['SizeDist','SizeDist_TS','SizeDist_LS']:
         raise TypeError('this distribution class (%s) can not be converted into optical property yet!'%dist_class)
 
-    # determin if index of refraction changes or if it is constant
+    # determin if refractive index is changing  or if it is constant
     if isinstance(n, _pd.DataFrame):
         n_multi = True
     else:
@@ -69,9 +239,11 @@ def size_dist2optical_properties(op, sd, aod=False, noOfAngles=100):
         if isinstance(mie_result, type(None)):
             # print('do mie', end=' ')
             mie, angular_scatt_func = _perform_Miecalculations(_np.array(sdls.bincenters / 1000.), wavelength / 1000., n,
-                                                               noOfAngles=noOfAngles)
+                                                               noOfAngles=noOfAngles)            
         else:
             # print('no need for mie', end=' ')
+            # if asphericity != 1:
+            #     assert(False), 'currently only a constant refractive index can be considered for non-spherical particles'
             mie = mie_result['mie']
             angular_scatt_func = mie_result['angular_scatt_func']
 
@@ -416,45 +588,57 @@ class OpticalProperties(object):
         self.distributionType = parent.distributionType
         # self._data_period = self.parent_sizedist._data_period
 
-    @property
-    def extinction_coeff_per_bin(self):
-        self._optical_porperties
-        return self._extinction_coeff_per_bin
 
+
+
+
+    
     @property
     def scattering_coeff_per_bin(self):
-        self._optical_porperties
+        self._scattering_coeff_per_bin = self._optical_porperties['scattCoeff_perrow_perbin']
         return self._scattering_coeff_per_bin
-
+    
+    @property
+    def scattering_coeff(self):
+        self._scattering_coeff = _pd.DataFrame(self.scattering_coeff_per_bin.sum(axis=1), columns=['scatt_coeff_m^1'])
+        return self._scattering_coeff
+    
     @property
     def absorption_coeff_per_bin(self):
-        self._optical_porperties
+        assert(self.parameters.asphericity.value==1), 'only scattering works with assymmetric particles so far. Should not be very hard to implement though!!! fix'
+        self._absorption_coeff_per_bin = self._optical_porperties['absCoeff_perrow_perbin']
         return self._absorption_coeff_per_bin
-
+    
+    @property
+    def absorption_coeff(self):
+        self._absorption_coeff = _pd.DataFrame(self.absorption_coeff_per_bin.sum(axis=1), columns=['abs_coeff_m^1'])
+        return self._absorption_coeff
+    
+    @property
+    def extinction_coeff_per_bin(self):
+        assert(self.parameters.asphericity.value==1), 'only scattering works with assymmetric particles so far. Should not be very hard to implement though!!! fix'
+        self._extinction_coeff_per_bin = self._optical_porperties['extCoeff_perrow_perbin']
+        return self._extinction_coeff_per_bin
+    
+    @property
+    def extinction_coeff(self):
+        self._extinction_coeff = _pd.DataFrame(self.extinction_coeff_per_bin.sum(axis=1), columns=['ext_coeff_m^1'])
+        return self._extinction_coeff
+    
     @property
     def angular_scatt_func(self):
-        self._optical_porperties
+        assert(self.parameters.asphericity.value==1), 'only scattering works with assymmetric particles so far. Should not be very hard to implement though!!! fix'
+        self._angular_scatt_func = self._optical_porperties['angular_scatt_func']
         return self._angular_scatt_func
-
+    
     @property
     def _optical_porperties(self):
+        # assert(False), 'un_comment all the stuff below or even better: put them into each property'
         if not self._optical_porperties_pv:
             data = size_dist2optical_properties(self, self._parent_sizedist)
             self._optical_porperties_pv = data
 
-            ####
-            self._extinction_coeff_per_bin = data['extCoeff_perrow_perbin']
-            self._extinction_coeff = _pd.DataFrame(self._extinction_coeff_per_bin.sum(axis=1), columns=['ext_coeff_m^1'])
-
-            ####
-            self._scattering_coeff_per_bin = data['scattCoeff_perrow_perbin']
-            self._scattering_coeff = _pd.DataFrame(self._scattering_coeff_per_bin.sum(axis=1), columns=['scatt_coeff_m^1'])
-
-            #####
-            self._absorption_coeff_per_bin = data['absCoeff_perrow_perbin']
-            self._absorption_coeff = _pd.DataFrame(self._absorption_coeff_per_bin.sum(axis=1), columns=['abs_coeff_m^1'])
-            ####
-            self._angular_scatt_func = data['angular_scatt_func']
+            # self._angular_scatt_func = data['angular_scatt_func']
 
             ####
             # self.parameters.mie_result = data['mie_result']
@@ -466,20 +650,6 @@ class OpticalProperties(object):
         self._optical_porperties
         return self._mie_result
 
-    @property
-    def absorption_coeff(self):
-        self._optical_porperties
-        return self._absorption_coeff
-
-    @property
-    def extinction_coeff(self):
-        self._optical_porperties
-        return self._extinction_coeff
-
-    @property
-    def scattering_coeff(self):
-        self._optical_porperties
-        return self._scattering_coeff
 
     @property
     def backscattering(self):
