@@ -620,6 +620,7 @@ def calc_mixing_state(growth_modes):
 
 
 def apply_growth2sizedist(sd, gf):
+    assert(False), 'Warning, this function has a problem when the growth is larger than a single bin width, check the function grow_sizedistribution in the sizedistribution function'
     def apply_growth_factor_gf_const(data, gf, bins):
         if gf == 1.:
             return data.copy(), bins.copy()

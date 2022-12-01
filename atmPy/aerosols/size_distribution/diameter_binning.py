@@ -84,6 +84,8 @@ def re_bin(dist, number_of_bins = 50, spaced = 'log', bins = None):
     #             pass
                 new_data[idx_row, idx_col] = (data_row * match_col).sum()
     
+    assert(not np.any(dist.data.isna().values)), 're_bin does not like nan values, make sure dist.data has no nan'
+    disttype = dist.distributionType
     dist = dist.convert2numberconcentration()
 
     # old bins
@@ -112,4 +114,5 @@ def re_bin(dist, number_of_bins = 50, spaced = 'log', bins = None):
 
     dist_new = type(dist)(new_data, bn, 'numberConcentration')
     dist_new.housekeeping = dist.housekeeping
+    dist_new = dist_new._convert2otherDistribution(disttype)
     return dist_new

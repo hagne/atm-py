@@ -1618,36 +1618,56 @@ class SizeDist(object):
     def copy(self):
         return deepcopy(self)
 
-    def extend_bin_range(self, newlimit):
+    def extend_bin_range(self, lower = None, upper = None, raise_uneven_bin_width_error = True, fill_value = 0):
         """Extends the bin range. This will only work if bins are log-equally spaced. Only tested for SizeDist (not for TS or LS). Currently works on the small
         diameter side only ... easy programming will allow for larger diameters too
 
         Parameters
         ----------
-        newlimit: float
+        lower: float
             The new lower diameter limit.
+        upper:
 
         Returns
         -------
         size distribution instance with extra bins. Data filled with nan."""
 
-        self = self.copy()
-        newmin = newlimit
-        lbins = _np.log10(self.bins)
-        lbinsdist = _np.unique(lbins[1:] - lbins[:-1])
-        if lbinsdist.shape[0] != 1:
-            raise ValueError(
-                'The binwidth should be identical thus this value should be one ... programming needed to deal with exceptions')
-        while lbins[0] > _np.log10(newmin):
-            lbins = _np.append(_np.array([lbins[0] - lbinsdist]), lbins)
-            newbins = 10 ** lbins
-            newcenter = (newbins[1] + newbins[0]) / 2.
-            self.data[newcenter] = _np.nan
+        dist = self.copy()
+        lbins = _np.log10(dist.bins)
+        lbinsdist = lbins[1:] - lbins[:-1]
+        mean = _np.mean(lbins[1:] - lbins[:-1])
+        if _np.unique(lbinsdist).shape[0] != 1:
+            smratio = _np.std(lbins[1:] - lbins[:-1]) / mean
+            firstmeanratio = lbinsdist[0] / mean
+            lastmeanratio = lbinsdist[-1] / mean
+            
+            if raise_uneven_bin_width_error:
+                raise ValueError(('The logarithmic bin width varies => unique has lenth larger 1\n'
+                                  f'std/mean = {smratio}\n'
+                                  f'first/mean = {firstmeanratio}\n'
+                                  f'lasst/mean = {lastmeanratio}'
+                                  )) 
+        
+        if not isinstance(lower, type(None)):
+            while lbins[0] > _np.log10(lower):
+                lbins = _np.append(_np.array([lbins[0] - mean]), lbins)
+                newbins = 10 ** lbins
+                newcenter = (newbins[1] + newbins[0]) / 2.
+                dist.data[newcenter] = fill_value
+            dist.data = dist.data.transpose().sort_index().transpose()
+            dist.bins = newbins
+                
+        if not isinstance(upper, type(None)):
+            while lbins[-1] < _np.log10(upper):
+                lbins = _np.append(lbins, _np.array([lbins[-1] + mean]))
+                # self.tp_lbins = lbins
+                newbins = 10 ** lbins
+                newcenter = (newbins[-1] + newbins[-2]) / 2.
+                dist.data[newcenter] = fill_value
+            dist.data = dist.data.transpose().sort_index().transpose()
+            dist.bins = newbins
 
-        self.data = self.data.transpose().sort_index().transpose()
-
-        self.bins = newbins
-        return self
+        return dist
 
     def extrapolate_size_dist(self, newlimit):
         """Extrapolates the size distribution range assuming a nomal distributed aerosol mode. This will only work if bins are log-equally spaced. Only tested for SizeDist (not for TS or LS). Currently works on the small
@@ -1670,8 +1690,31 @@ class SizeDist(object):
         sizedist.data.loc[0, :][_np.isnan(sizedist.data.loc[0, :])] = normal_dist[_np.isnan(sizedist.data.loc[0, :])]
         return sizedist
 
-    def grow_sizedistribution(self, growthfactor):
-        return hygroscopicity.apply_growth2sizedist(self, growthfactor)
+    def grow_sizedistribution(self, growthfactor, extend_diameter_limits = False, raise_particle_loss_error = True):
+        disttype = self.distributionType
+        dist = self.convert2numberconcentration()
+        dist.bins = dist.bins * growthfactor
+        if extend_diameter_limits:
+            upper = None
+            lower = None
+            if growthfactor > 1:
+                upper = self.bins[-1] * growthfactor
+            elif growthfactor < 1:
+                lower = self.bins[0] * growthfactor 
+            else:
+                assert(False), 'serously?'
+                
+            dist = dist.re_bin(bins = self.extend_bin_range(lower = lower, upper = upper).bins)    
+
+        else:
+            self.tp_distprb = dist.copy()
+            dist = dist.re_bin(bins = self.bins)
+        self.tp_dist = dist.copy()
+        if raise_particle_loss_error:
+            assert(dist.particle_number_concentration == self.particle_number_concentration), 'lost particles!! Consider setting extend_diameter_limits to True'
+        # return hygroscopicity.apply_growth2sizedist(self, growthfactor)
+        dist = dist._convert2otherDistribution(disttype)
+        return dist
 
     def save_csv(self, fname, header=True):
         if header:
