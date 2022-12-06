@@ -25,6 +25,10 @@ def _perform_tmatrixcalculations(ds, wl, n, axis_ratio):
     scattcross = _np.zeros(ds.shape[0])
     for e,r in enumerate(rs):
         tparticle = pytmatrix.tmatrix.Scatterer(radius=r, wavelength= wl*1e-3, m=n, axis_ratio=axis_ratio)
+        #### FIXME below is not correct, what you need is a random orientation
+        # of particles, that is of coarse more than just paralle and perpendicular,
+        # but one mor orientation ... there is an option to integrate over all 
+        # orientations, see manual
         scattcross[e] = (pytmatrix.scatter.sca_xsect(tparticle, h_pol = True) + pytmatrix.scatter.sca_xsect(tparticle, h_pol = False))/2 #this will get the average for both polarizations
         print('.', end = '')
 
