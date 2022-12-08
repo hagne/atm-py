@@ -13,6 +13,9 @@ import multiprocessing as mp
 import numpy as np
 import xarray as xr
 import pathlib as pl
+import time
+import pandas as pd
+import os
 
 
 def round_sig(x, sig=2):
@@ -76,9 +79,19 @@ def calculate_optical_properties(return_dict, d,
         print('|', end = '', flush=True)
     return res
 
-def optimize_optical_properties(parent_dict, d, pshape, n_real, n_imag,  verbose = False):
+def optimize_optical_properties(parent_dict, d, pshape, n_real, n_imag,  timeout, verbose = False):
     """Recognizes if t-matrix approximation fails and addopts parameters until
     calculations are successfull, or all attempts fail."""
+    
+    # out = {'scatt': np.nan,
+    #        'diameter': d,
+    #        'pshape': pshape,
+    #        'n_real': n_real,
+    #        'n_imag': n_imag, 
+    #        'status': -1
+    #        }
+    
+    # parent_dict.append(out)
     
     manager = mp.Manager()
     return_dict = manager.dict()
@@ -94,6 +107,7 @@ def optimize_optical_properties(parent_dict, d, pshape, n_real, n_imag,  verbose
     #     continue
     for ddelt in ddeltlist:
         for ndgs in ndgs_list:
+            waskilled = False
             process = mp.Process(target = calculate_optical_properties, 
                                   args = (return_dict,
                                           d,
@@ -104,9 +118,17 @@ def optimize_optical_properties(parent_dict, d, pshape, n_real, n_imag,  verbose
                                           ddelt,
                                           ),
                                 )
+            process.deamon = True
             process.start()
-            process.join()
-            
+            starttime = pd.Timestamp.now()
+            while process.is_alive():
+                time.sleep(.1)
+                elapsed = pd.Timestamp.now() - starttime
+                if elapsed >  pd.to_timedelta(timeout, 'min'):
+                    process.kill()
+                    print('X', end = '')
+                    waskilled = True
+            process.join()          
     
             if np.isnan(return_dict[d]):
                 continue
@@ -117,15 +139,28 @@ def optimize_optical_properties(parent_dict, d, pshape, n_real, n_imag,  verbose
     if verbose:                    
         print(f'{ddelt}', end = ' ')                    
         print(f'{ndgs}', end = ' ')
-    status = int((abs(np.log10(ddelt)) * 100) + ndgs)   
+        
+    if waskilled:
+        status = 0
+    else:
+        status = int((abs(np.log10(ddelt)) * 100) + ndgs)   
     # parent_dict[d] = return_dict[d]
+    # out['scatt'] = 
+           # 'diameter': d,
+           # 'pshape': pshape,
+           # 'n_real': n_real,
+           # 'n_imag': n_imag, 
+    # out['status'] = status
     out = {'scatt': return_dict[d],
            'diameter': d,
            'pshape': pshape,
            'n_real': n_real,
            'n_imag': n_imag, 
-           'status': status}
+           'status': status
+           }
+    
     parent_dict.append(out)
+    # parent_dict.append(out)
     return return_dict[d]
     
 def generate_lut(diameters, pshapes, n_real, n_imag):
@@ -140,19 +175,26 @@ def generate_lut(diameters, pshapes, n_real, n_imag):
     
 if __name__ == "__main__":
     #### settings
-    p2oldin = pl.Path('/home/grad/htelg/projects/uncertainty_paper/lut03/lut03_3_5_1_5_ch1_test.nc')
+    p2oldin = None #pl.Path('/home/grad/htelg/projects/uncertainty_paper/lut03/lut03_3_5_1_5_ch1_test.nc')
     
     p2fld = pl.Path('/home/grad/htelg/projects/uncertainty_paper/lut03')
     p2out = 'lut03_{d_shape}_{ps_shape}_{nr_shape}_{ni_shape}_ch{chunk}.nc'
     no_cpu = 36
     chunksize = no_cpu * 20 #save at the end of every chunk, 
-    iterations_d = 3
     
+    iterations_d = 0
+    iteration_nr = 0 #1
+    iteration_ni = 0 #1
+    iteration_ps = 0 #1
+    
+    timeout = 0.3 #minutes
+    print(f'main pid: {os.getpid()}')
     print(f'no_cpus: {no_cpu}')
     print(f'chunksize: {chunksize}')
     
     assert(p2fld.is_dir())
-    ds_old = xr.open_dataset(p2oldin)
+    if not isinstance(p2oldin, type(None)):
+        ds_old = xr.open_dataset(p2oldin)
     #### ---- limites
     
     #### diamters
@@ -175,7 +217,7 @@ if __name__ == "__main__":
     
     sigma3 = 0.075
     mean = 1.55
-    n_real = get_samplingpoints(mean - sigma3, mean + sigma3, scale='log', round2=3, iteration=1)
+    n_real = get_samplingpoints(mean - sigma3, mean + sigma3, scale='log', round2=3, iteration=iteration_nr)
       
     # For accu!!!!!!!
     # Instead of
@@ -185,14 +227,14 @@ if __name__ == "__main__":
     
     # That means 3 stds are 0.042
     
-    sigma3 = 0.042
-    mean = 1.5
+    # sigma3 = 0.042
+    # mean = 1.5
     
-    n_real = get_samplingpoints(mean - sigma3, mean + sigma3, scale='log', round2=2, iteration=0)
+    # n_real = get_samplingpoints(mean - sigma3, mean + sigma3, scale='log', round2=2, iteration=iteration_nr)
     
     #### refractive index imaginary
     
-    n_imag = get_samplingpoints(0.001, 0.01, scale='log', round2=1, iteration=1)
+    n_imag = get_samplingpoints(0.001, 0.01, scale='log', round2=1, iteration=iteration_ni)
     n_imag[0] = 0
     
     ### particle shape
@@ -200,7 +242,7 @@ if __name__ == "__main__":
     spmin = -5
     spmax = 5
 
-    pshapes = get_samplingpoints(spmin, spmax, scale='lin', round2=3, iteration=1)
+    pshapes = get_samplingpoints(spmin, spmax, scale='lin', round2=3, iteration=iteration_ps)
     
     for e,psi in enumerate(pshapes):
         if psi <0:
@@ -228,49 +270,52 @@ if __name__ == "__main__":
     
 
     #### Merge with previeous dataset
-    ds = xr.merge([ds_old, ds])
-    print('merged with: {p2oldin.name}')
+    
+    if not isinstance(p2oldin, type(None)):
+        ds = xr.merge([ds_old, ds])
+        print('merged with: {p2oldin.name}')
     
     ds_stack = ds.stack(dim = ['diameter', 'pshape', 'n_real', 'n_imag'])
     print(f'stack shape: {ds_stack.status.shape}')
     ds_stack = ds_stack.status[ds_stack.status.isnull()]
     print(f'stack shape w/o nans: {ds_stack.shape}')
+
     
-    #### Split into chunk. At the end of these chunks the data is saved
-    i = 0
+    #### Split into chunk. At the end of these chunks the data is supposed to be saved
+    chunk_idx = 0
     while True:
-        start = i * chunksize
+        start = chunk_idx * chunksize
         if start >= ds_stack.shape[0]:
             break
         print('{',end = '')
-        i += 1
-        end = i * chunksize
+        chunk_idx += 1
+        end = chunk_idx * chunksize
         ds_stack_chunk = ds_stack[start: end]
         
         #### split up into setsthis is the set that is parallized
-        e = 0
-        while True:
-            start = e * no_cpu
-            if start >= ds_stack_chunk.shape[0]:
-                break
-            print('.',end = '')
-            e += 1
-            end = e * no_cpu
-            ds_stack_chunk_sel = ds_stack_chunk[start:end]
-    
-            # assert(False)
-            manager = mp.Manager()
-            res_list = manager.list()
-            subproslist = []
-            for params in ds_stack_chunk_sel.dim:
-                # break
-    
+        # e = 0
+        cpu_batch = {}
+        manager = mp.Manager()
+        res_list = manager.list()
+        for idx,line in enumerate(ds_stack_chunk):
+            cpu_batch[idx] = {'params': line}        
+            # print(f'len cpu_batch: {len(cpu_batch)}')
+            print(f'{idx} ',end = '')
+            if idx == len(ds_stack_chunk)-1: # if this is the last in the ds_stack_chunk don't try to add another
+                pass
+            elif len(cpu_batch) < no_cpu: # add a line until we reach the number of cpus we want to use
+                continue
+            
+            for process_idx in cpu_batch:
+                onecpu = cpu_batch[process_idx]
+                if 'process' in onecpu: #has already a process running
+                    continue
+                params = onecpu['params']
                 d = float(params.diameter)
                 pshape = float(params.pshape)
                 n_r = float(params.n_real)
                 n_i = float(params.n_imag)
-                # if not np.isnan(ds.loc[dict(diameter = d, pshape = pshape, n_real = n_r, n_imag = n_i)].status):
-                #     continue
+                # onecpu['start'] = pd.Timestamp.now()
                 assert(np.isnan(ds.loc[dict(diameter = d, pshape = pshape, n_real = n_r, n_imag = n_i)].status)), 'I would have thought that all status != nan ar removed ?'
                 process = mp.Process(target = optimize_optical_properties, 
                                       args = (res_list,
@@ -278,29 +323,69 @@ if __name__ == "__main__":
                                               pshape,
                                               n_r,
                                               n_i,
+                                              timeout
                                               ),
                                     )
                 process.start()
-                # process.join()
-                subproslist.append(process)
+                onecpu['process'] = process
     
-            [p.join() for p in subproslist]
-    
-            #### assign results to the dataset
-            results = list(res_list)
-            while 1:
-                res = results.pop(0)
-                scatt = res.pop('scatt')
-                status = res.pop('status')
-                ds.scatt_cross_scect.loc[res] = scatt
-                ds.status.loc[res] = status
-                if len(results) == 0:
-                    break
+            # every second or so we join the processes and see if they are still running, if not, we remove them and add new onec in the next cycle
+            # if idx == len(ds_stack_chunk)-1: # if this is the last in the ds_stack_chunk wait untill all processes are finished
+            #     [cpu_batch[i]['process'].join() for i in cpu_batch]
+            else:
+                while 1:
+                    time.sleep(.5)
+                    # [cpu_batch[i]['process'].join(timeout = 0) for i in cpu_batch]
+                    # print('testing')
+                    for i in list(cpu_batch):
+                        pross = cpu_batch[i]['process']
+                        # elapsed = pd.Timestamp.now() - cpu_batch[i]['start']
+                        if not pross.is_alive():
+                            # print(f'{i} is done')
+                            # print(')
+                            pross.join() #this should result in a good cleanup of this process... lets see
+                            cpu_batch.pop(i) 
+                        # elif elapsed > pd.to_timedelta(timeout, 'min'):
+                        #     print('process kill (timeout)')
+                        #     # for cpross in pross.active_children():
+                        #     #     cpross.kill()
+                        #     #     cpross.join()
+                        #     pross.kill() # this will kill the prosses. In the next loop the process will be removed (in no longer alive)
+                        #     # out = {'scatt': return_dict[d],
+                        #     #        'diameter': d,
+                        #     #        'pshape': pshape,
+                        #     #        'n_real': n_real,
+                        #     #        'n_imag': n_imag, 
+                        #     #        'status': status}
+                        else:
+                            # print(f'{i} goning')
+                            pass
+                        
+                    if  idx == len(ds_stack_chunk)-1:
+                        if len(cpu_batch) == 0:
+                            break
+                        else:
+                            continue
+                    elif len(cpu_batch) < no_cpu:
+                        break
+            
+        #### assign results for this chunk to the datasetand save
+        results = list(res_list)
+        while 1:
+            res = results.pop(0)
+            scatt = res.pop('scatt')
+            status = res.pop('status')
+            ds.scatt_cross_scect.loc[res] = scatt
+            ds.status.loc[res] = status
+            if len(results) == 0:
+                break
+            
         p2o_t = p2out.format(d_shape = diameters.shape[0],
-                               ps_shape = pshapes.shape[0],
-                               nr_shape = n_real.shape[0],
-                               ni_shape = n_imag.shape[0],
-                               chunk = i)
+                                    ps_shape = pshapes.shape[0],
+                                    nr_shape = n_real.shape[0],
+                                    ni_shape = n_imag.shape[0],
+                                    chunk = i)
         ds.to_netcdf(p2fld.joinpath(p2o_t))
     print('done')
+
            
