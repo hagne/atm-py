@@ -124,10 +124,12 @@ def size_dist2optical_properties(op, sd, aod=False, noOfAngles=100):
                                                                noOfAngles=noOfAngles)
         scattering_coefficient = _get_coefficients(mie.scattering_crossection, laydata)
         scattCoeffPerLayer[i] = scattering_coefficient
-        if asphericity == 1:
+        # if asphericity == 1:
+        if 'extinction_crossection' in mie:
             extinction_coefficient = _get_coefficients(mie.extinction_crossection, laydata)
-            absorption_coefficient = _get_coefficients(mie.absorption_crossection, laydata)
             extCoeffPerLayer[i] = extinction_coefficient
+        if 'absorption_crossection' in mie:
+            absorption_coefficient = _get_coefficients(mie.absorption_crossection, laydata)
             absCoeffPerLayer[i] = absorption_coefficient
         # out['test.extcross'] = mie.extinction_crossection.copy()
         # out['test.extcoeff'] = extinction_coefficient.copy()
