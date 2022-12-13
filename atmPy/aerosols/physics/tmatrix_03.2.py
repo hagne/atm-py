@@ -68,7 +68,7 @@ def calculate_optical_properties(return_dict, d,
                                    or_pdf = pytmatrix.orientation.uniform_pdf(),
                                  )
     scat = pytmatrix.scatter.sca_xsect(scatterer, 
-                                       # h_pol=True,
+                                       h_pol=False,
                                        )
     res = scat / scale**2
     # results.append(res)
@@ -179,13 +179,26 @@ def generate_lut(diameters, pshapes, n_real, n_imag):
     
 if __name__ == "__main__":
     #### settings
-    p2oldin = pl.Path('/home/grad/htelg/projects/uncertainty_paper/lut03/lut03.2_coarse_257_9_5_5_ch51.nc')
-    p2fld = pl.Path('/home/grad/htelg/projects/uncertainty_paper/lut03')
-    p2out = 'lut03.2_{mode}_{d_shape}_{ps_shape}_{nr_shape}_{ni_shape}_ch{chunk}.nc'
-    no_cpu = 38
-    chunksize = no_cpu * 10 #save at the end of every chunk, 
-    timeout = 180 #minutes  
-    mode = 'coarse'
+
+    server = 'telg'
+    
+    if server == 'tsunami':
+        p2oldin = None #pl.Path('/home/grad/htelg/projects/uncertainty_paper/lut03/lut03.2_coarse_257_9_5_5_ch51.nc')
+        p2fld = pl.Path('/home/grad/htelg/projects/uncertainty_paper/lut03')
+        p2out = 'lut03.2_{mode}_{d_shape}_{ps_shape}_{nr_shape}_{ni_shape}_ch{chunk}.nc'
+        no_cpu = 38
+        chunksize = no_cpu * 10 #save at the end of every chunk, 
+        timeout = 180 #minutes  
+        mode = 'coarse'
+    
+    elif server == 'telg':
+        p2oldin = None #pl.Path('/home/grad/htelg/projects/uncertainty_paper/lut03/lut03.2_coarse_257_9_5_5_ch51.nc')
+        p2fld = pl.Path('/mnt/telg/projects/16_closure_of_arm_data/uncertainties/montecarlo/luts/lut_03.2')
+        p2out = 'lut03.2.1_pol_v_{mode}_{d_shape}_{ps_shape}_{nr_shape}_{ni_shape}_ch{chunk}.nc'
+        no_cpu = 6
+        chunksize = no_cpu * 100
+        timeout = 180
+        mode = 'accu'
     
     if mode == 'coarse':
         iterations_d = 7
@@ -205,11 +218,13 @@ if __name__ == "__main__":
         spmin = -2.5 #5
         spmax = 2.5 #5
         
+        limit_pshape = [0.29,3.5]
+        
     elif mode == 'accu':
         iterations_d = 7
         iteration_nr = 1
         iteration_ni = 1
-        iteration_ps = 1
+        iteration_ps = 2
         
         d_min = 50/1.2
         d_max = 750 * 1.2
@@ -219,13 +234,15 @@ if __name__ == "__main__":
         sigma3 = 0.042
         
         #no imaginary part so far
-        # ni_min = 0.001
-        # ni_max = 0.01
+        ni_min = 0.001
+        ni_max = 0.01
         
         spmin = -2.7
         spmax = 2.7
         
-    limit_pshape = [0.29,3.5]
+        limit_pshape = False
+        
+    
     
     ddeltlist =  [1e-3] # [1e-3, 1e-2, 1e-1, 1, 1e1]                              
     ndgs_list = [2] # [2,3,4,5,6,7,8,9,10,11,12,13,14]
@@ -276,12 +293,12 @@ if __name__ == "__main__":
     # n_real = get_samplingpoints(mean - sigma3, mean + sigma3, scale='log', round2=2, iteration=iteration_nr)
     
     #### refractive index imaginary
-    if mode == 'coarse': 
-        n_imag = get_samplingpoints(ni_min, ni_max, scale='log', round2=1, iteration=iteration_ni)
-        n_imag[0] = 0
+    # if mode == 'coarse': 
+    n_imag = get_samplingpoints(ni_min, ni_max, scale='log', round2=1, iteration=iteration_ni)
+    n_imag[0] = 0
     
-    elif mode == 'accu':
-        n_imag = np.array([0,])
+    # elif mode == 'accu':
+    # n_imag = np.array([0,])
     
     ### particle shape
     
@@ -437,11 +454,12 @@ if __name__ == "__main__":
         if len(results) == 0:
             break
         
-    p2o_t = p2out.format(d_shape = diameters.shape[0],
-                                ps_shape = pshapes.shape[0],
-                                nr_shape = n_real.shape[0],
-                                ni_shape = n_imag.shape[0],
-                                chunk = "_final")
+    p2o_t = p2out.format(mode = mode,
+                         d_shape = diameters.shape[0],
+                        ps_shape = pshapes.shape[0],
+                        nr_shape = n_real.shape[0],
+                        ni_shape = n_imag.shape[0],
+                        chunk = "_final")
     ds.to_netcdf(p2fld.joinpath(p2o_t))
     print('done')
 
