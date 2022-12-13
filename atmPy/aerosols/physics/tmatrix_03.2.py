@@ -179,9 +179,9 @@ def generate_lut(diameters, pshapes, n_real, n_imag):
     
 if __name__ == "__main__":
     #### settings
-    p2oldin = pl.Path('/home/grad/htelg/projects/uncertainty_paper/lut03/lut03.2_coarse_257_9_5_5_ch51.nc')
+    p2oldin = pl.Path('/home/grad/htelg/projects/uncertainty_paper/lut03/lut03.2.2_coarse_257_9_5_5_ch22.nc')
     p2fld = pl.Path('/home/grad/htelg/projects/uncertainty_paper/lut03')
-    p2out = 'lut03.2_{mode}_{d_shape}_{ps_shape}_{nr_shape}_{ni_shape}_ch{chunk}.nc'
+    p2out = 'lut03.2.3_{mode}_{d_shape}_{ps_shape}_{nr_shape}_{ni_shape}_ch{chunk}.nc'
     no_cpu = 38
     chunksize = no_cpu * 10 #save at the end of every chunk, 
     timeout = 180 #minutes  
@@ -225,7 +225,8 @@ if __name__ == "__main__":
         spmin = -2.7
         spmax = 2.7
         
-    limit_pshape = [0.29,3.5]
+    limit_pshape = [0.62, 1.6] #[0.44, 2.2]#[0.29,3.5]
+    limit_d = 1e4
     
     ddeltlist =  [1e-3] # [1e-3, 1e-2, 1e-1, 1, 1e1]                              
     ndgs_list = [2] # [2,3,4,5,6,7,8,9,10,11,12,13,14]
@@ -341,13 +342,17 @@ if __name__ == "__main__":
         res_list = manager.list()
         chunk_idx = 0
         for idx,line in enumerate(ds_stack):
-            cpu_batch[idx] = {'params': line} 
-            
             # older results might still have parameters that I don't longe want to be calculated
             pshape = float(line.pshape)
+            d = float(line.diameter)
             if limit_pshape:
                 if pshape < limit_pshape[0] or pshape > limit_pshape[1]:
                     continue
+            if limit_d:
+                if d > limit_d:
+                    continue
+                
+            cpu_batch[idx] = {'params': line} 
             # print(f'len cpu_batch: {len(cpu_batch)}')
             print(f'{idx} ',end = '')
             if idx == len(ds_stack)-1: # if this is the last in the ds_stack_chunk don't try to add another
@@ -391,7 +396,11 @@ if __name__ == "__main__":
                         print('=+^+= ')#, end = '')
                         for savei in range(chunksize):
                             # print(savei, end = ' ')
-                            res = res_list.pop(0)
+                            
+                            try:
+                                res = res_list.pop(0)
+                            except IndexError: # this should not be possible, but it happened!!
+                                break
                             scatt = res.pop('scatt')
                             status = res.pop('status')
                             ds.scatt_cross_scect.loc[res] = scatt
@@ -437,11 +446,12 @@ if __name__ == "__main__":
         if len(results) == 0:
             break
         
-    p2o_t = p2out.format(d_shape = diameters.shape[0],
-                                ps_shape = pshapes.shape[0],
-                                nr_shape = n_real.shape[0],
-                                ni_shape = n_imag.shape[0],
-                                chunk = "_final")
+    p2o_t = p2out.format(mode = mode,
+                         d_shape = diameters.shape[0],
+                        ps_shape = pshapes.shape[0],
+                        nr_shape = n_real.shape[0],
+                        ni_shape = n_imag.shape[0],
+                        chunk = "_final")
     ds.to_netcdf(p2fld.joinpath(p2o_t))
     print('done')
 
