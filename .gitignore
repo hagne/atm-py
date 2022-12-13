@@ -65,3 +65,4 @@ examples/instruments_ARM-ceilm.ipynb
 .spyproject/config/vcs.ini
 .spyproject/config/vcs.ini
 .spyproject/config/defaults/defaults-vcs-0.2.0.ini
+atmPy/aerosols/physics/nohup.out
