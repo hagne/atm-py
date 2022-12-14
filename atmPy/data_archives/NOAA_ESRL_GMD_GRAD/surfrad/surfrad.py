@@ -320,7 +320,7 @@ def _read_data(fname, UTC = False, header=None):
     df.rename(columns=trans_dict, inplace=True)
     return df
 
-def _read_files(files, verbose, UTC = False, cloud_sceened = True):
+def _read_aod_files(files, verbose, UTC = False, cloud_sceened = True):
 
     if len(files) == 0:
         raise ValueError('no Files to open')
@@ -789,15 +789,15 @@ def open_path(path = '/nfs/grad/',
     """
     
     path = _pl.Path(path)
-    if product == 'aod':
-        path = path.joinpath('surfrad/aod/')
-    elif product == 'albedo':
-        path = path.joinpath('Inst/MFR/SURFRAD/')
         
     if path.is_file():
         files = [path]
         site = path.name[:3]
     else:
+        if product == 'aod':
+            path = path.joinpath('surfrad/aod/')
+        elif product == 'albedo':
+            path = path.joinpath('Inst/MFR/SURFRAD/')
         files = _path2files(path, site, window, product)#, perform_header_test, verbose)
     if test:
         return files
@@ -814,7 +814,7 @@ def open_path(path = '/nfs/grad/',
         if verbose:
             print('File type: AOD')
         assert(_np.all([f.name.split('.')[-1] == 'aod' for f in files])), 'Not all files are of the same type (AOD).'
-        file_content = _read_files(files, verbose, UTC=local2UTC, cloud_sceened=cloud_sceened)   
+        file_content = _read_aod_files(files, verbose, UTC=local2UTC, cloud_sceened=cloud_sceened)   
         data = file_content['data']
         wl_match = file_content['wavelength_match']
         header_first = file_content['header_first']
