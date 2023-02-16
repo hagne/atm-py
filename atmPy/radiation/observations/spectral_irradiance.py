@@ -24,10 +24,15 @@ class DiffuseHorizontalIrradiation(object):
         self.dataset = dataset
 
 class DirectNormalIrradiation(object):
-    def __init__(self, dataset, site = None, langley_fit_settings = None):
+    def __init__(self, dataset, 
+                 site = None, 
+                 langley_fit_settings = None,
+                 calibration_strategy = 'johns',
+                 metdata = 'surfrad'):
+        
         self.raw_data = dataset #this is not exactly raw, it is cosine corrected voltag readings, thus, un-calibrated irradiances
         if isinstance(site, type(None)):
-            assert('site' in dataset.attrs.keys()), 'If site is None, then the dataset has have lat,lon,site, site_name, attributes'
+            assert('site' in dataset.attrs.keys()), 'If site is None, then the dataset has to have lat,lon,site, site_name, attributes'
             self.site = atmms.Station(lat= dataset.attrs['site_latitude'], 
                                       lon = dataset.attrs['site_longitude'], 
                                       alt = dataset.attrs['site_elevation'], 
@@ -36,8 +41,8 @@ class DirectNormalIrradiation(object):
         else:
             self.site = site
         self.langley_fit_settings = langley_fit_settings
-        self.settings_calibration = 'johns'
-        self.settings_metdata = 'surfrad'
+        self.settings_calibration = calibration_strategy #
+        self.settings_metdata = metdata
         self._sun_position = None
         self._am = None
         self._pm = None
@@ -93,15 +98,20 @@ class DirectNormalIrradiation(object):
         return pt_interp
             
             
-    #### TODO: New/changed, make it work!
-    # this is more like apply calibration -> Make this a function that sets the self._transmission property
     def _apply_calibration_sp02(self):
-        # assert(False), 'work to be done here'
-        #### 
+        """
+        Loads the calibration files and applies by interpolation.
+
+        Returns
+        -------
+        None.
+
+        """
         calibrations = atmlangcalib.load_calibration_history()
-        cal = calibrations[int(self.raw_data.serial_no.values)]
+        cal = calibrations[int(self.raw_data.attrs['serial_no'])]
+        self.calibration_inst = cal
         # use the mean and only the actual channels, other channels are artefacts
-        cal = cal.results['mean'].loc[:,self.raw_data.channle_wavelengths.values].sort_index()
+        cal = cal.results['mean'].loc[:,self.raw_data.channel_center.values].sort_index()
     
         #### interpolate and resample calibration (V0s)
         dt = self.raw_data.datetime.to_pandas()
@@ -111,8 +121,8 @@ class DirectNormalIrradiation(object):
         calib_interp_secorr = calib_interp.divide(self.sun_position.sun_earth_distance**2, axis = 0)
         
         #### match channels for operation
-        channels = self.raw_data.channle_wavelengths.to_pandas()
-        raw_data = self.raw_data.raw_data.to_pandas().rename(columns = channels)
+        channels = self.raw_data.channel_center.to_pandas()
+        raw_data = self.raw_data.direct_normal_irradiation.to_pandas().rename(columns = channels)
         raw_data.columns.name = 'wl'
         
         #### get transmission
@@ -351,7 +361,10 @@ class DirectNormalIrradiation(object):
         if isinstance(self._transmission, type(None)):
             if self.settings_calibration == 'johns':
                 self._apply_calibration_johns()
-            # assert(False), 'apply a langley calibration first'
+            elif self.settings_calibration == 'sp02':
+                self._apply_calibration_sp02()
+            else:
+                assert(False), f'Unknown calibration strategy - {self.settings_calibration}'
             if 0:
                 #### Deprecated!!! below is the old sp02 retrieval, remove when sp02 retrieval is adapted
                 #### load calibrations

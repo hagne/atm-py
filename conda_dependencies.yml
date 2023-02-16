@@ -17,5 +17,6 @@ dependencies:
 - ephem
 - python-pptx
 - pysolar
+- metpy
 #satellite retrievals
 # - pyquery

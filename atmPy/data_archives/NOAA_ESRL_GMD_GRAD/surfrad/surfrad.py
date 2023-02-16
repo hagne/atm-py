@@ -395,7 +395,7 @@ def _read_aod_files(files, verbose, UTC = False, cloud_sceened = True):
 
     return out
 
-class Surfrad_AOD(_column_optical_properties.AOD_AOT):
+class Surfrad_AOD(_column_optical_properties.AOD_AOT_20221216):
     pass
 #     def __init__(self, lat, lon, elevation = 0, name = None, name_short = None, timezone = 0):
 #         self._aot = None
@@ -743,7 +743,7 @@ def open_path(path = '/nfs/grad/',
               product = 'aod',
               site = 'bon',
               window = ('2017-01-01', '2017-01-02'),
-              cloud_sceened = True,
+              cloud_sceened = False,
               local2UTC = False,
               perform_header_test = False,
               verbose = False,

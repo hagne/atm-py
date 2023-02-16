@@ -5,18 +5,18 @@ from atmPy.radiation import solar as _solar
 from atmPy.general import timeseries as _timeseries
 import atmPy.aerosols.physics.optical_properties as _atmop
 import atmPy.aerosols.size_distribution.sizedistribution as _atmsd
-import multiprocessing as _mp
+# import multiprocessing as _mp
 import xarray as _xr
 import matplotlib.pyplot as _plt
 import scipy as _sp
 import pathlib as _pl
-
+import xarray as xr
 
 _colors = _plt.rcParams['axes.prop_cycle'].by_key()['color']
 
 class AOD_AOT(object):
     def __init__(self,
-                 AOD = None,
+                 data = None,
                  wavelengths = None,
                  site = None,
                  lat = None,
@@ -52,7 +52,20 @@ class AOD_AOT(object):
 
         self._aot = None
         # self._aod = None
-        self.AOD = AOD
+        data = data.copy()
+        
+        if isinstance(data, xr.core.dataarray.DataArray):
+            ds = xr.Dataset({'aod': data})
+        elif isinstance(data, xr.core.dataset.Dataset):
+            ds = data
+        elif isinstance(data, _pd.core.frame.DataFrame):
+            data.columns.name = 'channel'
+            data.index.name = 'datetime'
+            ds = xr.Dataset({'aod': data})
+        else:
+            raise TypeError(f'"{type(data).__name__}" is an invalid type for argument data. It should be: xr.Dataset, xr.DataArray, or pd.DataFrame')
+        
+        self.dataset = ds
         self._sunposition = None
         self._timezone = timezone
         self.wavelengths = wavelengths
@@ -78,45 +91,45 @@ class AOD_AOT(object):
             self._sunposition = _timeseries.TimeSeries(self._sunposition)
         return self._sunposition
 
-    @property
-    def AOT(self):
-        if not self._aot:
-            if not self._aod:
-                raise AttributeError('Make sure either AOD or AOT is set.')
-            aot = self.AOD.data.mul(self.sun_position.data.airmass, axis='rows')
-            aot.columns.name = 'AOT@wavelength(nm)'
-            aot = _timeseries.TimeSeries(aot)
-            self._aot = aot
-        return self._aot
+    # @property
+    # def AOT(self):
+    #     if not self._aot:
+    #         if not self._aod:
+    #             raise AttributeError('Make sure either AOD or AOT is set.')
+    #         aot = self.AOD.data.mul(self.sun_position.data.airmass, axis='rows')
+    #         aot.columns.name = 'AOT@wavelength(nm)'
+    #         aot = _timeseries.TimeSeries(aot)
+    #         self._aot = aot
+    #     return self._aot
 
-    @ AOT.setter
-    def AOT(self,value):
-        self._aot = value
-        self._aot.data.columns.name = 'AOT@wavelength(nm)'
-        self._timestamp_index = self._aot.data.index
+    # @ AOT.setter
+    # def AOT(self,value):
+    #     self._aot = value
+    #     self._aot.data.columns.name = 'AOT@wavelength(nm)'
+    #     self._timestamp_index = self._aot.data.index
 
-    @property
-    def AOD(self):
-        if not self._aod:
-            if not self._aot:
-                raise AttributeError('Make sure either AOD or AOT is set.')
-            aod = self.AOT.data.div(self.sun_position.data.airmass, axis='rows')
-            aod.columns.name = 'AOD@wavelength(nm)'
-            aod = _timeseries.TimeSeries(aod)
-            self._aod = aod
-        return self._aod
+    # @property
+    # def AOD(self):
+    #     if not self._aod:
+    #         if not self._aot:
+    #             raise AttributeError('Make sure either AOD or AOT is set.')
+    #         aod = self.AOT.data.div(self.sun_position.data.airmass, axis='rows')
+    #         aod.columns.name = 'AOD@wavelength(nm)'
+    #         aod = _timeseries.TimeSeries(aod)
+    #         self._aod = aod
+    #     return self._aod
 
-    @ AOD.setter
-    def AOD(self,value):
-        if isinstance(value, type(None)):            
-            self._aod = value
-            return
-        elif isinstance(value, _pd.DataFrame):
-            value = _timeseries.TimeSeries(value)
+    # @ AOD.setter
+    # def AOD(self,value):
+    #     if isinstance(value, type(None)):            
+    #         self._aod = value
+    #         return
+    #     elif isinstance(value, _pd.DataFrame):
+    #         value = _timeseries.TimeSeries(value)
             
-        self._aod = value
-        self._aod.data.columns.name = 'AOD@wavelength(nm)'
-        self._timestamp_index = self._aod.data.index
+    #     self._aod = value
+    #     self._aod.data.columns.name = 'AOD@wavelength(nm)'
+    #     self._timestamp_index = self._aod.data.index
 
     @property
     def ang_exp(self):
@@ -166,8 +179,13 @@ class AOD_AOT(object):
         c2 = column_2
         c1ex = wavelength_1
         c2ex = wavelength_2
-        out = - _np.log10(self.AOD.data.loc[:, c1] / self.AOD.data.loc[:, c2]) / _np.log10(c1ex / c2ex)
-        out = _timeseries.TimeSeries(_pd.DataFrame(out))
+        
+        # out = - _np.log10(self.AOD.data.loc[:, c1] / self.AOD.data.loc[:, c2]) / _np.log10(c1ex / c2ex)
+        aod1 = self.dataset.aod.sel(channel = c1)
+        aod2 = self.dataset.aod.sel(channel = c2)
+        out = - _np.log(aod1/aod2) / _np.log(c1ex/c2ex)
+
+        # out = _timeseries.TimeSeries(_pd.DataFrame(out))
         setattr(self, 'ang_exp_{}_{}'.format(column_1, column_2), out)
         return out
 
@@ -1620,3 +1638,285 @@ class AerosolAndCloudDetection(object):
         df[df_no_consec <= min_consec_valid] = 1.
         return df
     #         leg = a.legend(fontsize = 'small', title = 'channel (nm)')
+    
+    
+class AOD_AOT_20221216(object):
+    """This is an older version that might still be used (subclassed) by the surfrad module"""
+    def __init__(self,
+                 AOD = None,
+                 wavelengths = None,
+                 site = None,
+                 lat = None,
+                 lon = None,
+                 elevation = 0,
+                 name = None,
+                 name_short = None,
+                 timezone = 0,
+                 site_info = None):
+        """This class is for column AOD or AOT meausrements at a fixed site. This class is most usfull for aerosol
+        optical properties from a CIMEL (AERONET) or a MFRSR (SURFRAD)
+
+        Parameters
+        ----------
+        wavelengths: dict
+            Column names are often not reflecting the precise wavelength in the channel, but the typical wavelength.
+            The dictionary translates column names to exact wavelength. If AOD is calculated and wavelengths is set
+            wavelengths from this will be used instead of column names.
+        site: atmPy.general.station instance
+            If site is given the remaining site relevant kwargs (lat, lon, elevation, name, name_short) are ignored.
+        lat, lon: location of site
+            lat: deg north, lon: deg east
+            e.g. lat = 40.05192, lon = -88.37309 for Bondville, IL, USA
+        elevation: float
+            elevation of site in meter (not very importent parameter, keeping it at zero is usually fine ...
+            even vor Boulder
+        name, name_short: str
+            name and abbriviation of name for site
+        timezone: int
+            Timezon in houres, e.g. Bondville has the timezone -6.
+            Note, this can lead to some confusion if the data is in UTC not in local time.... this needs to be improved
+            ad some point"""
+
+        self._aot = None
+        # self._aod = None
+        self.AOD = AOD
+        self._sunposition = None
+        self._timezone = timezone
+        self.wavelengths = wavelengths
+
+        if not isinstance(site, type(None)):
+            self.site = site
+        elif not isinstance(lat, type(None)):
+            self.site = _measurement_site.Station(lat, lon, elevation, name=name, abbreviation=name_short, info = site_info)
+
+
+        self.cloudmask = CloudDetection(self)
+        self.aerosolmask = AerosolAndCloudDetection(self)
+
+    @property
+    def sun_position(self):
+        if not self._sunposition:
+            if self._timezone != 0:
+                date = self._timestamp_index +  _pd.to_timedelta(-1 * self._timezone, 'h')
+            else:
+                date = self._timestamp_index
+            self._sunposition = _solar.get_sun_position(self.site.lat, self.site.lon, date)
+            self._sunposition.index = self._timestamp_index
+            self._sunposition = _timeseries.TimeSeries(self._sunposition)
+        return self._sunposition
+
+    @property
+    def AOT(self):
+        if not self._aot:
+            if not self._aod:
+                raise AttributeError('Make sure either AOD or AOT is set.')
+            aot = self.AOD.data.mul(self.sun_position.data.airmass, axis='rows')
+            aot.columns.name = 'AOT@wavelength(nm)'
+            aot = _timeseries.TimeSeries(aot)
+            self._aot = aot
+        return self._aot
+
+    @ AOT.setter
+    def AOT(self,value):
+        self._aot = value
+        self._aot.data.columns.name = 'AOT@wavelength(nm)'
+        self._timestamp_index = self._aot.data.index
+
+    @property
+    def AOD(self):
+        if not self._aod:
+            if not self._aot:
+                raise AttributeError('Make sure either AOD or AOT is set.')
+            aod = self.AOT.data.div(self.sun_position.data.airmass, axis='rows')
+            aod.columns.name = 'AOD@wavelength(nm)'
+            aod = _timeseries.TimeSeries(aod)
+            self._aod = aod
+        return self._aod
+
+    @ AOD.setter
+    def AOD(self,value):
+        if isinstance(value, type(None)):            
+            self._aod = value
+            return
+        elif isinstance(value, _pd.DataFrame):
+            value = _timeseries.TimeSeries(value)
+            
+        self._aod = value
+        self._aod.data.columns.name = 'AOD@wavelength(nm)'
+        self._timestamp_index = self._aod.data.index
+
+    @property
+    def ang_exp(self):
+        return self._ang_exp
+
+    @ang_exp.setter
+    def ang_exp(self, value):
+        self._ang_exp = value
+
+    def aod2angstrom_exponent(self, column_1=500, column_2=870,
+                              use_wavelength_from_column_names = None,
+                              # wavelength_1=None, wavelength_2=None
+                              ):
+        """
+        Calculates the angstrom exponents based on the AOD data.
+
+        Parameters
+        ----------
+        column_1: type of column name
+            column name of one of the two points used for the AOD calculation
+        column_2: type of column name
+            column name of the other of the two points used for the AOD calculation
+        use_wavelength_from_column_names: bool [None]
+            When the wavelength dictionary is set. Wavelengths from the dictionary are used instead of column names.
+            Set this kwarg to True to ignore the wavelengths dictionary and use column names instead.
+
+        Parameters (deprecated)
+        -----------------------
+        wavelength_1: float
+            if the column name of column_1 is not accurate enough set the wavelenth used to calculate AOD here.
+        wavelength_2: float
+            as above for column_2
+
+        Returns
+        -------
+
+        """
+        if isinstance(self.wavelengths, type(None)) or use_wavelength_from_column_names:
+            # if wavelength_1 == None:
+            wavelength_1 = column_1
+            # if wavelength_2 == None:
+            wavelength_2 = column_2
+        else:
+            wavelength_1 = self.wavelengths[column_1]
+            wavelength_2 = self.wavelengths[column_2]
+        c1 = column_1
+        c2 = column_2
+        c1ex = wavelength_1
+        c2ex = wavelength_2
+        out = - _np.log10(self.AOD.data.loc[:, c1] / self.AOD.data.loc[:, c2]) / _np.log10(c1ex / c2ex)
+        out = _timeseries.TimeSeries(_pd.DataFrame(out))
+        setattr(self, 'ang_exp_{}_{}'.format(column_1, column_2), out)
+        return out
+
+    def cal_deviations(arglist):
+        """
+        currently not working, fix it if needed
+
+        Parameters
+        ----------
+        arglist : TYPE
+            DESCRIPTION.
+
+        Returns
+        -------
+        diff : TYPE
+            DESCRIPTION.
+
+        """
+        # [idx, aod], [idxt, wls] = arglist
+
+        # assert (len(wls) == len(aod))
+        # sfr.ang_exp.data.loc[idx, :]
+        # fitres = sp.stats.linregress(np.log10(wls.loc[[500, 870]]), np.log10(aod.loc[[500, 870]]))
+        # ff = lambda x: 10 ** (np.log10(x) * fitres.slope + fitres.intercept)
+        # aod_fit = ff(wls)
+        # diff = (aod - aod_fit)
+        # return diff
+
+    def calculate_deviation_from_angstrom(sfr, wl1=500, wl2=870):
+        """
+        currently not working, fix it if needed
+        ----------
+        wl1
+        wl2
+
+        Returns
+        -------
+
+        """
+        # pool = _mp.Pool(6)
+
+        # out = pool.map(cal_deviations, zip(sfr.AOD.data.iterrows(), sfr.wavelength_matching_table.data.iterrows()))
+
+        # # make dataframe from output
+        # df = pd.concat(out, axis=1)
+        # df = df.transpose()
+
+        # # xarray does not like timezone ... remove it
+        # df.index = pd.to_datetime(df.index.astype(str).str[:-6])
+
+        # # xarray does not like integer column ames
+        # df.columns = df.columns.astype(str)
+
+        # # other stuff
+        # df.sort_index(inplace=True)
+        # df.index.name = 'datetime'
+        # return df
+        
+    def derive_size_distribution(self, width_of_aerosol_mode = 0.15, all_valid = True, verbose = True, test = False):
+        """
+        get the size distribution
+
+        Parameters
+        ----------
+        width_of_aerosol_mode : TYPE, optional
+            DESCRIPTION. The default is 0.15.
+        all_valid : TYPE, optional
+            All AOD values need to be valid for a retrieval to be derived. Otherwise fit results are invalid. The default is True.
+        verbose : TYPE, optional
+            DESCRIPTION. The default is True.
+        test : TYPE, optional
+            DESCRIPTION. The default is False.
+
+        Returns
+        -------
+        TYPE
+            DESCRIPTION.
+
+        """
+        assert(all_valid), 'all_valid needs to be true, programming required if you insist on False.'
+        dist_df = _pd.DataFrame()
+        fit_res_df = _pd.DataFrame()
+        count_down = self.AOD.data.shape[0]
+        if verbose:
+            print(f'Starting to make inversion for {count_down} cases.')
+        for ts, test_dp in self.AOD.data.iterrows():
+            if verbose:
+                print(test_dp)
+            
+            inv = _atmop.Inversion2SizeDistribution(test_dp, width_of_aerosol_mode = width_of_aerosol_mode, verbose=verbose)
+            inv.fit_cutoff = 1e-8
+        # inv.start_conditions.size_distribution.convert2dVdlogDp().plot()
+        # inv.fit_result.size_distribution.convert2dVdlogDp().plot()
+        
+        # [0.0015510533, 0.0014759477, 0.0012328415, 0.00094773073, 0.00032288354]
+        # inv.start_conditions.extinction_coeff
+        
+            inv.fit_result.size_distribution.data.index = [ts]
+            sdt = inv.fit_result.size_distribution.data.copy()
+            # dist_df = dist_df.append(sdt)
+            dist_df =_pd.concat([dist_df, sdt])
+        
+            data = _np.array([_np.append(inv.fit_result.args, inv.fit_result.sigma)])
+            # fit_res_df = fit_res_df.append(_pd.DataFrame(data, columns=['pos1', 'amp1', 'pos2', 'amp2', 'sigma'], index = [ts]))
+            dft = _pd.DataFrame(data, columns=['pos1', 'amp1', 'pos2', 'amp2', 'sigma'], index = [ts])
+            fit_res_df = _pd.concat([fit_res_df, dft])
+            count_down -=1
+            print(count_down, end = ', ')
+            
+            if test:
+                break
+        
+        
+        
+        distt = inv.fit_result.size_distribution.distributionType
+        bins = inv.fit_result.size_distribution.bins
+        # dist_ts = sd.SizeDist_TS(dist_df, bins, distt)
+        dist_ts = _atmsd.SizeDist_TS(dist_df, bins, distt, ignore_data_gap_error=True)
+        out= {}
+        out['dist_ts'] = dist_ts
+        out['last_inv_inst'] = inv
+        fit_res_df.index.name = 'Time'
+        fit_res_df.columns.name = 'fit_params'
+        out['fit_res'] = fit_res_df
+        return InversionSizeDistribution(self, dist_ts, fit_res_df, width_of_aerosol_mode)

@@ -34,6 +34,28 @@ class NetworkStations(object):
     def __iter__(self):
         for st in self._stations_list:
             yield st
+            
+    def find_site(self, site):
+        """
+        Searches for "site" in site abbriviations (programming requrired if seach in other keys is desired) and returns the site instance
+
+        Parameters
+        ----------
+        site : TYPE
+            DESCRIPTION.
+
+        Returns
+        -------
+        res : TYPE
+            DESCRIPTION.
+
+        """
+        res = [si for si in self._stations_list if site.upper() in si.abb]
+        if len(res) == 0:
+            res = [si for si in self._stations_list if site.upper() in si.abb]
+            
+        assert(len(res) != 0), 'not found'
+        return res[0]
 
 class SubNetworks(object):
     def __init__(self):
@@ -302,6 +324,12 @@ class Station(object):
         self.name = self.name.strip().replace(',','_').replace('(','_').replace(')','_').strip('_')
         
         self._time_zone = None
+        
+    def __repr__(self):
+        txt = (f'name: {self.name} ({self.abb})\n'
+               f'lat/lon/alt: {self.lat}/{self.lon}/{self.alt}')
+        # print(txt)
+        return txt
     
     @property
     def time_zone(self, date ='now'):

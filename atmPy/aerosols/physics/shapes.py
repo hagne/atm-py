@@ -9,6 +9,117 @@ import numpy as np
 import xarray as xr
 import scipy as sp
 
+class EquivalentDiameters(object):
+    """ Class that handles converstion of various equivalent particle diameters."""
+    def __init__(self,
+                 diameter = None,
+                 diameter_equivalent = None, 
+                 density_measured = None, 
+                 density_calibrated = None, 
+                 dynamic_shape_factor = None, 
+                 shape_parameter = None, 
+                 axis_ratio = None, 
+                 ):
+        self._reset()
+        if diameter_equivalent == 'volume':
+            self._dvol = diameter
+        elif diameter_equivalent == 'aerodynamic':
+            self._daero = diameter
+        elif diameter_equivalent == 'mobility':
+            self._dmobil = diameter
+        elif isinstance(diameter_equivalent, type(None)):
+            if not isinstance(diameter, type(None)):
+                self._dvol = diameter
+        else:
+            raise ValueError(f'{diameter_equivalent} is not a valid option, chose from: volume, aerodynamic, mobility.')
+          
+            
+        # self.diameter_equivalent =diameter_equivalent
+        self.density_measured = density_measured
+        self.density_calibrated = density_calibrated
+        self.dynamic_shape_factor = dynamic_shape_factor 
+        self.shape_parameter = shape_parameter
+        self.axis_ratio = axis_ratio
+        
+        assert(sum([not isinstance(b, type(None)) for b in [dynamic_shape_factor, shape_parameter, axis_ratio]]) <=1), 'Only one of the particle shape discribing argurments (dynamic_shape_factor, shape_parameter, axis_ratio) can be set.'
+    
+    def _reset(self):
+        self._dvol = None
+        self._daero = None
+        self._dmobil = None
+    
+    @property
+    def volume_diameter(self):
+        if isinstance(self._dvol, type(None)):
+            if not isinstance(self._daero, type(None)):
+                self._dvol = self._daero * self._d_aps2d_vol()
+            elif not isinstance(self._dmobil, type(None)):
+                self._dvol = self._dmobil * self._dmobil2dvol()
+        return self._dvol
+    
+    @volume_diameter.setter
+    def volume_diameter(self, value):
+        self._reset()
+        self._dvol = value
+        return
+    
+    @property
+    def aerodynamic_diameter(self):
+        if isinstance(self._daero, type(None)):
+            if not isinstance(self._dvol, type(None)):
+                self._daero = self._dvol / self._d_aps2d_vol()
+            elif not isinstance(self._dmobil, type(None)):
+                assert(False), 'not implemented yet!!'
+        return self._daero
+    
+    @aerodynamic_diameter.setter
+    def aerodynamic_diameter(self, value):
+        self._reset()
+        self._daero = value
+        return
+    
+    @property
+    def mobility_diameter(self):
+        if isinstance(self._dmobil, type(None)):
+            if not isinstance(self._daero, type(None)):
+                assert(False), 'not implemented yet!!'
+            elif not isinstance(self._dvol, type(None)):
+                assert(False), 'not implemented yet!!'
+        return self._dmobil
+    
+    @mobility_diameter.setter
+    def mobility_diameter(self, value):
+        self._reset()
+        self._dmobil = value
+        return
+    
+    def _dmobil2dvol(self):
+        xsi = self.dynamic_shape_factor
+        assert(not isinstance(xsi, type(None))), 'dynamic_shape_factor needs to be set.'
+        return 1/xsi
+    
+    def _d_aps2d_vol(self):#, roh_p = 2, roh_0 = 2, xsi = 1):
+        """
+        Provides a correction factor to convert the aerodynamic diameter to the volume equivalent diameter
+        
+        Parameters
+        ----------
+        roh_p: actual particles density
+        roh_0: calibration density (either the acuatl calibration material, e.g. PSL, but more often then not an additional adjustem to a more realistic density, e.g. 2 in case of SGP
+        xsi: dynamic shape factor
+        
+        Returns
+        -------
+        correction factor for volume equivalent diameter
+        """
+        roh_0 = self.density_calibrated
+        roh_p = self.density_measured
+        xsi = self.dynamic_shape_factor
+        assert(not isinstance(roh_0, type(None))), 'density_calibrated needs to be set.'
+        assert(not isinstance(roh_p, type(None))), 'density_measured needs to be set.'
+        assert(not isinstance(xsi, type(None))), 'dynamic_shape_factor needs to be set.'
+        c = np.sqrt((roh_0 * xsi) / roh_p)
+        return c
 
 def _load_davies1979():
     """
