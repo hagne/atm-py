@@ -13,6 +13,8 @@ import atmPy.radiation.observations.langley_calibration as atmlangcalib
 import atmPy.radiation.rayleigh.lab as atmraylab
 import pathlib as pl
 import atmPy.data_archives.NOAA_ESRL_GMD_GRAD.surfrad.surfrad as atmsrf
+import atmPy.data_archives.NOAA_ESRL_GMD_GRAD.baseline.baseline as atmbl
+
 import copy
 
 class GlobalHorizontalIrradiation(object):
@@ -63,12 +65,25 @@ class DirectNormalIrradiation(object):
     def met_data(self):
         if isinstance(self._metdata, type(None)):
             if self.settings_metdata == 'surfrad':
-                self._metdata = self._get_surface_met_data()
+                self._metdata = self._get_surfrad_met_data()
+            elif self.settings_metdata == 'baseline':
+                self._metdata = self._get_baseline_met_data()
+                
             else:
                 assert(False), 'moeeeep!'
         return self._metdata
     
-    def _get_surface_met_data(self):
+    def _get_baseline_met_data(self):
+        site = self.raw_data.attrs['site']
+        dtf = pd.to_datetime(self.raw_data.datetime.values[0])
+        p2metfld_base = '/nfs/iftp/aftp/g-rad/baseline/'
+        p2metfld_base = pl.Path(p2metfld_base)
+        p2f = p2metfld_base.joinpath(f'{site}/{dtf.year}/{site}{str(dtf.year)[2:]}{dtf.day_of_year:03d}.dat')
+        ds = atmbl.read(p2f)
+        pt_interp = ds[['pressure','temp']].interp({'datetime':self.raw_data.datetime})
+        return pt_interp
+    
+    def _get_surfrad_met_data(self):
         """
         Loads the surfrad data (from my netcdf version), interpolates and adds 
         to the dataset. Location is currently hardcoded, this will likey cause problems sooner or later
