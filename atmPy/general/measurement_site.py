@@ -8,7 +8,7 @@ import os as _os
 import numpy as _np
 import pandas as _pd
 from atmPy.radiation import solar as _solar
-import datetime as _datetime
+# import datetime as _datetime
 import timezonefinder as _tzf
 import pytz as _pytz
 # The following is to ensure that one can use as large of an image as one desires
@@ -20,7 +20,7 @@ except ModuleNotFoundError:
 from matplotlib import path as _path
 try:
     import geopy as _geopy
-    import geopy.distance as _gd #otherwise distance will not be available
+    # import geopy.distance as _gd #otherwise distance will not be available
 except ModuleNotFoundError:
     warnings.warn('geopy not installed. You might encounter some functionality limitations.')
 import plt_tools as _plt_tools

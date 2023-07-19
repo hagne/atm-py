@@ -1,1 +1,1 @@
-from atmPy.data_archives.aeronet.api import read_file
+# from atmPy.data_archives.aeronet.api import read_file

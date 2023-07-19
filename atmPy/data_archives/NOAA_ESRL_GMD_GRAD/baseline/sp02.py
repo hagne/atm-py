@@ -50,13 +50,36 @@ class BaselineDatabase(object):
         None.
 
         """
-    #     site = 'mlo'
-    #     line = 121
-#         date = df_all.index[0]
+        fail = False
         lt_site_line = self.line_table[np.logical_and(self.line_table.site == site, self.line_table.line == line)]
-        previous_installs = lt_site_line[lt_site_line.install <= date]
-        if previous_installs.shape[0] == 0:
-            txt = f'Instrument not installed (line:{line}, site: {site}, date: {date}'
+        # previous_installs = lt_site_line[lt_site_line.install <= date]
+        
+        # last install of an instrument at that site on that line
+        diff = (lt_site_line.install - date)         
+        diff_last = diff[(diff/pd.to_timedelta(1, 'd')) < 0]
+        if len(diff_last) == 0:
+            txt = f'Instrument not installed at site and line (line:{line}, site: {site}, date: {date})'
+            fail = True
+        else:
+            
+            last_install = self.line_table.loc[diff_last.idxmax()]
+            diff_last = diff[(diff/pd.to_timedelta(1, 'd')) < 0]
+                   
+            # has that instrument been installed somewhere else since that install?
+            # last install of the particular instrument ... same as above?
+            instrument_installs = self.line_table[self.line_table.instrument_id == last_install.instrument_id]
+            diff = (instrument_installs.install - date)
+            diff_last = diff[(diff/pd.to_timedelta(1, 'd')) < 0]
+            last_install_of_inst = self.line_table.loc[diff_last.idxmax()]
+            
+            # if previous_installs.shape[0] == 0:
+            if last_install.name != last_install_of_inst.name:
+                txt = (f'Instrument not installed at site and line (line:{line}, site: {site}, date: {date}\n'
+                       f'At the given date the instrument was at {last_install_of_inst.site} on line {last_install_of_inst.line} (since {last_install_of_inst.install})'
+                       )
+                fail = True
+            
+        if fail:
             if when_instrument_not_installed == 'error':
                 raise IndexError(txt)
             elif when_instrument_not_installed == 'warn':
@@ -66,7 +89,8 @@ class BaselineDatabase(object):
                 return None
             else:
                 assert(False), f'{when_instrument_not_installed} not an option for when_instrument_not_installed. (error, warn,or silent)'
-        lt_found = previous_installs.iloc[-1]
+                
+        lt_found = last_install #previous_installs.iloc[-1]
 
         instrument_found = self.instrument_table[self.instrument_table.instrument_id == lt_found.instrument_id].iloc[0]
         return instrument_found
@@ -121,8 +145,8 @@ installdate = '20210318'
 uninstalldate = '20211008' 
 database.add2line_table('brw', installdate, 121, 1)
 database.add2line_table('brw', installdate, 221, 2)
-# database.add2line_table('brw', installdate, 221, 2)
-# database.add2line_table('brw', installdate, 221, 2)
+database.add2line_table('trans', uninstalldate, 0, 1)
+database.add2line_table('trans', uninstalldate, 0, 2)
 
 installdate = '20220101' 
 database.add2line_table('mlo', installdate, 121, 1)
@@ -262,7 +286,14 @@ def read_file(path2raw, lines = None,
             ds.attrs['serial_no'] = sn
             ds.attrs['line_id'] = lid
             
-        #     ds_by_instrument[f'sp02_{lid}_{sn}'] = ds
+            # assign a nominal wavelength as the channel name. currently nominal 
+            # wavelength is equal to center wavelength. At some point it would be 
+            # nice to have a measured wavelength in addition
+            ds['channel_letter'] = ds.channel
+            ds = ds.assign_coords(channel = ds.channel_center)    
+            
             out_list.append(ds)
+            
+
             
         return out_list

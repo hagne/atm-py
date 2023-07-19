@@ -39,11 +39,19 @@ def read_file(path2file, verbose = False):
         skiprows = 3
         date_column = "Date(dd-mm-yyyy)"
         day_of_year = 'Julian_Day'
+        time_column = "Time(hh:mm:ss)"
+        
     elif 'Version 3' in header:
         version = 3
         skiprows = 6
-        date_column = 'Date(dd:mm:yyyy)'
         day_of_year = 'Day_of_Year'
+        if 'SDA Version 4.1' in header:
+            date_column = 'Date_(dd:mm:yyyy)'
+            time_column = "Time_(hh:mm:ss)"
+            sda_version = '4.1'
+        else:
+            time_column = "Time(hh:mm:ss)"
+            date_column = 'Date(dd:mm:yyyy)'
         
     if verbose:
         print(f'retrieval version: {version}')
@@ -61,18 +69,19 @@ def read_file(path2file, verbose = False):
     df = pd.read_csv(path2file, skiprows = skiprows)
             
     #### create timestamp
-    df.index = df.apply(lambda row: pd.to_datetime(f'{row[date_column]} {row["Time(hh:mm:ss)"]}', format='%d:%m:%Y %H:%M:%S'), axis = 1)
-    df = df.drop([date_column,'Time(hh:mm:ss)', day_of_year], axis = 1)
+    df.index = df.apply(lambda row: pd.to_datetime(f'{row[date_column]} {row[time_column]}', format='%d:%m:%Y %H:%M:%S'), axis = 1)
+    df = df.drop([date_column,time_column, day_of_year], axis = 1)
     df.index.name = 'datetime'
     
     #### parse the data and add to AeronetInversion instance
-    aero_inv = AeronetInversion(df)
+    ds = df.to_xarray()
+    aero_inv = AeronetInversion(ds)
     aero_inv.header = header
     aero_inv.retrieval_version = version
     
     dist = extract_sizedistribution(df)
-    if dist:
-        aero_inv.sizedistribution = dist
+    # if dist:
+    aero_inv.sizedistribution = dist
     
     
     return aero_inv

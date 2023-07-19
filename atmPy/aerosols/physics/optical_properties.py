@@ -13,6 +13,9 @@ from atmPy.radiation.mie_scattering import bhmie as _bhmie
 from  atmPy.aerosols.size_distribution import sizedistribution as _sizedistribution
 # import warnings as _warnings
 
+import time
+import psutil
+import os
 
 # Todo: Docstring is wrong
 # todo: This function can be sped up by breaking it apart. Then have OpticalProperties
@@ -89,7 +92,10 @@ def size_dist2optical_properties(op, sd, aod=False, noOfAngles=100):
             # print('do mie', end=' ')
             if asphericity ==1:
                 mie, angular_scatt_func = _perform_Miecalculations(_np.array(sdls.bincenters / 1000.), wavelength / 1000., n,
-                                                               noOfAngles=noOfAngles)            
+                                                               noOfAngles=noOfAngles)    
+                out['angular_scatt_func'] = angular_scatt_func
+                mie_result = {'mie': mie,
+                              'angular_scatt_func': angular_scatt_func}
             else:
                 tmatrix = _perform_tmatrixcalculations(sdls.bincenters, wavelength, n, asphericity)
                 mie = tmatrix
@@ -100,17 +106,22 @@ def size_dist2optical_properties(op, sd, aod=False, noOfAngles=100):
             mie = mie_result['mie']
             angular_scatt_func = mie_result['angular_scatt_func']
 
-        out['mie_result'] = {'mie': mie}
-        if asphericity == 1:
-            out['angular_scatt_func'] = angular_scatt_func
 
+        # if asphericity == 1:
+            
+            # mie['angular_scatt_func'] = angular_scatt_func
+            
+        out['mie_result'] = mie_result #{'mie': mie}
+        
     if aod:
         #todo: use function that does a the interpolation instead of the sum?!? I guess this can lead to errors when layers are very thick, since centers are used instea dof edges?
         AOD_layer = _np.zeros((len(sdls.layercenters)))
-
-    extCoeffPerLayer = _np.zeros((len(sdls.data.index.values), len(sdls.bincenters)), dtype= _np.float32)
-    scattCoeffPerLayer = _np.zeros((len(sdls.data.index.values), len(sdls.bincenters)), dtype= _np.float32)
-    absCoeffPerLayer = _np.zeros((len(sdls.data.index.values), len(sdls.bincenters)), dtype= _np.float32)
+        
+    # The arrays below used to be float32. This was very dangerous, as float64 is the standard and some libaries 
+    # as scipy.optimize (the fitting routines) will produce strange results if they see a different float!!!
+    extCoeffPerLayer = _np.zeros((len(sdls.data.index.values), len(sdls.bincenters)), dtype= _np.float64)
+    scattCoeffPerLayer = _np.zeros((len(sdls.data.index.values), len(sdls.bincenters)), dtype= _np.float64)
+    absCoeffPerLayer = _np.zeros((len(sdls.data.index.values), len(sdls.bincenters)), dtype= _np.float64)
 
     angular_scatt_func_effective = _pd.DataFrame()
     asymmetry_parameter_LS = _np.zeros((len(sdls.data.index.values)))
@@ -1179,7 +1190,7 @@ def vertical_profile2accumulative_AOD(timeseries):
     accu_aod._x_label = 'AOD$_{abs}$'
     return accu_aod
 
-from scipy.optimize import curve_fit
+# from scipy.optimize import curve_fit
 from atmPy.aerosols.size_distribution import sizedistribution as sd
 
 class Inversion2SizeDistribution_scenario(object):
@@ -1190,13 +1201,16 @@ class Inversion2SizeDistribution_scenario(object):
         #     self.size_distribution_parameters = arguments
         
         if isinstance(arguments, _pd.DataFrame):
-            # if self.parent.verbose:
-            #     print('initialize scenario: case dataframe')
+            assert(False), "is this still used? If you need this, commment out"
+            if self.parent.verbose:
+                print('arguments are type pd.DatrFrame')
             self.size_distribution_parameters = arguments
             pos = arguments.diameter.values
             numbers = arguments.number.values
             arguments = [val for pair in zip(pos, numbers) for val in pair]
         else:
+            if self.parent.verbose:
+                print(f'arguments are type {type(arguments)}')
             # if self.parent.verbose:
             #     print('initialize scenario: else')
             # width = self.parent.start_conditions.size_distribution_parameters.width.values # this cased a superloop
@@ -1204,7 +1218,6 @@ class Inversion2SizeDistribution_scenario(object):
             self.size_distribution_parameters = _pd.DataFrame({'diameter': arguments[::2], 'number': arguments[1::2], 'width': width})
         
         self._args = arguments
-
         self.update()
 
 
@@ -1212,6 +1225,9 @@ class Inversion2SizeDistribution_scenario(object):
         # properties
         self._dist = None
         self._extcoeff = None
+        self._size_dist_aods = None
+        self._size_distribution_moments = None
+        self._dist_list = None
 
     @property
     def args(self):
@@ -1228,6 +1244,41 @@ class Inversion2SizeDistribution_scenario(object):
             self._dist = self.args2dist()#self.args)
         return self._dist
 
+    @property
+    def size_distribution_list(self):
+        if isinstance(self._dist_list, type(None)):
+            self.args2dist()
+        return self._dist_list
+
+    @property
+    def size_distribution_aods(self):
+        if isinstance(self._size_dist_aods, type(None)):         
+            if isinstance(self.parent.mie_info, type(None)):
+                self.AOD_of_simulated_dist()
+                
+            modes = ('fine', 'coarse')
+            aods = _pd.DataFrame(index = modes, columns=self.parent.wavelengths, dtype = _np.float32)
+            for wl in self.parent.wavelengths:
+                for e,dist in enumerate(self.size_distribution_list):
+                    # dist.optical_properties.parameters.refractive_index = self.parent.aerosol_refractive_index
+                    # dist.optical_properties.parameters.wavelength = wl
+                    dist.optical_properties.parameters.mie_result = self.parent._mie_info[wl]
+            
+                    aods.loc[modes[e], wl] = dist.optical_properties.extinction_coeff.iloc[0,0]
+            self._size_dist_aods = aods
+        return self._size_dist_aods
+
+    @property
+    def size_distribution_moments(self):
+        if isinstance(self._size_distribution_moments, type(None)):
+            modes = ('fine', 'coarse')
+            moments = ['volume', 'surface']
+            moment = _pd.DataFrame(index = modes, columns=moments)
+            for e,dist in enumerate(self.size_distribution_list):
+                moment.loc[modes[e], 'volume'] = dist.particle_volume_concentration.iloc[0,0]
+                moment.loc[modes[e], 'surface'] = dist.particle_surface_concentration.iloc[0,0]
+            self._size_distribution_moments = moment
+        return self._size_distribution_moments
 
     def args2dist_deprecated(self, args):
         self.tp_3 = args.copy()
@@ -1285,7 +1336,7 @@ class Inversion2SizeDistribution_scenario(object):
     
             # dist_new = sd.simulate_sizedistribution(new=True)
             # sum em up
-    
+            self._dist_list = dist_list
             dist = dist_list[0]
             for sdt in dist_list[1:]:
                 dist += sdt
@@ -1294,20 +1345,19 @@ class Inversion2SizeDistribution_scenario(object):
     @property
     def extinction_coeff(self):
         if isinstance(self._extcoeff, type(None)):
-            self.parent.mie_info
-            self._extcoeff = self.AOD_of_simulated_dist(self.parent.wavelengths, *self.args, mie_info=self.parent.mie_info)
-            # print(f'ext coeff: {self._extcoeff}')
+            # self.parent.mie_info
+            self._extcoeff = self.AOD_of_simulated_dist()#self.parent.wavelengths, *self.args, )
         return self._extcoeff
 
-    def AOD_of_simulated_dist(self, wavelengths, *args, is_initial_run=False, mie_info=None):
-        out = {}
-        ## each size normal distribution separate
-        # if isinstance(args, (list, tuple)):
-        args = _np.array(args)
-        dist = self.args2dist()#args)
-        channels = wavelengths
-        first_run_results = {}
+    def AOD_of_simulated_dist(self):#, wavelengths, *args, ):
 
+        # args = _np.array(args)
+        # dist = self.args2dist()#args)
+        dist = self.size_distribution#args)
+        channels = self.parent.wavelengths
+        first_run_results = {}
+        mie_info = self.parent._mie_info
+        
         if isinstance(mie_info, type(None)):
             if self.parent.verbose:
                 print('doing full mie calculation')
@@ -1322,75 +1372,130 @@ class Inversion2SizeDistribution_scenario(object):
                 dt.optical_properties.parameters.wavelength = wl
             else:
                 dt.optical_properties.parameters.mie_result = mie_info[wl]
-            
+
             res['extcoeff'] = dt.optical_properties.extinction_coeff
             res['mie_result'] = dt.optical_properties.mie_result.copy()
             # return res
             self.parent.tp_dt2 = dt.copy()
             first_run_results[wl] = res
-        #     break
 
-        if is_initial_run:
-            # AOD is the integration ofer the coefficient over the column, since we don't know the structure of the atmosphere we can assume an arbitray factor
-            #         factor = sfr_AOD_test_dp.loc[channels[0]] /first_run_results[channels[0]]['extcoeff'].iloc[0,0]
-            # print('this way')
-            bla = _np.array([[ch, first_run_results[ch]['extcoeff'].iloc[0, 0]] for ch in first_run_results])
-            startAOD = _pd.Series(bla[:, 1], index=bla[:, 0])
-            factor = (self.parent.sfr_AOD_test_dp / startAOD).mean()
-            # dist *= factor
-            args[1::2] *= factor
-            out['args'] = args
-            out['first_run_results'] = first_run_results
-            
-            return out
-        else:
-            # print('nonono this way')
-            ext_coeff = [first_run_results[i]['extcoeff'].iloc[0, 0] for i in first_run_results]
-            return ext_coeff
+        if isinstance(mie_info, type(None)): 
+            self.parent._mie_info = {i: v['mie_result'] for i, v in first_run_results.items()}
+
+        ext_coeff = _np.array([first_run_results[i]['extcoeff'].iloc[0, 0] for i in first_run_results])
+        return ext_coeff
 
 
 
 class Inversion2SizeDistribution(object):
     def __init__(self, sfr_AOD_test_dp, # this is a row of a pandas frame
-                 diameter_range = [100, 30000], 
-                 number_of_diameters = 100,
+                 diameter_range = [80, 20000], 
+                 number_of_diameters = 200,
                  aerosol_refractive_index = 1.5,
-                 width_of_aerosol_mode = 0.15,
-                 start_conditions = [400, 2000., 800, 320],
+                 width_of_aerosol_mode = (0.2, 0.25),
+                 # start_conditions = [400, 2000., 800, 320],
+                 start_args = [120, 2000.0, 1000, 1],
+                 pre_fit_amps = True,
+                 # bounds = [(-_np.inf, -_np.inf), (-_np.inf, -_np.inf), (-_np.inf, -_np.inf), (-_np.inf, -_np.inf)],
+                 bounds=[(10, 0, 400, 0), (400, _np.inf, 6000, _np.inf)],
+                 mie_info = None,
                  verbose = False):
+        """
+        
+
+        Parameters
+        ----------
+        sfr_AOD_test_dp : TYPE
+            DESCRIPTION.
+        # this is a row of a pandas frame                 diameter_range : TYPE, optional
+            DESCRIPTION. The default is [80, 30000].
+        number_of_diameters : TYPE, optional
+            DESCRIPTION. The default is 100.
+        aerosol_refractive_index : TYPE, optional
+            DESCRIPTION. The default is 1.5.
+        width_of_aerosol_mode : float or array-like, optional
+            If single number it is applied to all aerosol modes. To apply individual width use array-like type. The default is 0.15.
+        # start_conditions : TYPE, optional
+            DESCRIPTION. The default is [400, 2000., 800, 320].
+        start_args : TYPE, optional
+            DESCRIPTION. The default is [150, 2000.0, 1500, 1].
+        # bounds : TYPE, optional
+            DESCRIPTION. The default is [(-_np.inf, -_np.inf), (-_np.inf, -_np.inf), (-_np.inf, -_np.inf), (-_np.inf, -_np.inf)].
+        bounds : TYPE, optional
+            DESCRIPTION. The default is [(10, 0, 800, 0), (800, _np.inf, 6000, _np.inf)].
+        mie_info : TYPE, optional
+            DESCRIPTION. The default is None.
+        verbose : TYPE, optional
+            DESCRIPTION. The default is False.
+
+        Returns
+        -------
+        None.
+
+        """
         self.diameter_range =diameter_range
         self.number_of_diameters = number_of_diameters
         self.aerosol_refractive_index = aerosol_refractive_index
         self.width_of_aerosol_mode = width_of_aerosol_mode
-        self.sfr_AOD_test_dp = sfr_AOD_test_dp
+        self.sfr_AOD_test_dp = sfr_AOD_test_dp.copy().astype(_np.float64)
         self.wavelengths = self.sfr_AOD_test_dp.index
-        self.fit_cutoff = 1e-4
         self.verbose = verbose
+        self.pre_fit_amps = pre_fit_amps
+        self.fit_bounds = _np.array(bounds)
+        self.fit_cutoff = 1e-10
+        self.fit_cutoff_xtol = None #self.fit_cutoff
+        self.fit_cutoff_ftol = None #self.fit_cutoff
+        self.fit_cutoff_gtol = self.fit_cutoff
+        self.fit_scale_vars_amp = [1,1]
+        self.fit_scale_vars = [1,1,1,1]
+        self.fit_max_nfev = 20
+        self.fit_tr_solver = None
+        self.fit_jac = '2-point'
+        self.fit_method = 'dogbox' #trf
+        self.fit_diff_step = None
+        self.rerun_if_fail = True #if res is not good enough trf will be run untill convergence
+
+        # fit_amp settings
+        self.fit_amp_problem_type = 'lin' # lin, nolin (linear or not linear), lin is 5 times faster
 
         #properties
         self._start_conditions = None
-        self.start_conditions = start_conditions
+        # self.start_conditions = start_conditions
+        self.start_args = start_args
         self._fit_result = None
-        self._mie_info = None
+        self._mie_info = mie_info
+        self.scale = 'log' # if optimization is done in log scale, should be preferable! Parameters and extinction will be handled as log scale!!
+        
+
 
     @property
     def mie_info(self):
-        if isinstance(self._mie_info, type(None)):
-            if self.verbose:
-                print('getting mieinfo')
-            out = self.start_conditions.AOD_of_simulated_dist(self.sfr_AOD_test_dp.index, *self.start_conditions.args, is_initial_run=True)
-            self._mie_info = {i: v['mie_result'] for i, v in out['first_run_results'].items()}
-            self.start_conditions.args = out['args']
-            if self.verbose:
-                print('done mieinfo')
+        """
+        Performs Mie calculations for all diameter steps, so it is not calcualted at each iteration.
+
+        Returns
+        -------
+        TYPE
+            DESCRIPTION.
+
+        """
+        # if isinstance(self._mie_info, type(None)):
+        #     if self.verbose:
+        #         print('getting mieinfo')
+        #     out = self.start_conditions.AOD_of_simulated_dist(self.sfr_AOD_test_dp.index, *self.start_conditions.args, is_initial_run=True)
+        #     # self._mie_info = {i: v['mie_result'] for i, v in out['first_run_results'].items()}
+        #     # self.start_conditions.args = out['args']
+        #     if self.verbose:
+        #         print('done mieinfo')
         return self._mie_info
 
     @property
     def start_conditions(self):
         if isinstance(self._start_conditions, type(None)):
             # print('hasdfasdfasd')
-            args = [400, 2000., 800, 320] # if start conditions are not set this will be used ad a default
-            self._start_conditions = Inversion2SizeDistribution_scenario(self, args)
+            # args = [400, 2000., 800, 320] # if start conditions are not set this will be used ad a default
+            # self._start_conditions = Inversion2SizeDistribution_scenario(self, self.start_args)
+            self.start_conditions = self.start_args #note, this will execute the setter!!!
         return self._start_conditions
 
     @start_conditions.setter
@@ -1412,50 +1517,211 @@ class Inversion2SizeDistribution(object):
             print('setting start_conditions')
         if isinstance(value, type(None)):
             if self.verbose:
-                print('start condition value is Non, use default')
-            arguments = [400, 2000., 800, 320] # if start conditions are not set this will be used ad a default
+                print('start condition value is None, use default')
+            arguments = self.start_args.copy()#[400, 2000., 800, 320] # if start conditions are not set this will be used ad a default
         else:
             arguments = value # if start conditions are not set this will be used ad a default
+        pre_start_conditions = Inversion2SizeDistribution_scenario(self, arguments)
+        
+        # We need to scale the particle numbers such that we are already close to observed values. Otherwise the optimization will run away.
+        assert(self.fit_amp_problem_type in ['lin', 'nolin'])
+        if self.fit_amp_problem_type == 'nolin': #not needed if i do the linearization of the fit_amp.
+            factor = self.sfr_AOD_test_dp.values[1] / pre_start_conditions.extinction_coeff[1]# adjust values on 500 channel only
+            arguments = _np.array(arguments, dtype = float)
+            arguments[1::2] *= float(factor)
+        # else:
+        #     self.size_distribution_parameters = _pd.DataFrame({'diameter': arguments[::2], 'number': arguments[1::2], 'width': width})
+        #     self.size_distribution_parameters = _pd.DataFrame({'diameter': arguments[::2], 'number': arguments[1::2], 'width': width})
+        
         self._start_conditions = Inversion2SizeDistribution_scenario(self, arguments)
 
     @property
     def fit_result(self):
         if isinstance(self._fit_result, type(None)):
+            start = _pd.Timestamp.now()
             fitrs = self.fit()
             if fitrs == False:
                 args = [_np.nan]*4
                 self._fit_result = Inversion2SizeDistribution_scenario(self, args)
                 self._fit_result.sigma = _np.nan
             else:
-                self._fit_result = Inversion2SizeDistribution_scenario(self, fitrs.x)
-                self._fit_result.full_result = fitrs
-                self._fit_result.sigma = _np.sqrt(((self.sfr_AOD_test_dp.values-_np.array(self.fit_result.extinction_coeff))**2).sum())
+                fitrsx = fitrs.x
+                if self.scale == 'log':
+                    # fitrsx = 10**fitrsx
+                    fitrsx[::2] = _np.power(10, fitrsx[::2])
+                fit_res = Inversion2SizeDistribution_scenario(self, fitrsx)
+                fit_res.full_result = fitrs
+                fit_res.cpu_usage = fitrs.cpu_usage
+                fit_res.sigma = _np.sqrt(((self.sfr_AOD_test_dp.values-_np.array(fit_res.extinction_coeff))**2).sum())
+                self._fit_result = fit_res
+            
+            self._fit_result.optimization_time = _pd.Timestamp.now() - start
         return self._fit_result
 
+    def cost_fun(self, *params):
+        measured = self.sfr_AOD_test_dp.values
+        args = params[0].copy()
+        self.tp_params = args
+        # assert(False)
+        if self.scale == 'log':
+            # params = _np.array(params)
+            
+            # self.tp_params = params
+            # assert(False)
+            # params = 10**params
+            # params = _np.power(10,params)
+            args[::2] = _np.power(10, args[::2])
+            self.tp_params = args
+            # assert(False)
+        self.tp_params = params
+        # assert(False)
+
+        scene = Inversion2SizeDistribution_scenario(self, args)
+        ext = scene.extinction_coeff
+        
+        # if self.scale == 'log':
+        if 1:
+            measured = _np.log10(measured)
+            ext = _np.log10(ext)
+        
+        cost = measured - ext
+        self.tp_cost.append((cost**2).sum())
+        self.tp_args.append(scene.args)
+        #### create a scalar cost value
+        # for some reason those scalar vales are not creating a good result. I suggest to stay with the 1d array
+        # cost = float(_np.sum(cost)) # does not work well
+        # cost = float(_np.mean(cost))
+        # cost = float(_np.std(cost))
+        self.no_of_iterations += 1
+        return cost
     
     def fit(self):
-        # fit_res = scipy.optimize.least_squares(lambda params: self.sfr_AOD_test_dp.values - self.start_conditions.AOD_of_simulated_dist(self.sfr_AOD_test_dp.index, *params, mie_info=self.mie_info),
-        #                                 self.start_conditions.args,
-        #                             #                     sigma=None,
-        #                                 #                     absolute_sigma=False,
-        #                                 #                     check_finite=True,
-        #                                 #                     bounds=(-inf, inf)
-        #             #                     method='trf',
-        #                                                     method='lm',
-        #             #                                         jac=None,
-        #                                 #                     maxfev=1,
-                    #                     xtol=self.fit_cutoff,
-                    #                     ftol=self.fit_cutoff,
-                    #                     gtol=self.fit_cutoff,
-        #                                 #                     callback=lambda x: print(x)
-        #                                 #                     dict(kwx_scale = 'jac'),
-        #                                 verbose=0,
-        #                                 # x_scale='jac',
-        #             #                     x_scale=[1,0.2,1,0.2],
-        #             #                     x_scale=[1,5,1,5],
-        #             #                     diff_step=[ds ** 3, ds, ds ** 2, ds] # I don't think this is what I thought it is!! This has something to do with the computers resolution
-        #                                 #                     col_deriv=True
-        #                                 )
+        if _np.isnan(self.sfr_AOD_test_dp.values).sum() > 0:
+            # out = _np.zeros(self.start_conditions.args.shape[0])
+            # out = _np.zeros(self.start_conditions.args.shape[0])
+            # out[:] = _np.nan
+            return False
+        
+        #### computations cost start
+        self.no_of_iterations = 0
+        p = psutil.Process(os.getpid())
+        start_time = time.time()
+        p.cpu_percent()
+        ###
+        
+        self.tp_cost = []
+        self.tp_args = []
+        
+        if self.pre_fit_amps:
+            arguments = self.fit_amps().args.copy()
+        else:
+            assert(False), 'This is not recommended and hardcoded to True'
+            arguments = self.start_conditions.args
+            
+        
+        bounds = self.fit_bounds.copy()
+        if self.scale == 'log':
+            # arguments = _np.log10(arguments)
+            # bounds = _np.log10(bounds)
+            
+            arguments[::2] = _np.log10(arguments[::2])
+            def replwl(b):
+                b[::2] = _np.log10(b[::2])
+                return b
+            bounds = _np.array([replwl(b) for b in bounds])
+        
+        # if isinstance(self.fit_scale_vars, type(None)):
+        #     self.fit_scale_vars = arguments
+            
+        # if isinstance(self.fit_diff_step , type(None)):
+        #     self.fit_diff_step = _np.array([5,1,2,1]) * 0.00005
+            
+        self.tp_arguments = arguments
+        self.tp_bounds = bounds
+        
+        fit_res = scipy.optimize.least_squares(self.cost_fun,
+                                        # self.start_conditions.args,
+                                        arguments,
+                                    #                     sigma=None,
+                                        #                     absolute_sigma=False,
+                                        #                     check_finite=True,
+                                        bounds=bounds,
+                                        method=self.fit_method,
+                                        jac = self.fit_jac,
+                                        xtol=self.fit_cutoff_xtol,
+                                        ftol=self.fit_cutoff_ftol,
+                                        gtol=self.fit_cutoff_gtol,
+                                        verbose=0,
+                                        x_scale = self.fit_scale_vars,
+                                        max_nfev = self.fit_max_nfev,
+                                        tr_solver = self.fit_tr_solver,
+                                        diff_step= self.fit_diff_step,  
+                                        # this merely changes the initial steps and its important only if the steps are to big and jump over minima, not the case here
+                                        # Older comment: Although it sounds like its something different... it works!!!!!!
+                                        # I don't think this is what I thought it is!! This has something to do with the computers resolution
+                                        # Removed it none the less. I think the initial adjustment of amplitudes makes this unnecessary and I see better results witout it.
+                                        #                     col_deriv=True
+                                        )
+        if not fit_res.success:
+            if self.fit_method == 'dogbox' and self.rerun_if_fail:
+                fit_res = scipy.optimize.least_squares(self.cost_fun,
+                                            fit_res.x,
+                                            bounds=bounds,                                            
+                                            jac = self.fit_jac,
+                                            method='trf',
+                                            xtol=self.fit_cutoff,
+                                            ftol=self.fit_cutoff,
+                                            gtol=self.fit_cutoff,
+                                            x_scale = self.fit_scale_vars,
+                                            # max_nfev = self.max_nfev,
+                                            )
+        self.tp_fit_res = fit_res
+        #### computations cost finallize
+        cpu_percent = p.cpu_percent()
+        end_time = time.time()
+        execution_time = end_time - start_time
+        accumulated_cpu_usage = cpu_percent * execution_time
+        fit_res.cpu_usage = accumulated_cpu_usage
+        return fit_res
+
+    def cost_fun_amps(self, amps):
+        """
+        Deprecated: this should not be necessary anymore. It is needed to do a non-linear optimization, 
+        which was replaced by a linear approach. This is kept for the eventuallity that the linear approach shows weaknesses.
+        This fits only the amplitudes but not the positions ... just to get started!.
+
+        Parameters
+        ----------
+        *params : TYPE
+            DESCRIPTION.
+
+        Returns
+        -------
+        cost : TYPE
+            DESCRIPTION.
+
+        """
+        params = self.start_args.copy()
+        # print(amps)
+        # print(type(amps))
+        params[1::2] = amps
+        measured = self.sfr_AOD_test_dp.values
+        scene = Inversion2SizeDistribution_scenario(self, params).extinction_coeff
+        # measured = _np.log10(measured)
+        # scene = _np.log10(scene)
+        cost = measured - scene
+        # self.tp_cost.append(_np.mean(cost))
+        #### create a scalar cost value
+        # for some reason those scalar vales are not creating a good result. I suggest to stay with the 1d array
+        # cost = float(_np.sum(cost)) # does not work well
+        # cost = float(_np.mean(cost))
+        # cost = float(_np.std(cost))
+        self.tp_fit_amp_iterations += 1
+        return cost
+    
+    def fit_amps(self):
+                    
+        arguments = self.start_conditions.args.copy()
         
         if _np.isnan(self.sfr_AOD_test_dp.values).sum() > 0:
             # out = _np.zeros(self.start_conditions.args.shape[0])
@@ -1463,44 +1729,72 @@ class Inversion2SizeDistribution(object):
             # out[:] = _np.nan
             return False
         
-        def cost_fun(*params):
-            measured = self.sfr_AOD_test_dp.values
-            scene = Inversion2SizeDistribution_scenario(self, *params).extinction_coeff
-            
-            # measured = _np.log10(measured)
-            # scene = _np.log10(scene)
-            
-            cost = measured - scene
-            self.tp_cost.append(_np.mean(cost))
-            return cost
-        self.tp_cost = []
+        # self.tp_cost = []
         # ds = 
-        mode_scale = 10
-        ds = 0.51
-        fit_res = scipy.optimize.least_squares(cost_fun,
-                                        self.start_conditions.args,
-                                    #                     sigma=None,
-                                        #                     absolute_sigma=False,
-                                        #                     check_finite=True,
-                                        #                     bounds=(-inf, inf)
-                                        method='trf',
-                                                            # method='lm',
-                    #                                         jac=None,
-                                        #                     maxfev=1,
-                                        xtol=self.fit_cutoff,
-                                        ftol=self.fit_cutoff,
-                                        gtol=self.fit_cutoff,
-                                        #                     callback=lambda x: print(x)
-                                        #                     dict(kwx_scale = 'jac'),
-                                        verbose=0,
-                                        # x_scale='jac',
-                                        # x_scale=[1,0.2,1,0.2],
-                                        x_scale=_np.array([1,1.5,1, mode_scale]),#*1e-3,
-                                        diff_step=[ds ** 4, ds, ds ** 4, ds] # Although it sounds like its something different... it works!!!!!!I don't think this is what I thought it is!! This has something to do with the computers resolution
-                                        #                     col_deriv=True
-                                        )
-        return fit_res
-
-
+        # mode_scale = 10
+        # ds = 0.51
+        # scale_vars = True
+        
+        # if self.scale_vars:
+        #     amp_f = arguments[1]
+        #     amp_c = arguments[3]
+        #     costf = lambda amp_f, amp_c: (self.cost_fun_amps([amp_f, amp_c])**2).sum()**(1/2) # this is not exactly the same cost as what least_sqrt does
+            
+        #     cost_all = costf(amp_f, amp_c)
+        #     cost_f = abs(costf(amp_f+10, amp_c) - cost_all)
+        #     cost_c = abs(costf(amp_f, amp_c+10) - cost_all)
+        #     scale = [1, cost_f / cost_c]
+        # else:
+        #     scale = [1,1]
+        
+        self.tp_fit_amp_iterations = 0
+        scale = self.fit_scale_vars_amp
+        # print(scale)
+        params = self.start_args.copy()
+        if self.fit_amp_problem_type == 'nolin':
+            fit_res = scipy.optimize.least_squares(self.cost_fun_amps,
+                                            # self.start_conditions.args,
+                                            arguments[1::2],
+                                        #                     sigma=None,
+                                            #                     absolute_sigma=False,
+                                            #                     check_finite=True,
+                                            # bounds=self.bounds,
+                                            method='trf',
+                                                                # method='lm',
+                        #                                         jac=None,
+                                            #                     maxfev=1,
+                                            xtol=self.fit_cutoff,
+                                            ftol=self.fit_cutoff,
+                                            gtol=self.fit_cutoff,
+                                            #                     callback=lambda x: print(x)
+                                            #                     dict(kwx_scale = 'jac'),
+                                            verbose=0,
+                                            x_scale = scale,
+                                            # x_scale='jac',
+                                            # x_scale=[1,0.2,1,0.2],
+                                            # x_scale=_np.array([1,1.5,1, mode_scale]),#*1e-3,
+                                            # diff_step=[ds ** 4, ds, ds ** 4, ds] # Although it sounds like its something different... it works!!!!!!I don't think this is what I thought it is!! This has something to do with the computers resolution
+                                            #                     col_deriv=True
+                                            )
+            params[1::2] = fit_res.x
+        elif self.fit_amp_problem_type == 'lin':
+            df = self.start_conditions.size_distribution_aods.transpose()
+            df['target'] = self.sfr_AOD_test_dp
+            
+            A = df.loc[:,['fine', 'coarse']].values.astype(float)
+            b = df.target.values
+            
+            fit_res = scipy.optimize.lsq_linear(A, b, bounds = (0, _np.inf))
+            params[1::2] *= fit_res.x
+                     
+        else:
+            assert(self.fit_amp_problem_type in ['lin', 'nolin'])
+            
+        
+        self.tp_fitres_amp = fit_res
+        fit_result = Inversion2SizeDistribution_scenario(self, params)
+        fit_result.full_result = fit_res
+        # fit_result.sigma = _np.sqrt(((self.sfr_AOD_test_dp.values-_np.array(self.fit_result.extinction_coeff))**2).sum())
+        return fit_result
 
 

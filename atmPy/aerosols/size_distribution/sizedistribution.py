@@ -1,6 +1,7 @@
 from copy import deepcopy
 
 import numpy as _np
+import matplotlib
 import matplotlib.pylab as _plt
 from matplotlib.colors import LogNorm
 from matplotlib.ticker import MaxNLocator as _MaxNLocator
@@ -997,19 +998,40 @@ class SizeDist(object):
                 raise ValueError('size distributions have to have the same distributionType')
             if self.data.shape != other.data.shape:
                 raise ValueError('size distributions have to have the same shape')
-            self.data = self.data + other.data
+            dist = self.copy()
+            dist.data = dist.data + other.data
             # self.particle_number_concentration_outside_range = self.particle_number_concentration_outside_range + other.particle_number_concentration_outside_range
         else:
-            self.data += other
-            self.particle_number_concentration_outside_range += other
-        self._update()
-        return self
+            dist = self.copy()
+            dist.data += other
+            dist.particle_number_concentration_outside_range += other
+        dist._update()
+        return dist
 
+    def __radd__(self, other):
+        return self.__add__(other)
+    
     def __sub__(self, other):
-        self.data -= other
-        self.particle_number_concentration_outside_range -= other
-        self._update()
-        return self
+        if type(other) == type(self):
+            if self.distributionType != other.distributionType:
+                raise ValueError('size distributions have to have the same distributionType')
+            if self.data.shape != other.data.shape:
+                raise ValueError('size distributions have to have the same shape')
+            dist = self.copy()
+            dist.data = dist.data - other.data
+            # self.particle_number_concentration_outside_range = self.particle_number_concentration_outside_range + other.particle_number_concentration_outside_range
+        else:
+            dist = self.copy()
+            dist.data -= other
+            dist.particle_number_concentration_outside_range -= other
+        dist._update()
+        return dist
+
+    # def __sub__(self, other):
+    #     self.data -= other
+    #     self.particle_number_concentration_outside_range -= other
+    #     self._update()
+    #     return self
 
 
     # mode_analysis = modes.ModeAnalysis
@@ -1562,7 +1584,8 @@ class SizeDist(object):
 
 
         """
-        if type(ax).__name__ in _axes_types:
+        # if type(ax).__name__ in _axes_types:
+        if isinstance(ax, matplotlib.axes._axes.Axes):
             a = ax
             f = a.get_figure()
         else:

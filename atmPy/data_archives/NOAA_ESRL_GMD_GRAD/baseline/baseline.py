@@ -96,6 +96,7 @@ pressure                real    station pressure (mb)"""
     data.index = data.apply(lambda row: pd.to_datetime(f'{row.year:0.0f}-{int(row.month):02d}-{int(row.day):02d} {int(row.hour):02d}:{int(row.minute):02d}:00'), axis = 1)
     data = data.drop(['year', 'jday', 'month', 'day', 'hour', 'minute','dt'], axis = 1)
     data.index.name = 'datetime'
+    # return data
     ds = xr.Dataset(data)
     
     for var in ds.variables:

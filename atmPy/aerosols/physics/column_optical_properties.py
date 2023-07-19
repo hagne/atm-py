@@ -11,6 +11,7 @@ import matplotlib.pyplot as _plt
 import scipy as _sp
 import pathlib as _pl
 import xarray as xr
+import statsmodels.nonparametric.smoothers_lowess as smlowess
 
 _colors = _plt.rcParams['axes.prop_cycle'].by_key()['color']
 
@@ -138,7 +139,12 @@ class AOD_AOT(object):
     @ang_exp.setter
     def ang_exp(self, value):
         self._ang_exp = value
-
+        
+        
+    @property
+    def aod(self):
+        return self.dataset.aod
+    
     def aod2angstrom_exponent(self, column_1=500, column_2=870,
                               use_wavelength_from_column_names = None,
                               # wavelength_1=None, wavelength_2=None
@@ -243,8 +249,21 @@ class AOD_AOT(object):
         # df.sort_index(inplace=True)
         # df.index.name = 'datetime'
         # return df
+    
+    @property
+    def AODinversion(self):
+        if isinstance(self._aodinv, type(None)):
+            self.derive_size_distribution()
+        return self._aodinv
         
-    def derive_size_distribution(self, width_of_aerosol_mode = 0.15, all_valid = True, verbose = True, test = False):
+    
+    def invertAOD(self, width_of_aerosol_mode = (0.2, 0.25), 
+                                 channels = [500,670, 870, 1625],
+                                 all_valid = True, 
+                                 verbose = False, 
+                                 test = False,
+                                 cut_off = 1e-10, 
+                                 returntype = 'InversionAOD'):
         """
         get the size distribution
 
@@ -258,6 +277,14 @@ class AOD_AOT(object):
             DESCRIPTION. The default is True.
         test : TYPE, optional
             DESCRIPTION. The default is False.
+        cut_off: float,
+            cut_off for fit termination conditions. 1e-10 is recommended. At the default of 1e-8 convergence is not always good.
+        returntype: str, ['InversionAOD', 'InversionSizeDistribution']
+            What is returned, 
+            InversionAOD: new format with focus on AOD partitioning
+            InversionSizeDistribution: older output when I was trying to retriev a sizedistribution.
+                          
+        
 
         Returns
         -------
@@ -266,67 +293,89 @@ class AOD_AOT(object):
 
         """
         assert(all_valid), 'all_valid needs to be true, programming required if you insist on False.'
-        dist_df = _pd.DataFrame()
-        fit_res_df = _pd.DataFrame()
-        count_down = self.AOD.data.shape[0]
+        # dist_df = _pd.DataFrame()
+        # fit_res_df = _pd.DataFrame()
+        aoddata = self.aod.to_pandas()
+        count_down = aoddata.shape[0] #self.AOD.data.shape[0]
+        result_ds = None
+        self.tp_test1 = False
         if verbose:
             print(f'Starting to make inversion for {count_down} cases.')
-        for ts, test_dp in self.AOD.data.iterrows():
+        for e,(ts, test_dp) in enumerate(aoddata.iterrows()): #self.AOD.data.iterrows():
+            # if e != 1500:
+            #     continue
+            
+            test_dp = test_dp.loc[channels] #exclude the 940!!! And maybe the 415?
+            self.tp_test_dp = test_dp
+            self.tp_ts = ts
+            
+            # generate dataset
+            ds = xr.Dataset()
+            
+            df = _pd.DataFrame(columns= channels, index = ['fine', 'coarse'])
+            df.index.name = 'mode'            
+            df.columns.name = 'channel'
+            ds['aod_fine_coarse'] = df
+            
+            ds['cost'] = _np.nan
+            ds['cpu_usage'] = _np.nan
+            
+            df = _pd.DataFrame(columns= ['diameter', 'number', 'width'], index = ['fine', 'coarse'])
+            df.index.name = 'mode'
+            df.columns.name = 'sd_param'
+            ds['size_distribution_parameters'] = df
+            
             if verbose:
                 print(test_dp)
             
-            inv = _atmop.Inversion2SizeDistribution(test_dp, width_of_aerosol_mode = width_of_aerosol_mode, verbose=verbose)
-            inv.fit_cutoff = 1e-8
-        # inv.start_conditions.size_distribution.convert2dVdlogDp().plot()
-        # inv.fit_result.size_distribution.convert2dVdlogDp().plot()
-        
-        # [0.0015510533, 0.0014759477, 0.0012328415, 0.00094773073, 0.00032288354]
-        # inv.start_conditions.extinction_coeff
-        
-            inv.fit_result.size_distribution.data.index = [ts]
-            sdt = inv.fit_result.size_distribution.data.copy()
-            # dist_df = dist_df.append(sdt)
-            dist_df =_pd.concat([dist_df, sdt])
-        
-            data = _np.array([_np.append(inv.fit_result.args, inv.fit_result.sigma)])
-            # fit_res_df = fit_res_df.append(_pd.DataFrame(data, columns=['pos1', 'amp1', 'pos2', 'amp2', 'sigma'], index = [ts]))
-            dft = _pd.DataFrame(data, columns=['pos1', 'amp1', 'pos2', 'amp2', 'sigma'], index = [ts])
-            fit_res_df = _pd.concat([fit_res_df, dft])
-            count_down -=1
-            print(count_down, end = ', ')
-            
+            # do not fit if not all aod values are given -> Values remain nan
+            if not test_dp.isna().any():
+                inv = _atmop.Inversion2SizeDistribution(test_dp, width_of_aerosol_mode = width_of_aerosol_mode, verbose=verbose)
+                inv.fit_cutoff = cut_off
+                
+                # if inv.fit_result.full_result.cost > 1e-7:
+                #     print('other starting params')
+                #     inv = _atmop.Inversion2SizeDistribution(test_dp, width_of_aerosol_mode = width_of_aerosol_mode, 
+                #                                             start_args = [120, 2000.0, 500, 1],
+                #                                             verbose=verbose)
+                #     inv.fit_cutoff = cut_off
+                
+                self.tp_inv = inv
+                
+                
+                #### set values
+                # aod_fine_coarse
+                df = inv.fit_result.size_distribution_aods
+                df.index.name = 'mode'
+                ds['aod_fine_coarse'] = df
+                ds.aod_fine_coarse.attrs['info'] = f'AOD as attributed to the fine and coarse mode by the {_atmop.__name__} module.'
+                # stderr
+                ds['cost'] = _np.sqrt(inv.fit_result.full_result.cost)
+                ds.cost.attrs['info'] = f'Residual cost after optimization. For more information checkout the cost function in the Inversion2SizeDiatribution class of the {_atmop.__name__} module.'
+                # ds['optimization_time'] = inv.fit_result.optimization_time / _pd.to_timedelta(1,'s')
+                ds['cpu_usage'] = inv.fit_result.cpu_usage
+                ds.cpu_usage.attrs['info'] = "Measure of how long the optimization took; cpu_usage in percent times the duration of the computation in seconds."
+                # size_distribution_parameters
+                df = inv.fit_result.size_distribution_parameters
+                df.columns.name = 'sd_param'
+                df.index = ['fine', 'coarse'] # this should be passed by the inv class?
+                df.index.name = 'mode'
+                ds['size_distribution_parameters'] = df
+                
+            # add the timestamp for concatination later
+            ds = ds.assign_coords(datetime = test_dp.name)
+            ds = ds.expand_dims(['datetime',])
+            # self.tp_test1 = True
+            # self.tp_ds = ds.copy()
+            if isinstance(result_ds, type(None)):
+                result_ds = ds
+            else:
+                result_ds = xr.concat([result_ds, ds], 'datetime')
             if test:
-                break
-        
-        
-        
-        distt = inv.fit_result.size_distribution.distributionType
-        bins = inv.fit_result.size_distribution.bins
-        # dist_ts = sd.SizeDist_TS(dist_df, bins, distt)
-        dist_ts = _atmsd.SizeDist_TS(dist_df, bins, distt, ignore_data_gap_error=True)
-        out= {}
-        out['dist_ts'] = dist_ts
-        out['last_inv_inst'] = inv
-        fit_res_df.index.name = 'Time'
-        fit_res_df.columns.name = 'fit_params'
-        out['fit_res'] = fit_res_df
-        return InversionSizeDistribution(self, dist_ts, fit_res_df, width_of_aerosol_mode)
-
-class InversionSizeDistribution(object):
-    def __init__(self, parent, size_distribution, fit_result, width_of_aerosol_mode):
-        self.parent = parent
-        self.size_distribution = size_distribution
-        self.fit_result = fit_result
-        self.width_of_aerosol_mode = width_of_aerosol_mode
-        
-    def save(self, path2fld, fileformat = '{dt.year:04d}{dt.month:02d}{dt.day:02d}.nc'):
-        path2fld = _pl.Path(path2fld)
-        distds = self.size_distribution.save_netcdf('bla',test = True)
-        distds['fit_results'] = self.fit_result 
-        distds.attrs['width_of_aerosol_mode'] = self.width_of_aerosol_mode
-        dt = _pd.to_datetime(distds.Time.values[0])
-        distds.to_netcdf(path2fld.joinpath(fileformat.format(dt = dt)))
-        return distds
+                if self.tp_test1:
+                    break
+        self._aodinv = result_ds
+        return result_ds
         
 
 class CloudDetection(object):
@@ -335,6 +384,8 @@ class CloudDetection(object):
         self._cloudmask_AOD = None
         self._cloudmask_angstrom = None
         self._cloudmask_combined = None
+        self._cloudmask_michalsky = None
+        self._cloudmask_augustine = None
         self._masked_data_AOD = None
         self._cloud_classifyiers_AOD = None
         self._masked_data_angstrom = None
@@ -342,6 +393,18 @@ class CloudDetection(object):
         self._cloudmask_nativ = None
         self._cloud_classifyiers_combined = None
     
+    @property
+    def cloudmask_michalsky(self):
+        if isinstance(self._cloudmask_michalsky, type(None)):
+            self._cloudmask_michalsky = cloud_screening_michalsky(self.parent.dataset)
+        return self._cloudmask_michalsky
+    
+    @property
+    def cloudmask_augustine(self):
+        if isinstance(self._cloudmask_augustine, type(None)):
+            self._cloudmask_augustine = cloud_screening_michalsky_smoker(self.parent.dataset)
+        return self._cloudmask_augustine
+                
     @property
     def cloudmask_nativ(self):
         return self._cloudmask_nativ
@@ -1003,7 +1066,206 @@ class CloudDetection(object):
         return df
     #         leg = a.legend(fontsize = 'small', title = 'channel (nm)')
     
+def cloud_screening_michalsky(dataset, testdev = 0.05,rollwindow = 15, channel = 500):
+    """
+    This is a translation of Joe Michalskies R code. The translation is not 
+    excact, so some small discrapencies are expected.
+
+    Parameters
+    ----------
+    dataset : xarray.Dataset
+        A dataset that has a variable named aod with a koordinate named channel 
+        that has a value of the keyword "channel".
+    testdev : float, optional
+        Threshold for initial test. The default is 0.05.
+    rollwindow : int, optional
+        This the window size for the rolling functions. Note this value gives 
+        to the number of minutes that need to be inbetween two cloud passes in 
+        order to see the clouds separately. The default is 15.
+    channel : int, optional
+        This is the name of the wavelength channel at which the cloud screening 
+        is perfomed. The default is 500.
+
+    Returns
+    -------
+    cloudmask : TYPE
+        DESCRIPTION.
+
+    """
+    # select the channel to perform this on
+    daaod5 = dataset.aod.sel(channel = channel)
+    saod5 = daaod5.to_pandas()
     
+    # This first test is merely a rough one to create the lowess smoothening of aod only 
+    # In a rolling window test if any difference between one value and its neighbor exceeds testdev. If not, !!all!! timestamps are excepted (not just the single timestamp that corresponds with the rolling window!! Effectively this will prevent breaks between clouds that are longer than the window to be excepted as clear. This also measn that you can get very close to a cloud!!
+    roll = saod5.rolling(f'{rollwindow} min',                         )
+    clear_t1 = _pd.DatetimeIndex([])
+    for r in roll:    
+        clear = r.diff().abs().dropna() < testdev  
+        if not _np.all(clear):
+            continue
+        else:
+            clear_t1 = clear_t1.append(clear.index).drop_duplicates()
+
+
+    # make a timeseries of 0 with the length of the original data
+    # Set all timestamps that are excepted as clear to 1
+    test1 = saod5.copy()
+    test1[:] = 0
+    test1.loc[clear_t1] = 1
+
+    # generate the smooth aod only function
+    daaod5_t1 = daaod5.where(test1.values).dropna('datetime')
+    out = smlowess.lowess(daaod5_t1.values, daaod5_t1.datetime.values,
+                 frac = 2/3)
+    lowess = _xr.DataArray(out[:,1], coords={'datetime':daaod5_t1.datetime})
+    
+    # make a DataFrame with all timestamps over which we can roll again using the actual cloud testing
+    # this requires the interpolation of the lowess data
+    df = _pd.DataFrame()
+    df['lowess'] =  lowess
+    df.index = daaod5_t1.datetime
+    df['aod'] = _pd.DataFrame({'aod':daaod5.to_pandas()})
+    df = _pd.DataFrame({'aod':daaod5.to_pandas()})
+    dflow = _pd.DataFrame({'lowess':lowess.to_pandas()}).reindex(df.index)
+    dflow = dflow.interpolate()
+    df['lowess'] = dflow
+
+    # Second round of thesting. This is more suffisticated and applies a threshold that depends on the actual AOD value
+    rollt2 = df.rolling(f'{rollwindow} min', 
+                        # center = True,
+                       )
+
+    clear_t2 = _pd.DatetimeIndex([])
+
+    for r in rollt2:  
+        testdev = r.lowess.mean()
+
+        if testdev > 0.10:
+            testdev *= 0.1
+        elif (testdev < 0.03) and (testdev > 0.025):
+            testdev *= 0.3
+        elif (testdev <= 0.025) and (testdev > 0.014):
+            testdev *= 0.6
+        elif testdev <= 0.014:
+            testdev *= 0.8
+        else:
+            testdev *= 0.2
+
+        test = r.aod.diff().abs().max()
+        if test < testdev:
+            clear_t2 = clear_t2.append(r.aod.dropna().index).drop_duplicates()
+        else:
+            continue
+
+
+    test2 = saod5.copy()
+    test2[:] = 0
+    test2.loc[clear_t2] = 1
+
+    testall = _pd.DataFrame(index = dataset.datetime.to_pandas())
+    testall['cloudy'] = 0
+    testall.loc[test2[test2 == 0].index] = 1
+
+    # turn into xarray Dataarray
+    testall.index.name = 'datetime'
+    cloudmask = testall.cloudy.to_xarray()
+    cloudmask = cloudmask.where(~daaod5.isnull())
+    return cloudmask
+
+def cloud_screening_michalsky_smoker(dataset, testdev = 0.05,rollwindow = 15, channel = '500_870'):
+    """
+    This is an adaptation of the Michalsky cloudmask to be applied on the angstrom exponent to detect smoke. This was proposed by John Augustine.
+    Parameters
+    ----------
+    dataset : xarray.Dataset
+        A dataset that has a variable named aod with a koordinate named channel 
+        that has a value of the keyword "channel".
+    testdev : float, optional
+        Threshold for initial test. The default is 0.05.
+    rollwindow : int, optional
+        This the window size for the rolling functions. Note this value gives 
+        to the number of minutes that need to be inbetween two cloud passes in 
+        order to see the clouds separately. The default is 15.
+    channel : int, optional
+        This is the name of the wavelength channel at which the cloud screening 
+        is perfomed. The default is 500.
+
+    Returns
+    -------
+    cloudmask : TYPE
+        DESCRIPTION.
+
+    """
+    # select the channel to perform this on
+    daaod5 = dataset.angstrom_exp.sel(ang_channels = channel)
+    saod5 = daaod5.to_pandas()
+    
+    # This first test is merely a rough one to create the lowess smoothening of aod only 
+    # In a rolling window test if any difference between one value and its neighbor exceeds testdev. If not, !!all!! timestamps are excepted (not just the single timestamp that corresponds with the rolling window!! Effectively this will prevent breaks between clouds that are longer than the window to be excepted as clear. This also measn that you can get very close to a cloud!!
+    roll = saod5.rolling(f'{rollwindow} min',                         )
+    clear_t1 = _pd.DatetimeIndex([])
+    for r in roll:    
+        clear = r.diff().abs().dropna() < testdev  
+        if not _np.all(clear):
+            continue
+        else:
+            clear_t1 = clear_t1.append(clear.index).drop_duplicates()
+
+
+    # make a timeseries of 0 with the length of the original data
+    # Set all timestamps that are excepted as clear to 1
+    test1 = saod5.copy()
+    test1[:] = 0
+    test1.loc[clear_t1] = 1
+
+    # generate the smooth aod only function
+    daaod5_t1 = daaod5.where(test1.values).dropna('datetime')
+    out = smlowess.lowess(daaod5_t1.values, daaod5_t1.datetime.values,
+                 frac = 2/3)
+    lowess = _xr.DataArray(out[:,1], coords={'datetime':daaod5_t1.datetime})
+    
+    # make a DataFrame with all timestamps over which we can roll again using the actual cloud testing
+    # this requires the interpolation of the lowess data
+    df = _pd.DataFrame()
+    df['lowess'] =  lowess
+    df.index = daaod5_t1.datetime
+    df['aod'] = _pd.DataFrame({'aod':daaod5.to_pandas()})
+    df = _pd.DataFrame({'aod':daaod5.to_pandas()})
+    dflow = _pd.DataFrame({'lowess':lowess.to_pandas()}).reindex(df.index)
+    dflow = dflow.interpolate()
+    df['lowess'] = dflow
+
+    # Second round of thesting. This is more suffisticated and applies a threshold that depends on the actual AOD value
+    rollt2 = df.rolling(f'{rollwindow} min', 
+                        # center = True,
+                       )
+
+    clear_t2 = _pd.DatetimeIndex([])
+
+    for r in rollt2:  
+        testdev = r.lowess.mean() * 0.015
+        test = r.aod.diff().abs().max()
+        if test < testdev:
+            clear_t2 = clear_t2.append(r.aod.dropna().index).drop_duplicates()
+        else:
+            continue
+
+
+    test2 = saod5.copy()
+    test2[:] = 0
+    test2.loc[clear_t2] = 1
+
+    testall = _pd.DataFrame(index = dataset.datetime.to_pandas())
+    testall['cloudy'] = 0
+    testall.loc[test2[test2 == 0].index] = 1
+
+    # turn into xarray Dataarray
+    testall.index.name = 'datetime'
+    cloudmask = testall.cloudy.to_xarray()
+    cloudmask = cloudmask.where(~daaod5.isnull())
+    return cloudmask
+
 class AerosolAndCloudDetection(object):
     def __init__(self, parent):
         self.parent = parent

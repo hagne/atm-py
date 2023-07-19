@@ -100,7 +100,7 @@ class DirectNormalIrradiation(object):
         site = self.site.abb
         fns = []
         for dt in [start_dt, end_dt]:
-            fns.append(f'/mnt/telg/data/grad/surfrad/radiation/{site}/srf_rad_full_{site}_{dt.year:04d}{dt.month:02d}{dt.day:02d}.nc')
+            fns.append(f'/export/htelg/data/grad/surfrad/radiation/{site}/srf_rad_full_{site}_{dt.year:04d}{dt.month:02d}{dt.day:02d}.nc')
         
         ds = xr.open_mfdataset(np.unique(fns)) # unique in case start and end is the same
         
@@ -131,9 +131,9 @@ class DirectNormalIrradiation(object):
         #### interpolate and resample calibration (V0s)
         dt = self.raw_data.datetime.to_pandas()
         calib_interp = pd.concat([cal,dt]).drop([0], axis = 1).sort_index().interpolate().reindex(dt.index)
-    
         #### correct VOs for earth sun distance see functions above
         calib_interp_secorr = calib_interp.divide(self.sun_position.sun_earth_distance**2, axis = 0)
+        self.calibration_data = calib_interp_secorr
         
         #### match channels for operation
         channels = self.raw_data.channel_center.to_pandas()
@@ -143,8 +143,58 @@ class DirectNormalIrradiation(object):
         #### get transmission
         transmission = raw_data/calib_interp_secorr
         transmission = xr.DataArray(transmission)
+        transmission = transmission.rename({'wl':'channel'})
         self.calibration = 'sp02'
         self._transmission =transmission
+        
+        
+    def _apply_calibration_atm_gam(self,p2fld='/export/htelg/data/grad/surfrad/mfrsr/langleys_concat/tbl/',
+                                   th=0.02,
+                                    order_stderr=2,
+                                    lam_overtime=2.5e4,
+                                    ns_overtime=2,
+                                    lam_season=1e4,
+                                    ns_season=6,
+                                    lands = None):
+        if isinstance(lands, type(None)):
+            print('load lands')
+            lands = atmlangcalib.open_langley_dailys(#end = '20211001',
+                                                  p2fld=p2fld,)
+            lands.predict_until = pd.Timestamp.now()
+            
+            lands._get_v0_gam(th=th,
+                      order_stderr=order_stderr,
+                      lam_overtime=lam_overtime,
+                      ns_overtime=ns_overtime,
+                      lam_season=lam_season,
+                      ns_season=ns_season,
+                    )
+            # Days after this date will be considered as temporary. These days will be recalculated every day until this date is no longer before the date under question
+            # the parameters where selected based on a rough guess, no validation or evaluation was conducted
+            th_predict = 0.003
+            req_no_good_langleys = 15
+            wl = 500
+            istderr = lands.dataset.sel(fit_results = 'intercept_stderr', wavelength = wl).langley_fitres
+            date_predict = pd.to_datetime(lands.dataset.sel(fit_results = 'intercept', wavelength = wl).langley_fitres.where(istderr < th_predict).dropna('datetime').datetime[-req_no_good_langleys].values)
+            lands.date_predict = date_predict
+        else:
+            pass
+        
+        self.lands = lands
+        v0 = lands.v0prediction.dataset
+        v0 = v0.rename({'wavelength':'channel'})
+        
+        #### FIXME: the below should no longer be required
+        # v0 = v0.assign_coords({'channel': [ 415,  500, 1625,  670,  870,  940]})
+        
+        v0_interp = v0.interp(datetime = self.raw_data.direct_normal_irradiation.datetime)
+        sedistcorr = self.sun_position.sun_earth_distance**2
+        v0_interp_secorr = v0_interp.V0 / sedistcorr.to_xarray()
+        self.tp_v0_interp_secorr = v0_interp_secorr
+        transmission = self.raw_data.direct_normal_irradiation / v0_interp_secorr
+        self.calibration = 'atm_gam'
+        self._transmission =transmission
+        
             
     def _apply_calibration_johns(self):
         def datetime2angulardate(dt):
@@ -207,7 +257,7 @@ class DirectNormalIrradiation(object):
         calib_interp_secorr.rename({936:940}, axis = 1, inplace=True)
         calib_interp_secorr.columns.name = 'channel'
         # self.tp_calib_interp_secorr = calib_interp_secorr
-        
+        self.tp_calib_interp_secorr = calib_interp_secorr
         raw_data = self.raw_data.direct_normal_irradiation.to_pandas()
         transmission = raw_data/calib_interp_secorr
         transmission = xr.DataArray(transmission)     
@@ -224,22 +274,64 @@ class DirectNormalIrradiation(object):
     @property
     def od_ozone(self):
         if isinstance(self._od_ozone, type(None)):
-            #### read ozon concentration file for particular site and extract data for this day
-            p2f = f'/home/grad/surfrad/aod/ozone/{self.site.abb}_ozone.dat'
-            ozone = atmsrf.read_ozon(p2f)
-            dt = pd.to_datetime(pd.to_datetime(self.raw_data.datetime.values[0]).date())
-            total_ozone = float(ozone.interp(datetime = dt).ozone)
-            
-            #### read spectral function of ozon absorption coeff and interpolate to exact filter wavelength
+            #### read spectral function of ozon absorption coeff 
             p2f = '/home/grad/surfrad/aod/ozone.coefs'
             ozone_abs_coef = pd.read_csv(p2f, index_col= 0, sep = ' ', names=['wavelength', 'coeff'])
             ozone_abs_coef = ozone_abs_coef.to_xarray()
             
-            ozon2bychannel = ozone_abs_coef.interp(wavelength = self.raw_data.channel_center)
-            ozon2bychannel = ozon2bychannel.drop('wavelength')
+            if self.settings_calibration in ['johns', 'atm_gam']:
+                #### read ozon concentration file for particular site and extract data for this day
+                p2f = f'/home/grad/surfrad/aod/ozone/{self.site.abb}_ozone.dat'
+                ozone = atmsrf.read_ozon(p2f)
+                dt = pd.to_datetime(pd.to_datetime(self.raw_data.datetime.values[0]).date())
+                total_ozone = float(ozone.interp(datetime = dt).ozone)
+                
+                # interpolate to exact filter wavelength ... its obiously not done exact at this point
+                
+                ozon2bychannel = ozone_abs_coef.interp(wavelength = self.raw_data.channel_center)
+                self.tp_ozon2bychannel = ozon2bychannel.copy()
+                ozon2bychannel = ozon2bychannel.drop('wavelength')
             
+            elif self.settings_calibration == 'sp02':
+                assert(self.site.abb == 'brw'), 'only works for barrow so far'
+
+                #### read ozon and interpolate
+                dt = pd.to_datetime(self.raw_data.datetime.values[0])
+                p2fld= pl.Path('/nfs/stu3data2/Model_data/merra_2/barrow/merra_M2I1nxasm_5.12.4/')
+                
+                p2f_list = []
+                # load day before and after for interolation purposes
+                for i in list(range(-1,2)):
+                    dtt = dt + pd.to_timedelta(i, 'd')
+                
+                    pattern = f'MERRA2_*.inst1_2d_asm_Nx.{dtt.year}{dtt.month:02d}{dtt.day:02d}.nc'
+                
+                    res = list(p2fld.glob(pattern))
+                
+                    if len(res) == 0:
+                        assert(False), 'not matching ozon file'
+                
+                    assert(len(res) ==1), 'There is more than 1 matching ozon file ... inconceivable!'
+                
+                    p2f_list.append(res[0])
+                
+                ozone = xr.open_mfdataset(p2f_list)
+                ozone = ozone.rename({'time': 'datetime'})
+                
+                total_ozone = ozone.interp(datetime = self.raw_data.datetime).TO3
+                
+                ozon2bychannel = ozone_abs_coef.interp(wavelength = self.raw_data.channel_center)
+                ozon2bychannel = ozon2bychannel.drop('wavelength')
+                
+                # 368 and 1050 are outside the ozon spectrum. Values should be very small
+                ozon2bychannel.coeff[ozon2bychannel.coeff.isnull()] = 0
+                
+            else:
+                assert(False), f'not a known calibration strategy: {self.settings_calibration}.'
+                
             #### scale abs. coef. to total ozone to get OD_ozone
-            od_ozone = ozon2bychannel * (total_ozone/1000)
+            self.tp_total_ozone = total_ozone
+            od_ozone = ozon2bychannel * (total_ozone/1000) #any idea why we devide by 1000?
             od_ozone = od_ozone.fillna(0)
             self._od_ozone = od_ozone.coeff
         return self._od_ozone
@@ -298,57 +390,67 @@ class DirectNormalIrradiation(object):
     def od_co2_ch4_h2o(self):
         if isinstance(self._od_co2ch4h2o, type(None)):
             # get the 1625 filter info based on the MFRSR instrument serial no
-            fn = '/mnt/telg/projects/AOD_redesign/MFRSR_History.xlsx' 
-            mfrsr_info = pd.read_excel(fn, sheet_name='Overview')
-            inst_info = mfrsr_info[mfrsr_info.Instrument == self.raw_data.serial_no]
-            
-            fab = inst_info.Filter_1625nm.iloc[0]
-            filter_no = int(''.join([i for i in fab if i.isnumeric()]))
-            filter_batch = ''.join([i for i in fab if not i.isnumeric()]).lower()
-            
-            # open the lookup dabel for the Optical depth correction
-            correction_info = xr.open_dataset(self.path2absorption_correction_ceoff_1625)
-            
-            ds = xr.Dataset()
-            params_dict = {}
-            for molecule in ['co2', 'ch4', 'h2o_5cm']:
-                params = correction_info.sel(filter_no = filter_no, batch = filter_batch, molecule = molecule)
-                params_dict[molecule] = params
-                # apply the airmass dependence
-                da = params.OD.interp({'airmass': self.sun_position.airmass})
-                da = da.assign_coords(airmass = self.sun_position.index.values)
-                da = da.rename({'airmass': 'datetime'})
-                da = da.drop(['filter_no', 'molecule', 'batch'])
-                ds[molecule] = da
+            if 1625 in self.raw_data.channel:
+                fn = '/export/htelg/projects/AOD_redesign/MFRSR_History.xlsx'
+                mfrsr_info = pd.read_excel(fn, sheet_name='Overview')
+                inst_info = mfrsr_info[mfrsr_info.Instrument == self.raw_data.serial_no]
                 
-            # self.tp_params = params_dict
-            # self.tp_params_interp = ds.copy()
-            
-            ds = ds.expand_dims({'channel': [1625,]})
-            # normalize to the ambiant pressure ... less air -> less absorption, 
-            # only for ch4 and c02, water is scaled by the precipitable water
-            # TODO, this can probably done better? 
-            ds[['ch4', 'co2']] = ds[['ch4', 'co2']] * (self.met_data.pressure/1013.25)
-        
-            # self.tp_ds = ds.copy()
-            # self.tp_tpw = self.tpw.copy()
-            tpw = self.precipitable_water
-            ds['h2o_5cm'] = ds.h2o_5cm / 5 * tpw
-        
-            #### add 0 for all other channels
-            dstlist = [ds]
-            for cha in self.raw_data.channel:
-                if int(cha) == 1625:
-                    continue    
+                fab = inst_info.Filter_1625nm.iloc[0]
+                filter_no = int(''.join([i for i in fab if i.isnumeric()]))
+                filter_batch = ''.join([i for i in fab if not i.isnumeric()]).lower()
                 
-                dst = copy.deepcopy(ds)
-                dst = dst.assign_coords({'channel': [cha]})
+                # open the lookup dabel for the Optical depth correction
+                correction_info = xr.open_dataset(self.path2absorption_correction_ceoff_1625)
+                
+                ds = xr.Dataset()
+                params_dict = {}
+                for molecule in ['co2', 'ch4', 'h2o_5cm']:
+                    params = correction_info.sel(filter_no = filter_no, batch = filter_batch, molecule = molecule)
+                    params_dict[molecule] = params
+                    # apply the airmass dependence
+                    da = params.OD.interp({'airmass': self.sun_position.airmass})
+                    da = da.assign_coords(airmass = self.sun_position.index.values)
+                    da = da.rename({'airmass': 'datetime'})
+                    da = da.drop(['filter_no', 'molecule', 'batch'])
+                    ds[molecule] = da
+                    
+                # self.tp_params = params_dict
+                # self.tp_params_interp = ds.copy()
+                
+                ds = ds.expand_dims({'channel': [1625,]})
+                # normalize to the ambiant pressure ... less air -> less absorption, 
+                # only for ch4 and c02, water is scaled by the precipitable water
+                # TODO, this can probably done better? 
+                ds[['ch4', 'co2']] = ds[['ch4', 'co2']] * (self.met_data.pressure/1013.25)
             
-                for var in dst:
-                    dst[var][:] = 0
+                # self.tp_ds = ds.copy()
+                # self.tp_tpw = self.tpw.copy()
+                tpw = self.precipitable_water
+                ds['h2o_5cm'] = ds.h2o_5cm / 5 * tpw
             
-                dstlist.append(dst)
-            ds = xr.concat(dstlist, 'channel')
+                #### add 0 for all other channels
+                dstlist = [ds]
+                for cha in self.raw_data.channel:
+                    if int(cha) == 1625:
+                        continue    
+                    
+                    dst = copy.deepcopy(ds)
+                    dst = dst.assign_coords({'channel': [cha]})
+                
+                    for var in dst:
+                        dst[var][:] = 0
+                
+                    dstlist.append(dst)
+                ds = xr.concat(dstlist, 'channel')
+                
+            else:
+                # generate a ds with zeros
+                ds =  xr.Dataset()
+                ds['co2'] = xr.DataArray(np.zeros(tuple(self.raw_data.dims[d] for d in ['datetime', 'channel'])), 
+                                         coords={'datetime':self.raw_data.datetime, 'channel':self.raw_data.channel})
+                ds['ch4'] = ds.co2.copy()
+                ds['h2o_5cm'] = ds.co2.copy()
+                
             self._od_co2ch4h2o = ds
         return self._od_co2ch4h2o
 
@@ -376,6 +478,8 @@ class DirectNormalIrradiation(object):
         if isinstance(self._transmission, type(None)):
             if self.settings_calibration == 'johns':
                 self._apply_calibration_johns()
+            elif self.settings_calibration == 'atm_gam':
+                self._apply_calibration_atm_gam()
             elif self.settings_calibration == 'sp02':
                 self._apply_calibration_sp02()
             else:
@@ -433,15 +537,19 @@ class DirectNormalIrradiation(object):
     #     self.raw_df_loc = raw_df_loc
         
     
-    def _get_langley_from_raw(self):
+    def _get_langley_from_raw(self, verbose = False):
         raw_df = self.raw_data.direct_normal_irradiation.to_pandas()
         
+        if verbose:
+            print('change to local time')
         #### changing to local time
         raw_df_loc = raw_df.copy()
         index_local = raw_df.index + pd.to_timedelta(self.site.time_zone['diff2UTC_of_standard_time'], 'h')
         raw_df_loc.index = index_local
         # self.tp_rdl = raw_df_loc.copy()
         
+        if verbose:
+            print('get the one day')
         ##### getting the one day
         sunpos = self.sun_position.copy()
         start = raw_df_loc.index[0]
@@ -450,46 +558,66 @@ class DirectNormalIrradiation(object):
         end = start + pd.to_timedelta(1, 'd')
         raw_df_loc = raw_df_loc.truncate(start, end)
 
+        if verbose:
+            print('localize and cut day ')
         #### localize and cut day for sunposition
         sunpos.index = index_local
         sunpos = sunpos.truncate(start, end)
-
+        if verbose:
+            print('remove night')
         #### remove the night
-        sunpos[sunpos.airmass < 0] = np.nan
-
+        # return sunpos
+        # sunpos[sunpos.airmass < 0] = np.nan
+        sunpos = sunpos[sunpos.airmass > 0]
+        if verbose:
+            print('get min airmass')
         #### get the minimum airmass befor I start cutting it out
         noon = sunpos.airmass.idxmin()
-
+        
+        if verbose:
+            print('normalize to sun earth dist.')
         #### normalize to the sun_earth_distance
         raw_df_loc = raw_df_loc.multiply(sunpos.sun_earth_distance**2, axis=0)
-    
+        
+        if verbose:
+            print('remove negatives')
         # langleys are the natural logarith of the voltage over the AMF ... -> log
         # to avoid warnings and strange values do some cleaning before log
         raw_df_loc[raw_df_loc <= 0] = np.nan
 #         self.tp_raw_df = raw_df.copy()
         raw_df_loc = np.log(raw_df_loc)    
     
+        if verbose:
+            print('keep whats in right airmasses')
         # keep only what is considered relevant airmasses
         amf_min = 2.2 
         amf_max = 4.7
-        sunpos[sunpos.airmass < amf_min] = np.nan
-        sunpos[sunpos.airmass > amf_max] = np.nan
-
+        # sunpos[sunpos.airmass < amf_min] = np.nan
+        # sunpos[sunpos.airmass > amf_max] = np.nan
+        sunpos = sunpos[sunpos.airmass > amf_min]
+        sunpos = sunpos[sunpos.airmass < amf_max]
+        if verbose:
+            print('split into am/pm')
         sunpos_am = sunpos.copy()
         sunpos_pm = sunpos.copy()
 
-        sunpos_am[sunpos.index > noon] = np.nan
-        sunpos_pm[sunpos.index < noon] = np.nan
-        
+        # sunpos_am[sunpos.index > noon] = np.nan
+        # sunpos_pm[sunpos.index < noon] = np.nan
+        sunpos_am = sunpos_am[sunpos.index < noon]
+        sunpos_pm = sunpos_pm[sunpos.index > noon]
 
-        langley_am = raw_df_loc.copy()
-        langley_pm = raw_df_loc.copy()
+        # langley_am = raw_df_loc.copy()
+        # langley_pm = raw_df_loc.copy()
+        langley_am = raw_df_loc.loc[sunpos_am.index].copy()
+        langley_pm = raw_df_loc.loc[sunpos_pm.index].copy()
 
         # self.tp_sp_am = sunpos_am
         # self.tp_sp_pm = sunpos_pm
         # self.tp_df_am = langley_am[~sunpos_am.airmass.isna()].copy()
         # self.tp_df_pm = langley_am[~sunpos_pm.airmass.isna()].copy()
-
+        if verbose:
+            print('set the values')
+        # return langley_am, sunpos_am
         langley_am.index = sunpos_am.airmass
         langley_am = langley_am[~langley_am.index.isna()]
         langley_am.sort_index(ascending=False, inplace=True)
@@ -500,6 +628,8 @@ class DirectNormalIrradiation(object):
 
         self._am = atmlangcalib.Langley(self,langley_am, langley_fit_settings = self.langley_fit_settings)
         self._pm = atmlangcalib.Langley(self,langley_pm, langley_fit_settings = self.langley_fit_settings)
+        if verbose:
+            print('done')
         return True
 
 class CombinedGlobalDiffuseDirect(object):

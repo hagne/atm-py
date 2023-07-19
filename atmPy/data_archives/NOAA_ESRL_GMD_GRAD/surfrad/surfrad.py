@@ -658,7 +658,7 @@ def read_sounding(p2f):
     
     return atmsound.BalloonSounding(ds_sonde)
 
-def read_ccc(p2f):
+def read_ccc(p2f, verbose = False):
     """
     Reads surfrads ccc (cosine corrected) files typically located somewhere 
     around here:
@@ -675,38 +675,107 @@ def read_ccc(p2f):
         DESCRIPTION.
 
     """
+    with open(p2f, 'r') as rein:
+        for i in range(2):
+            l = rein.readline()
+
+    filetype = 'ccc'
+    instrument_type = 'MFRSR'
+    fieldno = len(l.split())
+    
+    if verbose:
+        print(f'fieldno: {fieldno}')
+    
+    if fieldno == 36:
+        filetype = 'tu'
+    elif fieldno == 18:
+        filetype = 'tu'
+        instrument_type = 'MFR'
+    
+    if verbose:
+        print(f'filetype: {filetype}')
+        print(f'instrument_type: {instrument_type}')
+        
+    #### parse name
     site_abb = p2f.name[:3]
     serial_no = int(p2f.name.split('_')[-1].split('.')[0])
-    instrument_type = 'MFRSR'
+
     site = [s for s in network.stations._stations_list if s.abb == site_abb.upper()][0]
     
-    cols = list(range(25))
+    cols = list(range(fieldno))
     cols[0] = 'datetime'
-    
+
+    if filetype == 'tu':
+        skiprows = 1
+        timezoneadjust = site.time_zone['diff2UTC_of_standard_time']
+    else:
+        skiprows = None
+        timezoneadjust = 0
     df = _pd.read_csv(p2f,
                 names =cols,
-                delim_whitespace = True)
+                delim_whitespace = True,
+                skiprows = skiprows)
 
-    df.index = df.apply(lambda row: _pd.to_datetime('1900-01-01') + _pd.to_timedelta(row.datetime - 1, 'days'), axis = 1) # the -1 is bacause the year starts with day 1 not zero
-
+    index =  df.apply(lambda row: _pd.to_datetime('1900-01-01') + _pd.to_timedelta(row.datetime - 1, 'days'), axis = 1) # the -1 is bacause the year starts with day 1 not zero
+    index -= _pd.to_timedelta(timezoneadjust, 'h')
+    df.index = index
     df.sort_index(inplace = True)
 
     df.index.name = 'datetime'
 
     ds = _xr.Dataset()
 
+    # return df
+    if filetype == 'ccc':
+        ds['solar_elevation'] = df[1]
+        ds['instrument_temperature'] = df[23]
+        ds['instrument_power'] = df[24]
 
-    ds['solar_elevation'] = df[1]
-    ds['instrument_temperature'] = df[23]
-    ds['instrument_power'] = df[24]
-    ds.solar_elevation.attrs['unit'] = 'radian'
+    elif filetype == 'tu':
+        ds['temp_sensor'] = df[1]
+        
+        ds['temp_housing_2'] = df.iloc[:,-5]
+        da = _xr.DataArray(df[2])
+        da = da.where(da != -9999.0, _np.nan)
+        da = da.where(da != -9998.0, _np.nan)
+        ds['broadband'] = da#df[2]
+        no = 7
+        if instrument_type == 'MFRSR':
+            # ds['temp_housing_2'] = df.iloc[:,-5]
+            start_col = 2
+        elif instrument_type == 'MFR':
+            ds['temp_housing'] = df[10]
+            # ds['temp_housing_2'] = df.iloc[:,-5]
+            start_col = 2
+        else:
+            assert(False), 'nenenenene'
+            
+        sel = df.iloc[:,start_col: start_col + no].copy()
 
+        #### TODO: assign a QF invalid due to ...
+        sel[sel == -9999.0] = _np.nan
+        sel[sel == -9998.0] = _np.nan
+
+        sel.columns = _np.array(range(len(sel.columns))) + 1
+        sel.columns.name = 'channel'
+        var_name = 'all_time'
+        ds[var_name] = sel
+        ds[var_name].attrs['unit'] = 'mV'
+        # ds[var_name].attrs['corrections'] = 'cosine' It not corrected!!!!
+    else:
+        assert(False), 'not possible!'
     groupnames = ['global_horizontal_irradiation', 'diffuse_horizontal_irradiation', 'direct_normal_irradiation']
 
+    if filetype == 'tu':
+        start_col = 2+7+2
+    else:
+        start_col = 2
     for block in range(3):
+        if instrument_type == 'MFR':
+            break # there is only the alltime collumn in the MFR?
         # block = 0
         no = 7
-        sel = df.iloc[:,2 + (block * no): 2 + (block * no) + no].copy()
+        sel = df.iloc[:,start_col + (block * no): start_col + (block * no) + no].copy()
 
         #### TODO: assign a QF invalid due to ...
         sel[sel == -9999.0] = _np.nan
@@ -718,7 +787,18 @@ def read_ccc(p2f):
         ds[groupnames[block]] = sel
         ds[groupnames[block]].attrs['unit'] = 'mV'
         ds[groupnames[block]].attrs['corrections'] = 'cosine'
-        
+
+    if filetype == 'tu':
+        sel = df.iloc[:, -4:].copy()
+        ds['airmass'] = sel.iloc[0]
+        ds['solar_azimuth'] = sel.iloc[1]
+        ds['solar_zenith'] = sel.iloc[2]
+        ds['solar_elevation'] = sel.iloc[3]
+        # sel.columns = ['airmass', 'azimuth', 'zenith', 'elevation']
+        # sel.columns.name = 'sun_pos_params'
+        # ds['sun'] = sel
+
+    ds.solar_elevation.attrs['unit'] = 'radian'
     ds.attrs['info'] = 'Cosine corrected SURFRAD MFRSR measurments.'
     
     ds.attrs['site_latitude'] = site.lat

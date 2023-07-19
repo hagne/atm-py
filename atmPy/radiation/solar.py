@@ -165,13 +165,13 @@ def get_sun_position(lat, lon, date, elevation=0):
         if not hasattr(date, '__iter__'):
             date = _np.zeros(10, dtype=_np.timedelta64) + date
         pos = _np.array([getpos(la, lo, da, el) for la, lo, da, el in zip(lat, lon, date, elevation)])
-        pos = _pd.DataFrame(pos, columns=['altitude', 'azimuth', 'airmass', 'sun_earth_distance', 'ampm'], index=date)
+        pos = _pd.DataFrame(pos, columns=['elevation', 'azimuth', 'airmass', 'sun_earth_distance', 'ampm'], index=date)
         pos = pos.astype(dict(zip(pos.columns,([float]*(pos.shape[1] - 1)) + ['|S2',]))) #otherwise everthing is object ... ampm is to blame
         # return pos        
         # pos['ampm'] = pos.apply(lambda row: 'am' if row.azimuth <= _np.pi else "pm", axis = 1)
     else:
         out = getpos(lat, lon, date, elevation)
-        pos = dict(zip(('altitude', 'azimuth', 'airmass','sun_earth_distance', 'ampm'), out))
+        pos = dict(zip(('elevation', 'azimuth', 'airmass','sun_earth_distance', 'ampm'), out))
     
     return pos
 

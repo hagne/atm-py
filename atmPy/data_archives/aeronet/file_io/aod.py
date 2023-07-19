@@ -223,11 +223,9 @@ def read_file(path='/Volumes/HTelg_4TB_Backup/AERONET/',
         raise HeaderError('version {} not defined'.format(data.header['version']))
 
 
-    # aaod.site = _measurement_site.Site(lat, lon, alt, name=site_name)
-    # generate Aeronet_AOD and add AOD to class
-    aaot = Aeronet_AOD(lat = lat, lon = lon, elevation = alt, name = site_name, name_short = None, timezone = 0)
-    if keep_original_data:
-        aaot.original_data = data_orig
+    
+    # if keep_original_data:
+    #     aaot.original_data = data_orig
 
 
     ## rename columns
@@ -236,10 +234,13 @@ def read_file(path='/Volumes/HTelg_4TB_Backup/AERONET/',
     data_aot.data.dropna(axis=1, how='all', inplace=True)
 
     ## add the resulting Timeseries to the class
-    aaot.AOD = data_aot
+    aaot = Aeronet_AOD(data = data_aot.data, lat = lat, lon = lon, elevation = alt, name = site_name, name_short = None, timezone = 0)
+    # aaot.AOD = data_aot
 
     aaot.ang_exp = data.drop([col for col in data.data.columns if 'Angstrom' in col], inverse = True)
     # The following might be different for different files, otherwise why would I have put it there in the first place?!?
     # aaot.ang_exp.data.columns = [col.replace('Angstrom', '_Angstrom_Exponent') for col in aaot.ang_exp.data.columns]
+    # return data_aot#, aaot
+    aaot.header = data.header
     return aaot
 

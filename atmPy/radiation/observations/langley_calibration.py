@@ -21,8 +21,7 @@ import statsmodels.api as sm
 # import sp02.products.raw_nc
 import copy
 import pathlib as pl
-from pygam import LinearGAM, s, l, GammaGAM
-from pygam import f as pgf
+# from pygam import f as pgf
 import scipy.interpolate as scint
 import matplotlib.dates as pltdates
 
@@ -140,16 +139,24 @@ def read_langley_params(p2f = '/home/grad/surfrad/aod/tbl_mfrhead', verbose = Fa
 
         V0_err = pd.DataFrame([[float(i) for i in l.split('!')[0].strip().split(' ')] for l in block[4::2]], columns=['intercept', 'slope'], index = [l.split('!')[1].strip().split(' ')[0] for l in block[4::2]])
         
-        if '614' in V0.index:
+        if '615' in V0.index:
             if verbose:
-                print('Has 614 nm channel -> continue')
+                print('Has 615 nm channel -> continue')
             continue
-        V0.rename({'162': '1625',
-                   '670': '673'}, inplace=True)
-        V0_err.rename({'162': '1625',
-                       '670': '673'}, inplace=True)
-        assert(np.all([wl in V0.index for wl in ['415', '500', '1625', '673', '870', '936']])), f'something is strange with the wavelength {V0.index}'
-        assert(np.all([wl in V0_err.index for wl in ['415', '500', '1625', '673', '870', '936']])), f'something is strange with the wavelength {V0_err.index}'
+        
+        #### rename stats channels to nominal channels
+        wl_nominal = np.array([415,500,1625, 615, 670, 870, 940])
+        V0.rename({col: wl_nominal[abs(wl_nominal - int(col)).argmin()] for col in V0.index}, axis = 0, inplace = True)  
+        V0_err.rename({col: wl_nominal[abs(wl_nominal - int(col)).argmin()] for col in V0_err.index}, axis = 0, inplace = True)  
+        # V0.rename({'162': '1625',
+        #            '670': '673'}, inplace=True)
+        # V0_err.rename({'162': '1625',
+        #                '670': '673'}, inplace=True)
+        # return V0
+        assert(np.all([wl in wl_nominal for wl in V0.index])), f'something is strange with the wavelength {V0.index}'
+        assert(np.all([wl in wl_nominal for wl in V0_err.index ])), f'something is strange with the wavelength {V0_err.index}'
+        # assert(np.all([wl in V0.index for wl in ['415', '500', '1625', '670', '870', '940']])), f'something is strange with the wavelength {V0.index}'
+        # assert(np.all([wl in V0_err.index for wl in ['415', '500', '1625', '670', '870', '940']])), f'something is strange with the wavelength {V0_err.index}'
         V0.index = [int(col) for col in V0.index]
         V0.index.name = 'wavelength'
         V0.columns.name= 'V0_params'
@@ -182,6 +189,7 @@ def open_langley_dailys(start = None, #'20160101',
     
     df['serial_no'] = df.apply(lambda row: row.p2f.name.split('_')[3], axis = 1)
     assert(df.serial_no.unique().shape[0] == 1), f'Files indicate more then one serial number (found {df.serial_no.unique()}), which should not be the case unless you updated the langley processing ... did you? ... programmin grequired.'   
+    # return df
     ds_langs = xr.open_mfdataset(df.p2f, drop_variables = drop_variables)
     return Langley_Timeseries(ds_langs)
 
@@ -223,14 +231,16 @@ class CalibrationPrediction(object):
 class Langley_Timeseries(object):
     def __init__(self, dataset):
         self.dataset = dataset
-        end = self.dataset.datetime.values[-1] + pd.to_timedelta(60, 'days')
-        self.daterange2predict = pd.date_range(start = self.dataset.datetime.values[0], end = end, freq='D')
+        self.predict_until = self.dataset.datetime.values[-1] + pd.to_timedelta(60, 'days')
+        # self.daterange2predict = pd.date_range(start = self.dataset.datetime.values[0], end = end, freq='D')
         self._v0rol = None
         self._v0gam = None
         self._v0 = None
         
         
-        
+    @property
+    def daterange2predict(self):
+        return pd.date_range(start = self.dataset.datetime.values[0], end = self.predict_until, freq='D')
         
     def plot(self, wl = 500, th = 0.2, order_stderr = 2, ax = None, **kwargs):
         if isinstance(ax, type(None)):
@@ -252,32 +262,24 @@ class Langley_Timeseries(object):
     def _get_v0_gam(self,
                     th = 0.02, # this is about half the annual variability (winter vs summer) of ~0.035
                     order_stderr = 2, # determines the weights
-                    lam_overtime = 5e5,
-                    ns_overtime = 4, # 4 per year -> 
-                    lam_season = 5e5,
-                    ns_season = int(12 * 1.5),
+                    lam_overtime = 2.5e4,
+                    ns_overtime = 2, # 4 per year -> 
+                    lam_season = 1e4,
+                    ns_season = 6,
                     ):
-        # assert(False), 'todo'
+        # importing here so not everyone has to install pygam
+        from pygam import LinearGAM, s #, l, GammaGAM
         
+        lam_overtime *= self.dataset.datetime.shape[0]
         ds_v0_list = []
         
         for wl in self.dataset.wavelength:
             wl = int(wl)
             
-            # if wl != 500:
-            #     continue
-            # break
-        
-            # wl = 500
             ds_v0 = xr.Dataset()
         
             dfwl =self.dataset.langley_fitres.sel(wavelength = wl).to_pandas().copy() #not sure if the copy is needed, but have to make sure that I don't overwrite the dataset
             no_of_years = (dfwl.iloc[-1].name - dfwl.iloc[0].name) / pd.to_timedelta(365, 'days')
-            # end = dfwl.index[-1]
-            # end = pd.Timestamp.now()
-            # new_daterange = pd.date_range(start = pd.to_datetime(dfwl.index[0].date()), end = end, 
-            #               # periods=1, 
-            #               freq='24h')
             
             dfwl[dfwl.intercept_stderr > th] = np.nan
             dfwl.dropna(inplace=True)
@@ -464,21 +466,25 @@ class Langley_Timeseries(object):
         return self._v0rol
         
     
-def fit_langley(langley, weighted = True, error_handling = 'skip'):
+def fit_langley(langley, 
+                # airmasslimits = (2.5,4),
+                weighted = False, error_handling = 'skip'):
     """
     Parameters
     ----------
     langley : TYPE
         DESCRIPTION.
     weighted : bool, optional
-        If the fit is to be weighted. This is a good idea due to the change in density of data points as the AMF decreases. The default is False.
+        If the fit is to be weighted. This is a good idea due to the change in density of data points as the AMF decreases. The default is ....
 
     Returns
     -------
     None.
 
     """
+    langley = langley.copy()
     langley.sort_index(ascending=False, inplace=True) # otherwise the weigted fit will fail for pm
+    # langley = langley.truncate(*airmasslimits)
     y = langley
     x = langley.index
     x = sm.add_constant(x)
@@ -527,6 +533,8 @@ def plot_langley(lang_ds, wls = 'all', date = 'Test'):
         pass
 #     wl = 500
     aas = []
+    if 'datetime' in lang_ds.coords:
+        lang_ds = lang_ds.isel(datetime = 0)
     for wl in wls:
         lan = lang_ds.langleys.to_pandas()[wl]
         resid = lang_ds.langley_fit_residual.to_pandas()[wl]
@@ -552,9 +560,13 @@ def plot_langley(lang_ds, wls = 'all', date = 'Test'):
     return f,aas
 
 class Langley(object):
-    def __init__(self, parent, langleys, langley_fit_settings = None):
+    def __init__(self, parent, langleys, aimass_limits = (2.5,4),
+                 langley_fit_settings = None):
         self.parent = parent
         langleys.columns.name = 'wavelength'
+        langleys = langleys.truncate(*aimass_limits)
+        # langleys = langleys.copy()
+        # langleys = langleys.where(aimass_limits[0] < langleys.airmass).where(aimass_limits[1] > langleys.airmass).dropna('airmass')
         self.langleys = langleys
         self.langley_fit_settings = langley_fit_settings
         self.refresh()
@@ -638,7 +650,7 @@ class Langley(object):
         return df_langres
     
     def clean(self, use_channels = None, verbose = False):
-        scale = 4
+        scale = 4 * 0.75
         langley = copy.deepcopy(self)
         # converged = False
         status = 'not convergent'
@@ -661,8 +673,10 @@ class Langley(object):
             # print(f'lfr.mean():\t{lfr.mean():0.4f} {lfr.std():0.4f}')
             # print(f'lfr.median():\t{lfr.median():0.4f} {lfr.mad():0.4f}')
             # print(f'corrdet:\t{spi.am.langley_residual_correlation_prop["determinant"]:0.5f}')
+            
+            # print(f'mad vs std: {lfr.mad():0.3f} vs {lfr.std():0.3f} ... {lfr.mad()/lfr.std():0.5f}')
         
-            cutoff = (lfr.median() - (lfr.mad() *scale), lfr.median() + (lfr.mad() *scale))
+            cutoff = (lfr.median() - (lfr.std() *scale), lfr.median() + (lfr.std() *scale))
         
             where = np.logical_and(lfr > cutoff[0], lfr < cutoff[1])
             if (~where).sum() == 0:
@@ -680,6 +694,16 @@ class Langley(object):
         out['iterations'] = i
         out['status'] = status
         return out
+    
+    def plot(self, wavelength = 500):
+        res = self.langley_fitres.loc[wavelength]
+        fit = pd.DataFrame(res.intercept + (res.slope * self.langleys.index), index = self.langleys.index)#, columns=['fit'])
+        fit.columns = ['fit',]
+        f,a = plt.subplots()
+        self.langleys[wavelength].plot(ax = a, marker = '.', ls = '', markersize = 1)
+        fit.plot(ax = a)
+        return f,a
+    
 
 class Calibration(object):
     def __init__(self, raw2lang_output):
@@ -933,7 +957,7 @@ class Calibration(object):
         return aa
 
 class CalibrationsOverTime(object):
-    def __init__(self, path2historic = '/mnt/telg/projects/sp02/calibration/BRWsp02calhist20062018SEDcorr.dat', list0path2modern = [], additional_result_instance = None):
+    def __init__(self, path2historic = '/export/htelg/projects/sp02/calibration/BRWsp02calhist20062018SEDcorr.dat', list0path2modern = [], additional_result_instance = None):
         self.paths = dict(path2historic = pathlib.Path(path2historic),
                           list0path2modern = [pathlib.Path(p) for p in list0path2modern])
         self._historic = None
@@ -1316,19 +1340,19 @@ class CalibrationsOverTime(object):
 #         return True
 
 def load_calibration_history():
-    l0m = ['/mnt/telg/projects/sp02/calibration/2013_14_mlo_cal/calibration_result_1032.nc',
-           '/mnt/telg/projects/sp02/calibration/2020_summer_mlo_cal/calibration_result_1032.nc',
+    l0m = ['/export/htelg/projects/sp02/calibration/2013_14_mlo_cal/calibration_result_1032.nc',
+           '/export/htelg/projects/sp02/calibration/2020_summer_mlo_cal/calibration_result_1032.nc',
            # '/mnt/telg/projects/sp02/calibration/2020_mlo_cal/calibration_result_1032.nc',
-           '/mnt/telg/projects/sp02/calibration/2020_21_mlo_cal/calibration_result_1032.nc',
-           '/mnt/telg/projects/sp02/calibration/2021_22_mlo_cal/calibration_result_1032.nc',
+           '/export/htelg/projects/sp02/calibration/2020_21_mlo_cal/calibration_result_1032.nc',
+           '/export/htelg/projects/sp02/calibration/2021_22_mlo_cal/calibration_result_1032.nc',
           ]
     history_1032 = CalibrationsOverTime(list0path2modern=l0m)
     
-    l0m = ['/mnt/telg/projects/sp02/calibration/2020_summer_mlo_cal/calibration_result_1046.nc',
+    l0m = ['/export/htelg/projects/sp02/calibration/2020_summer_mlo_cal/calibration_result_1046.nc',
            # '/mnt/telg/projects/sp02/calibration/2020_mlo_cal/calibration_result_1046.nc',
-           '/mnt/telg/projects/sp02/calibration/2013_14_mlo_cal/calibration_result_1046.nc',
-           '/mnt/telg/projects/sp02/calibration/2020_21_mlo_cal/calibration_result_1046.nc',
-           '/mnt/telg/projects/sp02/calibration/2021_22_mlo_cal/calibration_result_1046.nc']
+           '/export/htelg/projects/sp02/calibration/2013_14_mlo_cal/calibration_result_1046.nc',
+           '/export/htelg/projects/sp02/calibration/2020_21_mlo_cal/calibration_result_1046.nc',
+           '/export/htelg/projects/sp02/calibration/2021_22_mlo_cal/calibration_result_1046.nc']
     history_1046 = CalibrationsOverTime(list0path2modern=l0m)
     
     calibrations = {1032: history_1032,

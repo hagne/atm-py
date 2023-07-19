@@ -31,7 +31,7 @@ def read_mfrsr_cal(path2file):
             else:
                 header.append(line)
         assert(i != range(maxit)[-1]), 'End of header not reached, increase maxit?'
-    
+
     skiprows = i+1
     
     
@@ -54,13 +54,17 @@ def read_mfrsr_cal(path2file):
         df.drop('Open', inplace = True)
     elif 'Thermopile' in df.index:
         df.drop('Thermopile', inplace = True)
+    elif 'Thermop' in df.index: # for some reason the name of this row varies
+        df.drop('Thermop', inplace = True)
     else:
         assert(False), 'what else?'
-        
-    df.index = df.index.astype(int)
+     
+    #### rename stats channels to nominal channels
+    wl_nominal = np.array([415,500,1625, 615, 670, 870, 940])
+    df.rename({col: wl_nominal[abs(wl_nominal - int(col)).argmin()] for col in df.index}, axis = 0, inplace = True)   
+    # df.index = df.index.astype(int)
     df.columns.name = 'stats'
     ds['statistics'] = df
-    
     
     #### read the data
     df = pd.read_csv(path2file, 
@@ -94,7 +98,13 @@ def read_mfrsr_cal(path2file):
     elif 'Thermop' in df.columns:
         df.drop(['Thermop','ThermopERR'], axis = 1, inplace = True)
     
-    # responds
+    df.drop([col for col in df.columns if 'Unnamed' in col], axis = 1, inplace = True)
+    # return ds
+    #### rename the channel wavelength to the nominal wavelength by finding the closest
+    df.rename({col: f"{wl_nominal[abs(wl_nominal - int(col.strip('ERR'))).argmin()]}ERR" for col in df.columns if 'ERR' in col}, axis = 1, inplace = True)
+    df.rename({col: str(wl_nominal[abs(wl_nominal - int(col)).argmin()]) for col in df.columns if 'ERR' not in col}, axis = 1, inplace = True)
+    # return df
+    #### responds
     df_res = df.loc[:,[c for c in df.columns if not 'ERR' in c]]
     df_res.columns = [int(c) for c in df_res.columns]
     df_res.columns.name = 'channel'
@@ -102,7 +112,8 @@ def read_mfrsr_cal(path2file):
     df_res[df_res == 0] = np.nan # this can potenoally lead to nans where we don't want them .... consider interpolating afterwards ... as there is no extrapolating this should not lead to a reemergance of the above problem.
     ds['responds'] = df_res
     
-    # respnds error
+    #### respnds error
+    # return ds
     df_err = df.loc[:,[c for c in df.columns if 'ERR' in c]]
     df_err.columns = [int(c.replace('ERR','')) for c in df_err.columns]
     df_err.columns.name = 'channel'
