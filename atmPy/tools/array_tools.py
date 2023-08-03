@@ -539,8 +539,10 @@ class Correlation(object):
         fit_res_kwargs: dict ... allowed keys
             When None, no fit results will be shown
             pos: tuple of len=2
-            show_params: ['r','r2','p','m', 'c', 's']
+            show_params ... deprecated: ['r','r2','p','m', 'c', 's']
                 list of fit-parameters to show
+            format_params: str
+                the str is a format string that can contain any of the following ['r','r2','p','m', 'c', 's'], e.g. 'r={r:0.3f}'
             bb_fc: color of box face color
             bb_ec: color of box edge color
             bb_lw: line width of box
@@ -679,18 +681,8 @@ class Correlation(object):
             # color = _plt_tools.color_cycle[2]
 
             if type(fit_res_kwargs) == dict:
-                txt_r = '$r = %0.2f$' % (self.pearson_r[0])
-                txt_r2= '$r^2 = %0.2f$' % ((self.pearson_r[0]) ** 2)
-                # if p_value:
-                txt_p= '$p = %0.2f$' % (self.pearson_r[1])
-                txt_m= '$m = %0.2f$' % (slope)
-                txt_c= '$c = %0.2f$' % (intersect)
-                txt_s= '$s = %0.2f$' % (std)
 
-                txtl = []
 
-                if 'show_params' not in fit_res_kwargs.keys():
-                    fit_res_kwargs['show_params'] = ['r', 'r2', 'p', 'm', 'c', 's']
 
                 if 'pos' not in fit_res_kwargs.keys():
                     fit_res_kwargs['pos'] = (0.1, 0.9)
@@ -703,27 +695,50 @@ class Correlation(object):
 
                 if 'bb_lw' not in fit_res_kwargs.keys():
                     fit_res_kwargs['bb_lw'] = _plt.rcParams['axes.linewidth']
-
-                for fr in fit_res_kwargs['show_params']:
-                    if fr == 'r':
-                        txtl.append(txt_r)
-                    elif fr == 'r2':
-                        txtl.append(txt_r2)
-                    elif fr == 'p':
-                        txtl.append(txt_p)
-                    elif fr == 'm':
-                        txtl.append(txt_m)
-                    elif fr == 'c':
-                        txtl.append(txt_c)
-                    elif fr == 's':
-                        txtl.append(txt_s)
-                    else:
-                        pass
-                        # raise
-
-                txt = '\n'.join(txtl)
-
-
+                    
+                if 'show_params' not in fit_res_kwargs.keys():
+                    fit_res_kwargs['show_params'] = None
+                    
+                if 'format_params' not in fit_res_kwargs.keys():
+                    fit_res_kwargs['format_params'] = 'r={r:0.2f}\nm={m:0.3f}\nc={c:0.3f},\ns={s:0.3f}'
+                    
+                    
+                    
+                show_params = fit_res_kwargs['show_params']
+                format_params = fit_res_kwargs['format_params']
+                if not isinstance(show_params, type(None)):
+                    txt_r = '$r = %0.2f$' % (self.pearson_r[0])
+                    txt_r2= '$r^2 = %0.2f$' % ((self.pearson_r[0]) ** 2)
+                    # if p_value:
+                    txt_p= '$p = %0.2f$' % (self.pearson_r[1])
+                    txt_m= '$m = %0.2f$' % (slope)
+                    txt_c= '$c = %0.2f$' % (intersect)
+                    txt_s= '$s = %0.2f$' % (std)
+                    txtl = []
+                    # if 'show_params' not in fit_res_kwargs.keys():
+                    #     fit_res_kwargs['show_params'] = ['r', 'r2', 'p', 'm', 'c', 's']
+                    for fr in show_params:
+                        if fr == 'r':
+                            txtl.append(txt_r)
+                        elif fr == 'r2':
+                            txtl.append(txt_r2)
+                        elif fr == 'p':
+                            txtl.append(txt_p)
+                        elif fr == 'm':
+                            txtl.append(txt_m)
+                        elif fr == 'c':
+                            txtl.append(txt_c)
+                        elif fr == 's':
+                            txtl.append(txt_s)
+                        else:
+                            pass
+                            # raise
+    
+                    txt = '\n'.join(txtl)
+                elif not isinstance(format_params, type(None)):
+                    txt = format_params.format(r = self.pearson_r[0], r2=self.pearson_r[0]**2, p = self.pearson_r[1], m = slope, c = intersect, s = std)
+    
+    
 
                 props = dict(boxstyle='round',
                              facecolor=fit_res_kwargs['bb_fc'],
@@ -732,7 +747,7 @@ class Correlation(object):
                              )
                 pos = fit_res_kwargs['pos']
                 a.text(pos[0], pos[1], txt, transform=a.transAxes, horizontalalignment='left', verticalalignment='top', bbox=props)
-
+                
             if xlim:
                 a.set_xlim(xlim)
             else:
@@ -839,6 +854,35 @@ class Correlation(object):
                             hexbin_kwargs=hexbin_kwargs,
                             fit_plot_kwargs=fit_plot_kwargs)
         return a,hb
+
+    def plot_regression_and_residual(self, regression_kwargs = {}, residual_kwargs = {}):
+        f,aa = _plt.subplots(2, height_ratios=[5,2],sharex=True, gridspec_kw={'hspace': 0})
+        a = aa[0]
+        # fit_res_kwargs={'show_params': None, 
+        #                 # 'show_params': ['r', 'm', 'c', ], 
+        #                 'format_params': 'r={r:0.2f}\nm={m:0.3f}\nc={c:0.3f},\ns={s:0.3f}', 
+        #                 'pos': (0.1, 0.9), 'bb_fc': [1, 1, 1, 0.5], 'bb_ec': [0, 0, 0, 1], 'bb_lw': 0.8}
+        self.plot_regression(ax = a,**regression_kwargs)
+        
+        # a.set_ylabel('AOD - AERONET')
+        # a.legend(loc = 4)
+        
+        a = aa[1]
+        # a.set_xlabel('AOD - SP02')
+        # norm = 'absolute', 
+        self.plot_residual(ax= a, **residual_kwargs)
+        # yl = 0.011
+        # a.set_ylim(-yl, yl)
+        
+        a.set_ylabel('Residual')
+        
+        ## adjust axis to be the same in x direction
+        a0pos = list(aa[0].get_position().bounds)
+        a1pos = list(aa[1].get_position().bounds)
+        a1pos[0] = a0pos[0]
+        a1pos[2] = a0pos[2]
+        aa[1].set_position(a1pos)
+        return f,aa
 
     # todo: allow xlim and ylim to be tuples so you can devine a limit range rather then just the upper limit
     def plot_pearson(self, zero_intersect = False, gridsize = 100, cm = 'auto', xlim = None,
