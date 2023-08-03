@@ -10,6 +10,9 @@ import magic
 import xarray as xr
 import pandas as pd
 import atmPy.data_archives.NOAA_ESRL_GMD_GRAD.baseline.baseline as atmbl
+import warnings
+import pathlib as pl
+import types
 
 class BaselineDatabase(object):
     def __init__(self):
@@ -83,7 +86,7 @@ class BaselineDatabase(object):
             if when_instrument_not_installed == 'error':
                 raise IndexError(txt)
             elif when_instrument_not_installed == 'warn':
-                Warning.warn(txt)
+                warnings.warn(txt)
                 return None
             elif when_instrument_not_installed == 'silent':
                 return None
@@ -94,8 +97,10 @@ class BaselineDatabase(object):
 
         instrument_found = self.instrument_table[self.instrument_table.instrument_id == lt_found.instrument_id].iloc[0]
         return instrument_found
-    
+
+#### THE DATABASE
 database = BaselineDatabase()
+database_global = database
 #### filter comfigurations
 conf_1= {'A': 368, 'B': 1050, 'C': 610, 'D': 778}
 conf_2= {'A': 412, 'B': 500, 'C': 675, 'D': 862}
@@ -130,17 +135,44 @@ installdate = '20171207'
 database.add2line_table('mlo', installdate, 121, 2)
 database.add2line_table('mlo', installdate, 221, 1)
 
+#### BRW 2018 lines assigned
+installdate = '20180710' # No idea why it was installed so late? 
+#uninstalldate = '20191019' # Was never uninstalled in 2018
+database.add2line_table('brw', installdate, 121, 1)
+database.add2line_table('brw', installdate, 221, 2)
+# database.add2line_table('trans', uninstalldate, 0, 1)
+# database.add2line_table('trans', uninstalldate, 0, 2)
+
+#### BRW 2019
+#installdate = '2019' # Was never uninstalled in 2018
+uninstalldate = '20191019' # was taken down a little later, but there where fluctuations in temperature that render the data invalid. 
+# database.add2line_table('brw', installdate, 121, 1)
+# database.add2line_table('brw', installdate, 221, 2)
+database.add2line_table('trans', uninstalldate, 0, 1)
+database.add2line_table('trans', uninstalldate, 0, 2)
+
+### MLO 2020
+
 database.add2line_table('mlo', '20200205', 121, 1)
 database.add2line_table('mlo', '20200205', 221, 2)
 
 database.add2line_table('mlo', '20200620', 121, 2)
 database.add2line_table('mlo', '20200620', 221, 1)
 
+#### BRW 2020 lines assigned
+installdate = '20200717' 
+uninstalldate = '20201222' 
+database.add2line_table('brw', installdate, 121, 1)
+database.add2line_table('brw', installdate, 221, 2)
+database.add2line_table('trans', uninstalldate, 0, 1)
+database.add2line_table('trans', uninstalldate, 0, 2)
+
+#### MLO 2021
 installdate = '20210204' 
 database.add2line_table('mlo', installdate, 121, 1)
 database.add2line_table('mlo', installdate, 221, 2)
 
-#### testing: installation in BRW... 
+### BRW 
 installdate = '20210318' 
 uninstalldate = '20211008' 
 database.add2line_table('brw', installdate, 121, 1)
@@ -155,12 +187,15 @@ database.add2line_table('mlo', installdate, 221, 2)
 installdate = '20220309' 
 database.add2line_table('mlo', installdate, 121, 3)
 
+
 def read_file(path2raw, lines = None, 
               # collabels = ['lineID', 'Year', 'DOY', 'HHMM', 'A', 'B', 'C', 'D','temp'],
               collabels = ['lineID', 'Year', 'DOY', 'HHMM'],
               database = None,
               site = None,
-              when_instrument_not_installed = 'error'
+              when_instrument_not_installed = 'error',
+              verbose = False,
+              test = False
               ):
     """
     The particular way I am reading here allows for later implementation of
@@ -179,21 +214,49 @@ def read_file(path2raw, lines = None,
     site : str, optional
         DESCRIPTION. The default is None. If None the site is infered from the
         file path. Set if the path is not the standard path
+    when_instrument_not_installed: str ['error', 'skip', 'ignore']:
+        What to do if the instrument is not installed according to the database.
+        error: ...da!
+        skip: will skip processing current file and move to the next one, this is most usefull in operation conditions
+        ignore: Continues processing. All instrument related information (including calibrations) will be ignored. this is most usefull when in the process of finding out about installation lines and times.
+        
 
     Returns
     -------
     out_list : TYPE
         DESCRIPTION.
 
-    """
+    """ 
+    assert(when_instrument_not_installed in ['error', 'skip', 'ignore'])
+    if when_instrument_not_installed == 'error':
+        womi = 'error'
+    elif when_instrument_not_installed in ['skip', 'ignore']:
+        womi = 'silent'
+    else:
+        assert(False), 'haeaeaeaea?'
         
     out = {}
     collabels = np.array(collabels)
     
-    #open
+    if isinstance(database, type(None)):
+        database = database_global
+    
+    #### File list
+    if isinstance(path2raw, str):
+        path2raw = [pl.Path(path2raw),]
+    elif isinstance(path2raw, types.GeneratorType):
+        path2raw = list(path2raw)
+    
     if not isinstance(path2raw, list):
         path2raw = [path2raw,]
     
+    path2raw.sort()
+    
+    if verbose:
+        print(f'opening {len(path2raw)} files.')
+    
+    assert(np.all(['sp02' in p2f.name for p2f in path2raw])), 'Not all files contains "sp02" which indicates that you are trying to open a non sp02 file. Consider adding "sp02" to your name pattern. A common file name is gradobs.brw-sp02-1.20200614.raw.dat'
+    assert(len(path2raw) > 0), "There are no files to open. Adjust you file name pattern.\nHere is a typical file name: gradobs.brw-sp02-1.20200614.raw.dat"
     firstfile = path2raw[0]
     if magic.from_file(firstfile.as_posix()) == 'Hierarchical Data Format (version 5) data':
         ds = xr.open_mfdataset(path2raw) 
@@ -202,12 +265,22 @@ def read_file(path2raw, lines = None,
             return ds
 
     else:
+        sites = [p2r.name.split('.')[1].split('-')[0] for p2r in path2raw]
+        sites = [''.join(char for char in site if not char.isdigit()) for site in sites]
+        site = np.unique(sites)
+        if len(site) == 1:
+            site = site[0]
+            site_inst = atmbl.network.stations.find_site(site)
+            if verbose:
+                print(f'found site: {site_inst.name}')
+        else:
+            assert(False), f'More than one site found in file names, {site}'
+            
         df_all = pd.concat([pd.read_csv(p2r, header=None) for p2r in path2raw])
         
         # df_all = pd.read_csv(path2raw, header=None
         # #             names = False
         #            )
-        # out['df_all_01'] = df_all.copy()
         colsis = df_all.columns.values
         colsis = [int(col) for col in colsis]
         
@@ -229,9 +302,11 @@ def read_file(path2raw, lines = None,
         out['df_all'] = df_all.copy()
         # return out
         out_list = []
-        date = df_all.index[0]
+        # date = df_all.index[0]
         # print(df_all.lineID.unique())
         for lid in df_all.lineID.unique():
+            if verbose:
+                print(f'line id: {lid}')
             if isinstance(lines, list):
                 if lid not in lines:
                     print(f'{lid} not in lines ({lines})')
@@ -244,10 +319,14 @@ def read_file(path2raw, lines = None,
             df_lid.sort_index(inplace=True)
             
             
-            instrument = database.get_instrument(site, lid, date,
-                                                 when_instrument_not_installed = when_instrument_not_installed)
+            instrument = database.get_instrument(site, lid, df_all.index[0],
+                                                 when_instrument_not_installed = 'warn')
             if isinstance(instrument, type(None)):
-                continue
+                instrument = database.get_instrument(site, lid, df_all.index[-1],
+                                                     when_instrument_not_installed = womi)
+            if when_instrument_not_installed == 'skip':
+                if isinstance(instrument, type(None)):
+                    continue
             
             df_lid = df_lid.drop(['lineID', 'Year','DOY', 'HHMM'], axis=1)
             df_lid.columns = ['A', 'B', 'C', 'D', 'temp']
@@ -266,34 +345,37 @@ def read_file(path2raw, lines = None,
             ds = xr.Dataset()
             ds['direct_normal_irradiation'] = df_voltages #this is the raw data
             ds['instrument_temperature'] = df_temp
-            ser = pd.Series(instrument.config)
-            ser.index.name = 'channel'
-            ds['channel_center'] = ser
-        
-            
-            sn = instrument['sn']
+            if not isinstance(instrument , type(None)):
+                ser = pd.Series(instrument.config)
+                ser.index.name = 'channel'
+                ds['channel_center'] = ser
+                sn = instrument['sn']
+                ds.attrs['serial_no'] = sn            
+                # assign a nominal wavelength as the channel name. currently nominal 
+                # wavelength is equal to center wavelength. At some point it would be 
+                # nice to have a measured wavelength in addition
+                ds['channel_letter'] = ds.channel
+                ds = ds.assign_coords(channel = ds.channel_center)  
+                
             # ds.attrs['serial_no'] = sn
             ds.attrs['info'] = 'This is raw sp02 data'
             # ds.attrs['site'] = site
             # sn = 'brw'
-            site_inst = atmbl.network.stations.find_site(site)
             ds.attrs['site_latitude'] = site_inst.lat
             ds.attrs['site_longitude'] = site_inst.lon
             ds.attrs['site_elevation'] =  site_inst.alt
             ds.attrs['site_name'] = site_inst.name
             ds.attrs['site'] =site
             ds.attrs['instrument_type'] = 'sp02'
-            ds.attrs['serial_no'] = sn
             ds.attrs['line_id'] = lid
             
-            # assign a nominal wavelength as the channel name. currently nominal 
-            # wavelength is equal to center wavelength. At some point it would be 
-            # nice to have a measured wavelength in addition
-            ds['channel_letter'] = ds.channel
-            ds = ds.assign_coords(channel = ds.channel_center)    
+  
             
             out_list.append(ds)
             
 
-            
-        return out_list
+        if test:
+            out['out_list'] =out_list
+            return out
+        else:
+            return out_list
