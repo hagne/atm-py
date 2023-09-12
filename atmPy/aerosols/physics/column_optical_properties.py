@@ -1536,7 +1536,7 @@ class AerosolAndCloudDetection(object):
 #         for ch, data_ncs in aod_ncs.data.iteritems():
         #     break
 
-        for cn, ser in settings.iteritems():
+        for cn, ser in settings.items():
             # get the values to be juged
             if hasattr(ser, 'window'):
                 window = ser.window

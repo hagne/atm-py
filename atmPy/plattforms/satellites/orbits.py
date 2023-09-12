@@ -15,7 +15,7 @@ import pyorbital.orbital
 import numpy as np
 
 satellite_info_list = [dict(name = 'NOAA 20', id = 43013, sensors = ['VIIRS']),]
-sensor_info_list = [dict(name = 'VIIRS', viewing_angle = 56)]
+sensor_info_list = [dict(name = 'VIIRS', viewing_angle = 60)]
 
 def get_satellite_info(satellite):
     satt = [sat for sat in satellite_info_list if sat['name'] == satellite]
@@ -31,7 +31,12 @@ def get_sensor_info(sensor, satellite = None):
     return sens[0]
 
 class Orbit(object):
-    def __init__(self, satellite = 'NOAA 20', year = 2019, download_when_missing = False, verbose = True):
+    def __init__(self, satellite = 'NOAA 20', 
+                 year = 2019, 
+                 path2folder = '/home/grad/htelg/data/satellite_tle_data/',
+                 download_when_missing = False, 
+                 overwrite = False, 
+                 verbose = False):
         """
         https://www.space-track.org/documentation#howto-api_python
 
@@ -54,11 +59,14 @@ class Orbit(object):
         """
         self.satellite = satellite
         self.verbose = verbose
-        self.year = 2019
+        self.year = year
         self.start = f'{self.year}-01-01'
         self.end = f'{self.year + 1}-01-01'
         self.download_when_missing = download_when_missing
-        self.fname = pl.Path(f"orbit_tle-data_{satellite.replace(' ', '-')}_{self.year}.nc")
+        self.overwrite = overwrite
+        self.path2folder = pl.Path(path2folder)
+        self.path2file = self.path2folder.joinpath(f"orbit_tle-data_{satellite.replace(' ', '-')}_{self.year}.nc")
+        # self.fname = pl.Path(f"orbit_tle-data_{satellite.replace(' ', '-')}_{self.year}.nc")
         
 
 
@@ -72,15 +80,23 @@ class Orbit(object):
 
     @property
     def tle_data(self):
-        if self.fname.is_file():
-            self._tle_data = xr.open_dataarray(self.fname)
-        else:
-            if self.download_when_missing:
-                if self.verbose:
-                    print('downloading tle data')
-                # self._tle_data = download_tle_data()
+        if isinstance(self._tle_data, type(None)):
+            if self.path2file.is_file():
+                if self.overwrite:
+                    if self.verbose:
+                        print(f'Overwriting existing tle file: {self.path2file}')
+                    self._tle_data = self.download_tle_data()
+                else:
+                    if self.verbose:
+                        print(f'opening existing tle file. {self.path2file}')
+                    self._tle_data = xr.open_dataarray(self.path2file)
             else:
-                assert(False), 'tle_data file not found and download_when_missing is set to False. Change the latter to download the tle data.'
+                if self.download_when_missing:
+                    if self.verbose:
+                        print(f'downloading tle data and save to: {self.path2file}')
+                    self._tle_data = self.download_tle_data()
+                else:
+                    assert(False), 'tle_data file not found and "download_when_missing" is set to False. Change the latter to download the tle data.'
         return self._tle_data
             
         
@@ -141,7 +157,7 @@ class Orbit(object):
         
         df = pd.DataFrame(lines, columns = ['tle'])
         
-        df
+        # self.tp_df = df.copy()
         
         df['line'] = df.apply(lambda row: int(row.tle.split()[0]), axis = 1)
         def get_timestamp(row):
@@ -160,52 +176,99 @@ class Orbit(object):
         df = df[~df.index.duplicated(keep='first')]
         tle_data = df.tle.to_xarray()
         if save:
-            tle_data.to_netcdf(self.fname)
+            tle_data.to_netcdf(self.path2file)
         return tle_data
     
     
 
 class OverPasses(object):
     def __init__(self, satellite = 'NOAA 20', sensor = 'VIIRS', start = '20220802', end = None,
-                 site = dict(lon = -105.2705, lat = 40.0150, alt = 1.5,), #boulder 
-                 verbose = True):
+                 site = dict(lon = -105.2705, lat = 40.0150, alt = 1500,), #boulder 
+                 verbose = False):
 
         self.satellite = satellite        
         self.satellite_info = get_satellite_info(satellite)
         self.sensor = sensor
         self.sensor_info = get_sensor_info(sensor, satellite = satellite)
-        self.start = pd.to_datetime(start)
+        self._start = pd.to_datetime(start)
+        self.verbose = verbose
         
-        
-        self.site = type('adhoc_site', (), site)
+        if isinstance(site, dict):
+            self.site = type('adhoc_site', (), site)
+        else:
+            self.site = site
         
         if isinstance(end, type(None)):
-            self.end = self.start + pd.to_timedelta(1, 'd')
+            self.end = self.start + pd.to_timedelta(0.9999999, 'd')
         else:
+            assert(False), 'not sure if anything else than 1 day will currently work?!? programming might be requried. Make sure to check carefully.'
             self.end = pd.to_datetime(end)
             
-        assert(self.start.year == self.end.year), 'start and end in different years, currently not supported, fix it!!'
+        assert(self.start.year == self.end.year), f'start and end in different years, currently not supported, fix it!!\n {self.start}, {self.end}\n {self.start.year}, {self.end.year}'
         
         self._orbit = None
         self._overpasses = None
-            
+    
+    @property
+    def start(self):
+        return self._start
+    
+    @start.setter
+    def start(self, value):
+        """
+        Having a property here allows one to reuse the orbit instance. 
+        Repeatedly opening the lte_data file when initiating a new orbit instance can crash 
+        the kernel!
+
+        Parameters
+        ----------
+        value : TYPE
+            DESCRIPTION.
+
+        Returns
+        -------
+        None.
+
+        """
+        if self.verbose:
+            print('setting new start value')
+        start = pd.to_datetime(value)
+        # year = int(f'{self.start.year:04d}')
+        if self.start.year != start.year: # this will initiate the opening of a different lte_file
+            if self.verbose:
+                print(f'year changed from {self.start.year} to {start.year}')
+            self._orbit = None
+        
+        self._overpasses = None
+        self._start = start
+        
+        self.end = start + pd.to_timedelta(1, 'd')
+        return
+    
     @property 
     def orbit(self):
         if isinstance(self._orbit, type(None)):
-            self._orbit = Orbit(satellite = self.satellite)
+            self._orbit = Orbit(satellite = self.satellite,
+                                year=self.start.year,
+                                download_when_missing=False,
+                                overwrite=False,
+                                verbose=self.verbose,)
         return self._orbit
     
     @property
     def overpasses(self):
         if isinstance(self._overpasses, type(None)):
             # out = {}
-            tle_data = self.orbit.tle_data
+            if self.verbose:
+                print('getting overpasses')
+            tle_data = self.orbit.tle_data.copy()
             tstart = self.start
             tend = self.end
             
             ddt = pd.to_datetime(tle_data.datetime) - tstart
             ddt_closest = abs(ddt).min()/ pd.to_timedelta(1,'d')
-            assert(ddt_closest <= 1), f'There is no tle information within 1 day to the date of interes. Closes tle file is {ddt_closest:0.2f} days'
+            max_days = 2
+            assert(ddt_closest <= max_days), f'There is no tle information within {max_days} days to the date of interes. Closes tle file is {ddt_closest:0.2f} days'
             
             dt_idx = abs(ddt).argmin()
             
@@ -220,14 +283,15 @@ class OverPasses(object):
             length = (tend - tstart) / pd.to_timedelta(1, 'hour')
             length = int(np.ceil(length))
             
-            overpasses = sat.get_next_passes(utc_time, length, self.site.lon, self.site.lat, self.site.alt, tol=0.001, horizon=0)
+            overpasses = sat.get_next_passes(utc_time, length, self.site.lon, self.site.lat, self.site.alt/1000, tol=0.001, horizon=0)
             #### select highest point (ignore rise and setting time) 
             overpasses = [op[2] for op in overpasses]
-            overpasses = pd.DataFrame(overpasses, columns=['overpass_time_utc'])            
+            overpasses = pd.DataFrame(overpasses, columns=['overpass_time_utc'])       
+            self.tp_op = overpasses.copy()
             overpasses['overpass_time_local'] = overpasses.apply(lambda row: sat.utc2local(row.overpass_time_utc), axis = 1)
             
             #### get observer viewing angles
-            obs = np.array([sat.get_observer_look(utc_time, self.site.lon, self.site.lat, self.site.alt) for utc_time in overpasses.overpass_time_utc])
+            obs = np.array([sat.get_observer_look(utc_time, self.site.lon, self.site.lat, self.site.alt/1000) for utc_time in overpasses.overpass_time_utc])
             overpasses = pd.concat([overpasses,pd.DataFrame(obs, columns=['obs_azimus_angle', 'obs_elevation_angle'])], axis=1)
             # out['obs'] = obs
             

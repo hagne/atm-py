@@ -56,6 +56,10 @@ class NetworkStations(object):
             
         assert(len(res) != 0), 'not found'
         return res[0]
+    
+    @property
+    def list(self):
+        return self._stations_list
 
 class SubNetworks(object):
     def __init__(self):
