@@ -1638,8 +1638,8 @@ class Inversion2SizeDistribution(object):
             
         self.tp_arguments = arguments
         self.tp_bounds = bounds
-        
-        fit_res = scipy.optimize.least_squares(self.cost_fun,
+        try:
+            fit_res = scipy.optimize.least_squares(self.cost_fun,
                                         # self.start_conditions.args,
                                         arguments,
                                     #                     sigma=None,
@@ -1662,9 +1662,16 @@ class Inversion2SizeDistribution(object):
                                         # Removed it none the less. I think the initial adjustment of amplitudes makes this unnecessary and I see better results witout it.
                                         #                     col_deriv=True
                                         )
+        except ValueError as e:
+            print(str(e))
+            fit_res = type('adhoc_fitres', (), {'success': False,
+                                                'x': arguments,
+                                                'cost': _np.nan})
+            
         if not fit_res.success:
             if self.fit_method == 'dogbox' and self.rerun_if_fail:
-                fit_res = scipy.optimize.least_squares(self.cost_fun,
+                try:
+                    fit_res = scipy.optimize.least_squares(self.cost_fun,
                                             fit_res.x,
                                             bounds=bounds,                                            
                                             jac = self.fit_jac,
@@ -1675,6 +1682,11 @@ class Inversion2SizeDistribution(object):
                                             x_scale = self.fit_scale_vars,
                                             # max_nfev = self.max_nfev,
                                             )
+                except ValueError as e:
+                    print(str(e))
+                    fit_res = type('adhoc_fitres', (), {'success': False,
+                                                        'x': arguments,
+                                                        'cost': _np.nan})
         self.tp_fit_res = fit_res
         #### computations cost finallize
         cpu_percent = p.cpu_percent()
