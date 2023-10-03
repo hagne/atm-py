@@ -9,7 +9,7 @@ import atmPy.aerosols.size_distribution.sizedistribution as _atmsd
 import xarray as _xr
 import matplotlib.pyplot as _plt
 import scipy as _sp
-import pathlib as _pl
+#import pathlib as _pl
 import xarray as xr
 import statsmodels.nonparametric.smoothers_lowess as smlowess
 
@@ -250,11 +250,11 @@ class AOD_AOT(object):
         # df.index.name = 'datetime'
         # return df
     
-    @property
-    def AODinversion(self):
-        if isinstance(self._aodinv, type(None)):
-            self.derive_size_distribution()
-        return self._aodinv
+    # @property
+    # def AODinversion(self):
+    #     if isinstance(self._aodinv, type(None)):
+    #         self.derive_size_distribution()
+    #     return self._aodinv
         
     
     def invertAOD(self, width_of_aerosol_mode = (0.2, 0.25), 
@@ -298,7 +298,7 @@ class AOD_AOT(object):
         aoddata = self.aod.to_pandas()
         count_down = aoddata.shape[0] #self.AOD.data.shape[0]
         result_ds = None
-        self.tp_test1 = False
+        self.tp_test1 = False #if true only the very first fit is performed in a test case
         if verbose:
             print(f'Starting to make inversion for {count_down} cases.')
         for e,(ts, test_dp) in enumerate(aoddata.iterrows()): #self.AOD.data.iterrows():
@@ -326,7 +326,8 @@ class AOD_AOT(object):
             ds['size_distribution_parameters'] = df
             
             if verbose:
-                print(test_dp)
+                # print(test_dp)
+                pass
             
             # do not fit if not all aod values are given -> Values remain nan
             if not test_dp.isna().any():
