@@ -14,7 +14,6 @@ import atmPy.general.timeseries as atmts
 
 def read_file(path2file, verbose = False):
     """
-    This might cause some errors, as I mixed up SDA and inv!!! I tried to fix it, but not sure if I caught it all?
     So far it works only for version 2. There is a version 3 out now... some 
     programming will be needed
 
@@ -35,26 +34,25 @@ def read_file(path2file, verbose = False):
         for i in range(3):
             header += rein.readline()
     
-    if 'Version 2' in header:
-        version = 2
-        skiprows = 3
-        date_column = "Date(dd-mm-yyyy)"
-        day_of_year = 'Julian_Day'
-        time_column = "Time(hh:mm:ss)"
+    # if 'Version 2' in header:
+    #     version = 2
+    #     skiprows = 3
+    #     date_column = "Date(dd-mm-yyyy)"
+    #     day_of_year = 'Julian_Day'
+    #     time_column = "Time(hh:mm:ss)"
         
-    elif 'Version 3' in header:
+    if 'Version 3' in header:
         version = 3
         skiprows = 6
         day_of_year = 'Day_of_Year'
-        # if 'SDA Version 4.1' in header:
-        #     date_column = 'Date_(dd:mm:yyyy)'
-        #     time_column = "Time_(hh:mm:ss)"
-        #     sda_version = '4.1'
-        date_column = 'Date(dd:mm:yyyy)'
-        day_of_year = 'Day_of_Year'
-
-            # time_column = "Time(hh:mm:ss)"
-            # date_column = 'Date(dd:mm:yyyy)'
+        if 'SDA Version 4.1' in header:
+            date_column = 'Date_(dd:mm:yyyy)'
+            time_column = "Time_(hh:mm:ss)"
+            sda_version = '4.1'
+        else:
+            assert(False), f'unknown SDA version: {header}'
+    else:
+        assert(False), f'unkonwn aeronet version: {header}'
         
     if verbose:
         print(f'retrieval version: {version}')
@@ -72,16 +70,15 @@ def read_file(path2file, verbose = False):
     df = pd.read_csv(path2file, skiprows = skiprows)
             
     #### create timestamp
-    df.index = df.apply(lambda row: pd.to_datetime(f'{row[date_column]} {row["Time(hh:mm:ss)"]}', format='%d:%m:%Y %H:%M:%S'), axis = 1)
-    df = df.drop([date_column,'Time(hh:mm:ss)', day_of_year], axis = 1)
-    
-    # df.index = df.apply(lambda row: pd.to_datetime(f'{row[date_column]} {row[time_column]}', format='%d:%m:%Y %H:%M:%S'), axis = 1)
-    # df = df.drop([date_column,time_column, day_of_year], axis = 1)
+    df.index = df.apply(lambda row: pd.to_datetime(f'{row[date_column]} {row[time_column]}', format='%d:%m:%Y %H:%M:%S'), axis = 1)
+    df = df.drop([date_column,time_column, day_of_year], axis = 1)
     df.index.name = 'datetime'
     
     #### parse the data and add to AeronetInversion instance
     ds = df.to_xarray()
-    aero_inv = AeronetInversion(ds)
+    # replace invalid with nan
+    ds = ds.where(ds != -999.0, np.nan)
+    aero_inv = AeronetAODInversion(ds)
     aero_inv.header = header
     aero_inv.retrieval_version = version
     
@@ -92,33 +89,33 @@ def read_file(path2file, verbose = False):
     
     return aero_inv
 
-def extract_singlescatteringalbedo(df, version):
-    """
-    Extract the single scattering albedo for all aerosols (there is no 
-    seperation into fine and coarse).
+# def extract_singlescatteringalbedo(df, version):
+#     """
+#     Extract the single scattering albedo for all aerosols (there is no 
+#     seperation into fine and coarse).
 
-    Parameters
-    ----------
-    df : TYPE
-        DESCRIPTION.
+#     Parameters
+#     ----------
+#     df : TYPE
+#         DESCRIPTION.
 
-    Returns
-    -------
-    None.
+#     Returns
+#     -------
+#     None.
 
 
-    """
-    if version == 2:
-        ssa_txt = 'SSA'
-    elif version == 3:
-        ssa_txt = 'Single_Scattering_Albedo'
+#     """
+#     if version == 2:
+#         ssa_txt = 'SSA'
+#     elif version == 3:
+#         ssa_txt = 'Single_Scattering_Albedo'
     
-    # def 
-    ssa = df.loc[:,[i for i in df.columns if ssa_txt in i]]
-    ssa.columns = [''.join([e for e in i if e.isnumeric()]) for i in ssa.columns]
-    ssa.columns.name = 'channel (nm)'
+#     # def 
+#     ssa = df.loc[:,[i for i in df.columns if ssa_txt in i]]
+#     ssa.columns = [''.join([e for e in i if e.isnumeric()]) for i in ssa.columns]
+#     ssa.columns.name = 'channel (nm)'
     
-    return atmts.TimeSeries(ssa)
+#     return atmts.TimeSeries(ssa)
     
     
     
@@ -139,12 +136,12 @@ def extract_sizedistribution(df):
     #### create sizedistribution instance
     #### todo: there is a scaling error since AERONET uses 'dVdlnDp' and I use 'dVdlogDp'
     dist_ts  = atmsd.SizeDist_TS(dist, bins, 'dVdlogDp', 
-                                 # fill_data_gaps_with=np.nan, 
-                                 ignore_data_gap_error=True,
-                                 ) 
+                                  # fill_data_gaps_with=np.nan, 
+                                  ignore_data_gap_error=True,
+                                  ) 
     
     return dist_ts
 
-class AeronetInversion(object):
+class AeronetAODInversion(object):
     def __init__(self, data):
         self.data = data
