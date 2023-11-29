@@ -22,13 +22,13 @@ jobs:
 
     - name: Install dependencies
       run: |
-        pip install sphinx sphinx_rtd_theme  nbsphinx pandoc
+        pip install sphinx sphinx_rtd_theme nbsphinx pandoc
         # Add any other dependencies here
 
     - name: Build Sphinx Documentation
       run: |
         cd docs
-        sphinx-build -b html . _build/html
+        make html
 
     - name: Deploy to GitHub Pages
       uses: peaceiris/actions-gh-pages@v3
