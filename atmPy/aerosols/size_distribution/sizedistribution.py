@@ -1714,6 +1714,24 @@ class SizeDist(object):
         return sizedist
 
     def grow_sizedistribution(self, growthfactor, extend_diameter_limits = False, raise_particle_loss_error = True):
+        """
+        Shift the bins to simulate growth. But than rebins to the original bins.
+
+        Parameters
+        ----------
+        growthfactor : TYPE
+            DESCRIPTION.
+        extend_diameter_limits : TYPE, optional
+            DESCRIPTION. The default is False.
+        raise_particle_loss_error : TYPE, optional
+            DESCRIPTION. The default is True.
+
+        Returns
+        -------
+        dist : TYPE
+            DESCRIPTION.
+
+        """
         disttype = self.distributionType
         dist = self.convert2numberconcentration()
         dist.bins = dist.bins * growthfactor
@@ -2235,6 +2253,27 @@ class SizeDist_TS(SizeDist):
         data = data.reindex(lays.layercenters, method='nearest')
         lays.housekeeping = _vertical_profile.VerticalProfile(data)
         return lays
+    
+    def grow_sizedistribution(self, growthfactor, extend_diameter_limits = False, raise_particle_loss_error = True):
+        if isinstance(growthfactor, (int, float)):
+            return super().grow_sizedistribution(growthfactor, extend_diameter_limits = extend_diameter_limits, raise_particle_loss_error = raise_particle_loss_error )
+        else:
+            df = pd.DataFrame()
+            for idx,row in self.data.iterrows():
+                # break
+            
+                data_sl = pd.DataFrame(row).transpose()
+                
+                sdt = SizeDist(data_sl, self.bins, self.distributionType)
+                
+                sdt.hygroscopicity.parameters.kappa = self.hygroscopicity.parameters.kappa.value
+                sdt.hygroscopicity.parameters.RH = self.hygroscopicity.parameters.RH.value.RH.loc[idx]
+                
+                df = pd.concat([df,sdt.hygroscopicity.grown_size_distribution.data ])
+            
+            sdgrown = self.copy()
+            sdgrown.data = df
+            return sdgrown
 
     def convert2verticalprofile(self, layer_thickness=2):
         sd = self.copy()
@@ -2836,6 +2875,8 @@ class SizeDist_LS(SizeDist):
     #         #opt_properties.angular_scatt_func = out['angular_scatt_func']  # This is the formaer phase_fct, but since it is the angular scattering intensity, i changed the name
     #         # opt_properties.parent_dist = self
     #     return self.__optical_properties
+    
+    grow_sizedistribution = SizeDist_TS.grow_sizedistribution
 
     def deprecated_apply_hygro_growth(self, kappa, RH = None, how='shift_data'):
         """ see docstring of atmPy.sizedistribution.SizeDist for more information

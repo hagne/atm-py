@@ -1,0 +1,49 @@
+[build-system]
+requires = ["setuptools>=46.4.0", "wheel", "setuptools_scm"]
+#requires = ["setuptools", "wheel", "setuptools_scm"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "atmPy"
+authors = [{ name = "Hagen Telg", email = "hagen.telg@gmail.com" }]
+description = "This package contains atmospheric science tools"
+#readme = "README.md"
+license = { file = "LICENSE" }
+#keywords = ["atmospheric science", "tools"]
+#urls = { Homepage = "https://github.com/hagne/atm-py" }
+requires-python = ">=3.7"  # Python version compatibility
+dynamic = ["version"]
+#packages = [
+#    { include : "atm-py" },
+#   # You can list other packages or sub-packages if needed
+#]
+#package-dir = { "" = "src" }
+
+
+[project.urls]
+Documentation = "https://github.com/hagne/atm-py"  # or your documentation URL
+Repository = "https://github.com/hagne/atm-py"
+
+#[project.dependencies]
+# numpy = "*"
+# pandas = "*"
+# scipy = "*"
+# matplotlib = "*"
+
+[tool.setuptools]
+packages = ["atmPy"]
+
+#[project.optional-dependencies]
+#plotting = ["matplotlib"]
+
+#[tool.setuptools]
+#find-packages = { where = "." }
+
+#[tool.setuptools.scripts]
+# Add your scripts here if any
+
+#[tool.setuptools.test]
+#test-suite = "nose.collector"
+
+[tool.setuptools_scm]
+write_to = "_version.py"  # Path to write the version file

@@ -1,25 +1,356 @@
 import pandas as _pd
 import matplotlib.pylab as _plt
 import numpy as _np
-from matplotlib.dates import MonthLocator  as _MonthLocator
-from matplotlib.dates import DateFormatter as _DateFormatter
+# from matplotlib.dates import MonthLocator  as _MonthLocator
+# from matplotlib.dates import DateFormatter as _DateFormatter
 from matplotlib.ticker import FuncFormatter as _FuncFormatter
 from matplotlib.ticker import MultipleLocator as _MultipleLocator
-import plt_tools as _plt_tools
+import matplotlib.colors as _mcolors
+#import plt_tools as _plt_tools
 from atmPy.tools import array_tools as _array_tools
+# from pygam import LinearGAM, pygam_s, pygam_l
+
+import datetime
+import xarray as _xr 
+import matplotlib.dates as mdates
+import  matplotlib.lines as _mpllines
+import matplotlib.dates as _mpldates
+
 
 class Statistics(object):
     def __init__(self, parent_ts):
         self._parent_ts = parent_ts
         self.seasonality = Seasonality(self)
         self.diurnality = Diurnality(self)
+        self.gamcl = GamClimatology(self)
 
     def define_custom(self,reference = 'index', frequency = 'M', bins = None):
         self.custom = Climatology(self, reference = reference, frequency = frequency, bins = bins)
 
+class GamClimatology(object):
+    def __init__(self, parent_stats = None):
+        '''
+        This class hosds a few tools for a GAM analysis. It is design to take
+        the Statistics class as an argument to connect it to its parents, in
+        particular, the Timeseries class. It can also invoced with an argument. 
+        You can than overwrite properties, e.g. prediction, and can use the plot
+        function
+
+        Parameters
+        ----------
+        parent_stats : TYPE, optional
+            DESCRIPTION. The default is None.
+
+        Returns
+        -------
+        None.
+
+        '''
+        self.distribution = 'normal'# 'normal' ['binomial' 'poisson' 'gamma' 'inv_gauss']
+        self.link = 'identity' # 'identity' ('logit' 'inverse' 'log' 'inverse-squared')
+        self._splines_per_year = 15
+        self._parent_stats = parent_stats
+        self._data = None
+        self._seasonality_lam = None
+        self._seasonality_nsplines = None
+        self._trend_lam = None
+        self._trend_nsplines = None
+        
+        self._rerun()
+        
+    def _rerun(self):
+        self._fit_res = None
+        self._prediction = None
+        self._gam = None
+    
+    
+    @property
+    def splines_per_year(self):
+        return self._splines_per_year
+    
+    @splines_per_year.setter 
+    def splines_per_year(self, value):
+        self._splines_per_year =  value
+        self._rerun()
+        
+        self._seasonality_nsplines = None
+        self._trend_nsplines = None
+
+    
+    
+    @property
+    def trend_nsplines(self):
+        if isinstance(self._trend_nsplines, type(None)):
+            # self._trend_nsplines  = 1e1 #(self.data.index.max() - self.data.index.min()) / _pd.to_timedelta(1, 'd')
+            n_splines = (self.data.index.max() - self.data.index.min())/ _pd.to_timedelta(1, 'd')/356 # no_of years
+            n_splines*= self.splines_per_year # no of month
+            # n_splines*= 4 # random
+            self._trend_nsplines = int(n_splines)
+        return self._trend_nsplines
+    
+    @trend_nsplines.setter
+    def trend_nsplines(self, value):
+        self._trend_nsplines = int(value)
+        self._rerun()
+        
+        
+    @property
+    def trend_lambda(self):
+        if isinstance(self._trend_lam, type(None)):
+            self._trend_lam  = (self.data.index.max() - self.data.index.min()) / _pd.to_timedelta(1, 'd')
+        return self._trend_lam
+    
+    @trend_lambda.setter
+    def trend_lambda(self, value):
+        self._trend_lam = value
+        self._rerun()
+        
+        
+    @property
+    def seasonality_nsplines(self):
+        if isinstance(self._seasonality_nsplines, type(None)):
+            self._seasonality_nsplines  = self.splines_per_year
+        return self._seasonality_nsplines
+    
+    @seasonality_nsplines.setter
+    def seasonality_nsplines(self, value):
+        self._seasonality_nsplines = value
+        self._rerun()
+
+
+    @property
+    def seasonality_lambda(self):
+        if isinstance(self._seasonality_lam, type(None)):
+            self._seasonality_lam  = 1e1 #(self.data.index.max() - self.data.index.min()) / _pd.to_timedelta(1, 'd')
+        return self._seasonality_lam
+    
+    @seasonality_lambda.setter
+    def seasonality_lambda(self, value):
+        self._seasonality_lam = value
+        self._rerun()
+    
+    @property
+    def data(self, data_column = None):#, linear = False, resolution = 1e5):
+        
+        """
+        resolution: 1e5 ~ seasonal
+                    1e7 ~ annual
+        """
+        if isinstance(self._data, type(None)):
+            #### make_X_y_Xdf
+            # dsn = xr.Dataset()
+            # dsn['aod'] = da
+            data = self._parent_stats._parent_ts.data
+            
+            Xdf = _pd.DataFrame()
+            
+            row = data.iloc[0,:]
+            start_date = row.name
+            Xdf['dsincestart'] = data.apply(lambda row: (row.name - start_date )/ datetime.timedelta(days = 1), axis = 1)
+            Xdf['doy'] = data.apply(lambda row: (row.name - _pd.to_datetime(row.name.year, format= '%Y')) / datetime.timedelta(days = 1), axis = 1)
+            # if sun:
+            #     Xdf['sunelev'] = data['sunelev']
+            #     Xdf['sunaz'] = data['sunaz']
+            # X = Xdf.values
+            if isinstance(data_column, type(None)):
+                y = data.iloc[:,0]
+            else:
+                y  = data.loc[:, data_column]
+                
+            y.name = f'y_{y.name}'
+            Xdf.columns = [f'x_{c}' for c in Xdf.columns]
+            data_pretty = _pd.concat([y,Xdf], axis = 1)
+            # data_pretty = 
+            self._data = data_pretty#(data, Xdf)
+        return self._data
+    
+    def optimize_lambda(self, elim = (-3,3), size = 100, lambda_grid = None):
+        if isinstance(lambda_grid, type(None)):
+            lams = create_lambda_set(no_col = self.data.shape[1] - 1, elim = elim, size = size)
+        else: 
+            lams = lambda_grid
+            
+        self.lambda_grid = lams
+        
+        X = self.data.iloc[:,1:].values
+        y = self.data.iloc[:,0].values
+        self.gam_inst.gridsearch(X, y, lam=lams)
+        
+        # update or reset some of the parameters!
+        self._prediction = None 
+        self._trend_lam = self.fit_res.terms[0].info['lam'][0]
+        self._seasonality_lam = self.fit_res.terms[1].info['lam'][0]
+        return None #self._fit_res # this is still the same instance ..
+        
+    @property
+    def gam_inst(self, linear = False, ):
+        if isinstance(self._gam, type(None)):
+            import pygam
+            
+            if linear:
+                year = pygam.l(0)#, lam = resolution, n_splines=int(n_splines))
+            else:
+                year = pygam.s(0, lam = self.trend_lambda, n_splines=self.trend_nsplines)#int(n_splines))
+            
+            doy = pygam.s(1, basis = 'cp', lam = self.seasonality_lambda, n_splines= self.seasonality_nsplines)            
+            self._gam = pygam.GAM(year + doy , distribution = self.distribution, link = self.link)
+        return self._gam
+    
+    @property
+    def fit_res(self, data_column = None, 
+                # linear = False, 
+                resolution = 1e5):
+        
+        """
+        resolution: 1e5 ~ seasonal
+                    1e7 ~ annual
+        """
+        if isinstance(self._fit_res, type(None)):
+            X = self.data.iloc[:,1:].values
+            y = self.data.iloc[:,0].values
+            
+            # if linear:
+            #     year = pygam.l(0)#, lam = resolution, n_splines=int(n_splines))
+            # else:
+            #     year = pygam.s(0, lam = self.trend_lambda, n_splines=self.trend_nsplines)#int(n_splines))
+            
+            # # doy = pygam.s(1, basis = 'cp', lam = 1e1, n_splines= 12 * 4)
+            # doy = pygam.s(1, basis = 'cp', lam = self.seasonality_lambda, n_splines= self.seasonality_nsplines)
+            # # sune = s(2, 
+            # #          # n_splines= 12 * 4,
+            # #         )
+            # # suna = s(3)
+            # # hod = s(2, basis = 'cp', lam = 1e-3,# by =4, edge_knots = 2)
+            
+            # gam = pygam.LinearGAM(year + doy )
+            # self.tp_gam = gam
+            
+            self._fit_res = self.gam_inst.fit(X, y) #this is just a nother handle to the very same gam instance from above!! If the lambda optimization is run it still connects to the same gam instance!!
+        return self._fit_res
+    
+    @property
+    def prediction(self):
+        if isinstance(self._prediction, type(None)):
+            ds = _xr.Dataset()
+            Xdf = self.data.iloc[:,1:]
+            Xdf.columns = [c.replace('x_', '') for c in Xdf.columns]
+            gam = self.fit_res
+            for i,col in enumerate(Xdf.columns):
+                term = gam.terms[i]
+                XX = gam.generate_X_grid(term=i)
+                pdep, confi = gam.partial_dependence(term=i, X=XX, width=0.95)
+                dsincestart_feat = XX[:, term.feature]
+                colname = Xdf.columns[i]
+                if colname == 'dsincestart':
+                    startd = Xdf.index[0]
+                    index = startd + (dsincestart_feat * _pd.to_timedelta(1, 'day'))
+                    colname = 'datetime'
+                else:
+                    index = dsincestart_feat
+                # print(pdep.shape)
+                ds[f'partial_{colname}'] =  _xr.DataArray(pdep, coords={colname:index})
+            # return ds
+            # return pdep, dsincestart_feat
+            # if i != 0:
+            #     df = _pd.DataFrame(pdep, index = dsincestart_feat)
+            # else:
+            #     # assert(not isinstance(Xdf, type(None))), 'Xdf needed if i==0'
+            #     idxl =  []
+            #     for val in dsincestart_feat:
+            #         idxl.append(Xdf.dsincestart.sub(val).abs().idxmin())
+            #     tidx = Xdf.loc[idxl].index
+            #     df = _pd.DataFrame(pdep, index = tidx)
+            #     df.index.name = 'datetime'
+            #     df.index = df.index.tz_localize(None)
+                
+            # # if col:
+            # df.columns = [Xdf.columns[i]]
+            # if i == 1:
+            #     df.index.name = 'day of year'
+                self._prediction = ds
+        return self._prediction
+    
+    @prediction.setter 
+    def prediction(self, value):
+        self._prediction = value
+    
+    def plot_seasonality(self, ax = None,
+                         offset = 0,
+                         xticklablesmonth = True,
+                         **plot_kwargs):
+        
+        if isinstance(ax, type(None)):
+            f, a = _plt.subplots()
+        else:
+            a = ax
+            f = a.get_figure()
+        
+        # if 'label' not in plot_kwargs:
+        #     plot_kwargs['label'] = 'seasonal'
+        
+        (self.prediction.partial_doy + offset).plot(ax = a, **plot_kwargs)   
+        
+        if xticklablesmonth:
+            a.xaxis.set_major_locator(mdates.MonthLocator())  # Set the major ticks to be at the beginning of each month
+            a.xaxis.set_minor_locator(mdates.WeekdayLocator())  # Set the minor ticks to be at the beginning of each week
+            a.xaxis.set_major_formatter(mdates.DateFormatter('%b'))  # Format the major ticks with abbreviated month names
+            
+            a.xaxis.set_minor_locator(_plt.NullLocator())
+        a.set_xlabel('')
+        # a.set_xlabel('Day of year')
+        return f,a
+    
+    def plot_trend(self, ax = None, 
+                   shade_seasons = True, 
+                   offset= 0, **plot_kwargs):
+        if isinstance(ax, type(None)):
+            f, a = _plt.subplots()
+        else:
+            a = ax
+            f = a.get_figure()
+         
+        if 'label' not in plot_kwargs:
+            plot_kwargs['label'] = 'seasonal'
+            
+        (self.prediction.partial_datetime + offset).plot(ax = a, **plot_kwargs)   
+         
+        if shade_seasons:
+            seasons = [3,6,9,12]
+            colorlam = lambda x: x/12 - 0.1
+            for year in range(_pd.Timestamp(self.prediction.datetime.min().values).year, _pd.Timestamp(self.prediction.datetime.max().values).year + 1): 
+                for month in seasons:
+                    # start = _pd.Timestamp(year,month,1)
+                    # end = start + _pd.DateOffset(month = 3)
+                    # print(f'{start}, {end}')
+                    # a.axvspan(start, end, color = 'black', alpha = 1/month, lw = 0)
+                    start = _pd.Timestamp(year,month,1)
+                    end = start + _pd.to_timedelta(31*3, 'd')
+                    end = _pd.Timestamp(end.year, end.month, 1)
+                    
+                    a.axvspan(start, end, color = f'{colorlam(month)}', lw = 0)
+                    
+            a.set_xlim(self.prediction.datetime.min(), self.prediction.datetime.max())
+            
+            custom_lines = [_mpllines.Line2D([0], [0], color=f'{colorlam(seasons[0])}', lw=4),
+                            _mpllines.Line2D([0], [0], color=f'{colorlam(seasons[1])}', lw=4),
+                            _mpllines.Line2D([0], [0], color=f'{colorlam(seasons[2])}', lw=4),
+                            _mpllines.Line2D([0], [0], color=f'{colorlam(seasons[3])}', lw=4),
+                           ]
+            
+            a.legend(custom_lines, ['spring', 'summer', 'fall', 'winter'])
+            
+            a.xaxis.set_major_locator(_mpldates.YearLocator())
+            a.xaxis.set_major_formatter(_mpldates.DateFormatter('%Y'))
+            a.xaxis.set_minor_locator(_mpldates.MonthLocator())
+            a.xaxis.set_tick_params(reset = True)
+            a.xaxis.tick_bottom()
+            a.set_xlabel('')
+        return f,a
+        
+    
 
 class Climatology(object):
-    def __init__(self, parent_stats, reference = 'index', frequency = 'M', bins = None):
+    def __init__(self, parent_stats = None, reference = 'index', frequency = 'M', bins = None):
         """
 
         Parameters
@@ -36,8 +367,9 @@ class Climatology(object):
         """
         self._bins = bins
         self._reference = reference
-        self._parent_stats = parent_stats
-        self._parent_ts = parent_stats._parent_ts
+        if not isinstance(parent_stats, type(None)):
+            self._parent_stats = parent_stats
+            self._parent_ts = parent_stats._parent_ts
         self._frequency = frequency
         self._reset()
         self._timezone = None
@@ -139,7 +471,14 @@ class Climatology(object):
             # out.index += _np.timedelta64(1, 'D')
             self._percentiles = out
         return self._percentiles
-
+    
+    @percentiles.setter 
+    def percentiles(self, df):
+        assert(df.index[0] == 1), f'first index should be 1 (is {df.index[0]}) for January. Make sure to use "index_col=0" when reading the csv file'
+        df.columns = [int(c) if c.isnumeric() else c for c in df.columns]
+        self._percentiles = df
+    
+    
     def plot_percentiles(self, ax=None, box_width=0.2, wisker_size=20, mean_size=10, median_size = 10 , line_width=1.5,
                          xoffset=0,
                          color=0, tickbase = 1):
@@ -162,16 +501,21 @@ class Climatology(object):
         -------
         f, a, boxes, vlines, wisker_tips, mean
         """
-        if type(color) == int:
-            color = _plt.rcParams['axes.prop_cycle'].by_key()['color'][color]
-            col = _plt_tools.colors.Color(color, model='hex')
-        elif type(color) == str:
-            col = _plt_tools.colors.Color(color, model='hex')
-        else:
-            col = _plt_tools.colors.Color(color, model='rgb')
-
-        col.saturation = 0.3
-        color_bright = col.rgb
+        try:
+            import plt_tools as _plt_tools
+            if type(color) == int:
+                color = _plt.rcParams['axes.prop_cycle'].by_key()['color'][color]
+                col = _plt_tools.colors.Color(color, model='hex')
+            elif type(color) == str:
+                col = _plt_tools.colors.Color(color, model='hex')
+            else:
+                col = _plt_tools.colors.Color(color, model='rgb')
+    
+            col.saturation = 0.3
+            color_bright = col.rgb
+        except:
+            color = _mcolors.hex2color(_plt.rcParams['axes.prop_cycle'].by_key()['color'][color])
+            color_bright = color + (0.6,)
 
         if ax:
             a = ax
@@ -409,4 +753,12 @@ class Diurnality(Climatology):
         self._reset()
         self._timezone = value
 
-
+def create_lambda_set(no_col = 2, elim = (-3,3), size = 1000):
+    # elim = (-0,2)
+    lams = _np.random.rand(size, no_col) # random points on [0, 1], with shape (100, 3)
+    lams = lams * (elim[1] - elim[0]) + elim[0] # shift values to -3, 3
+    lams = 10 ** lams # transforms values to 1e-3, 1e3
+    # f,a = plt.subplots()
+    # out = a.hist(lams, bins = np.logspace(*elim, 20))
+    # a.set_xscale('log')
+    return lams

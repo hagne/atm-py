@@ -14,6 +14,7 @@ setup.py.old
 /setuptools-32.1.2-py3.5.egg
 atmPy/unit_testing/testresults.log
 atm_py.egg-info/
+*egg-info*
 examples/instruments_ARM-tdmaapssize.ipynb
 examples/instruments_ARM.ipynb
 mie_py.egg-info/
@@ -65,4 +66,5 @@ examples/instruments_ARM-ceilm.ipynb
 .spyproject/config/vcs.ini
 .spyproject/config/vcs.ini
 .spyproject/config/defaults/defaults-vcs-0.2.0.ini
-atmPy/aerosols/physics/nohup.out
+*nohup.out
+build/*
