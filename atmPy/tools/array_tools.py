@@ -10,6 +10,7 @@ import warnings as _warnings
 from matplotlib.projections import PolarAxes
 import mpl_toolkits.axisartist.floating_axes as floating_axes
 import mpl_toolkits.axisartist.grid_finder as grid_finder
+import matplotlib.patches as _patches
 
 _colors = _plt.rcParams['axes.prop_cycle'].by_key()['color']
 
@@ -23,7 +24,8 @@ class TaylorDiagram(object):
     """
 
     def __init__(self, refstd,
-                 fig=None, 
+                 # relative = False,
+                 fig=None, std_label = 'Standard deviation',
                  rect=111, label='_', srange=(0, 1.5), extend=False):
         """
         Set up Taylor diagram axes, i.e. single quadrant polar
@@ -83,6 +85,7 @@ class TaylorDiagram(object):
 
         ax.axis["left"].set_axis_direction("bottom")  # "X axis"
         ax.axis["left"].label.set_text("Standard deviation")
+        ax.axis["left"].label.set_text(std_label)
 
         ax.axis["right"].set_axis_direction("top")    # "Y-axis"
         ax.axis["right"].toggle(ticklabels=True)
@@ -303,6 +306,8 @@ class Correlation(object):
         data = data.copy()
         correlant = correlant.copy()
         self._pearson_r = None
+        self._stdofdifference = None
+        self._bias = None
         self.__linear_regression = None
         self.__linear_regression_function = None
         self.__linear_regression_zero = None
@@ -368,8 +373,8 @@ class Correlation(object):
         # self.sy = sy
         # self.sx = sx
 
-        self._x_label_correlation = 'Data'
-        self._y_label_correlation = 'Correlant'
+        self._x_label_correlation = 'Reference'
+        self._y_label_correlation = 'Observation'
         self._x_label_orig = 'Item'
         self._y_label_orig_data = 'Data'
         self._y_label_orig_correlant = 'Correlant'
@@ -455,38 +460,176 @@ class Correlation(object):
 
         return self.__orthogonal_distance_regression
     
-    #### TODO begin Baustelle
-    def plot_taylor_diagram(self):
-        # fig = _plt.figure(figsize=(10, 4))
-    
-        refstd =  self._data.std(ddof = 1)
-        samples = [[self._correlant.std(ddof = 1), self.pearson_r[0]],]
-        # Taylor diagram
-        dia = TaylorDiagram(refstd, 
-                            # fig=fig, 
-                            rect=111, label="Reference",
-                            srange=(0.5, 1.5))
+    @property
+    def bias(self):
+        """
+        Bias D̄ between an observation and a reference:
+            
+        D = \{d_1, d_2, \ldots, d_n\}, \text{ where } d_i = x_i - y_i
         
-        colors = _plt.matplotlib.cm.jet(_np.linspace(0, 1, len(samples)))
+        \sigma_D = \sqrt{\frac{1}{n-1} \sum_{i=1}^{n} (d_i - \overline{D})^2}
+        
+        \overline{D} = \frac{1}{n} \sum_{i=1}^{n} d_i
+
+        
+        """
+        if isinstance(self._bias, type(None)):
+            obs = self._correlant
+            ref = self._data
+            self._bias = (obs-ref).mean()
+        return self._bias
+    
+    @property
+    def stdofdifference(self):
+        if isinstance(self._stdofdifference, type(None)):
+            obs = self._correlant
+            ref = self._data
+            self._stdofdifference = (obs-ref).std() * _np.sign(obs.std()-ref.std())
+        return self._stdofdifference
+    
+    def plot_target_diagram(self, ax = None, 
+                            normalized = False,
+                            lims = None, 
+                            scale_extend = 1.2,
+                            force_axes_repoplulation = False,
+                            **plot_kwargs):
+        
+        if 'color' not in plot_kwargs:
+            plot_kwargs['color'] = None        
+        if 'label' not in plot_kwargs:
+            plot_kwargs['label'] = None        
+        if 'marker' not in plot_kwargs:
+            plot_kwargs['marker'] = '.'
+            
+        if normalized:
+            std = self._data.std()
+            stdofdifference = self.stdofdifference/std
+            bias = self.bias/std
+            xlabel = '$\\frac{\\sigma_D}{\\sigma_X}$'
+            ylabel = '$\\overline{D}/\\sigma_X$'
+        else:
+            stdofdifference = self.stdofdifference
+            bias = self.bias
+            xlabel = '$\\sigma_D$'
+            ylabel = '$\\overline{D}$'
+            
+        if isinstance(ax, type(None)):
+            f,a = _plt.subplots()
+            force_axes_repoplulation = True
+
+        else:
+            a = ax
+            f = a.get_figure()
+        
+        if force_axes_repoplulation:
+            if isinstance(lims, type(None)):
+                lims = _np.abs([stdofdifference, bias]).max() * scale_extend
+            
+            a.set_ylim(-lims, lims)
+            a.set_xlim(-lims, lims)
+            
+            # Set the spines
+            a.spines['left'].set_position('zero')
+            a.spines['bottom'].set_position('zero')
+            
+            # Optionally, hide the top and right spines
+            a.spines['right'].set_color('none')
+            a.spines['top'].set_color('none')
+            
+            a.set_aspect(1)
+            
+            radii = [i for i in a.xaxis.get_majorticklocs() if i > 0]
+            for radius in radii:
+                circle = _patches.Circle((0, 0), radius, fill=False, edgecolor='0.7')
+                circle.set_linestyle('--')
+                a.add_patch(circle)
+            
+            a.set_xlabel(xlabel)# =\n$\\sqrt{\\sum_{i=1}^{n} (d_i - \\overline{D})^2}$')
+            # a.set_xlabel('$\\sigma_D$')
+            a.xaxis.label.set_horizontalalignment('left')
+            a.xaxis.label.set_verticalalignment('center')
+            a.xaxis.set_label_coords(1.01, 0.5)
+            
+            a.set_ylabel(ylabel, rotation= 0)# =\n$\\sqrt{\\sum_{i=1}^{n} (d_i - \\overline{D})^2}$')
+            # a.set_xlabel('$\\sigma_D$')
+            a.yaxis.label.set_horizontalalignment('center')
+            a.yaxis.label.set_verticalalignment('bottom')
+            a.yaxis.set_label_coords(0.5, 1.01)
+            
+        
+        a.plot(stdofdifference, bias, 
+               marker = plot_kwargs['marker'], 
+               ls = '',
+               color = plot_kwargs['color'],
+               label = plot_kwargs['label'])
+        return f,a
+    
+    def plot_taylor_diagram(self, taylor_diagram = None, 
+                            relative = False, subplotpos = 111, legend = True,
+                            **add_sample_kwargs):
+        # data = self._data
+        if relative:
+            refstd =  1
+            samples = [[self._correlant.std(ddof = 1)/self._data.std(ddof = 1), self.pearson_r[0]],]
+            std_label = '$\\sigma/\\sigma_X$'
+        else: 
+            refstd =  self._data.std(ddof = 1)
+            samples = [[self._correlant.std(ddof = 1), self.pearson_r[0]],]
+            std_label = '$\\sigma$'
+            
+        if isinstance(taylor_diagram, type(None)):
+            dia = TaylorDiagram(refstd, 
+                                # fig=fig, 
+                                rect=subplotpos, 
+                                # label="Reference",
+                                std_label= std_label,
+                                srange=(0.5, 1.5))
+        else:
+            dia = taylor_diagram
+            
+
+        # Taylor diagram
+        
+        # colors = _plt.matplotlib.cm.jet(_np.linspace(0, 1, len(samples)))
+        if 'marker' not in add_sample_kwargs:
+            add_sample_kwargs['marker'] = '.'
+            
+        if 'color' not in add_sample_kwargs:
+                add_sample_kwargs['color'] = None
+                
+        if 'label' not in add_sample_kwargs:
+                add_sample_kwargs['label'] = None     
+                
+        if 'markersize' not in add_sample_kwargs:
+                add_sample_kwargs['markersize'] = 8     
         
         # Add the models to Taylor diagram
         for i, (stddev, corrcoef) in enumerate(samples):
             dia.add_sample(stddev, corrcoef,
-                           marker='$%d$' % (i+1), ms=10, ls='',
-                           mfc=colors[i], mec=colors[i],
-                           label="Model %d" % (i+1))
+                           # marker='$%d$' % (i+1),
+                           marker = add_sample_kwargs['marker'],
+                           ms=add_sample_kwargs['markersize'], 
+                           ls='',
+                           mfc=add_sample_kwargs['color'],
+                           mec=add_sample_kwargs['color'],
+                           label=add_sample_kwargs['label'],
+                           )
         
-        # Add grid
-        dia.add_grid()
-        
-        # Add RMS contours, and label them
-        contours = dia.add_contours(colors='0.5')
-        _plt.clabel(contours, inline=1, fontsize=10, fmt='%.2f')
+        if isinstance(taylor_diagram, type(None)):
+            # Add grid
+            dia.add_grid()
+            
+            # Add RMS contours, and label them
+            contours = dia.add_contours(colors='0.5')
+            _plt.clabel(contours, inline=1, fontsize=10, fmt='%.2f')
+            
         
         # Add a figure legend
-        dia.fig.legend(dia.samplePoints,
-                   [ p.get_label() for p in dia.samplePoints ],
-                   numpoints=1, prop=dict(size='small'), loc='upper right')
+        if legend:
+            dia.fig.legend(dia.samplePoints,
+                       [ p.get_label() for p in dia.samplePoints ],
+                       numpoints=1, prop=dict(size='small'), loc='upper right')
+        # dia.ax.axis["left"].label.set_text(label)
         return dia
         
     #### TODO end Baustelle

@@ -1,0 +1,925 @@
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" >
+<head>
+  <meta charset="utf-8" /><meta name="generator" content="Docutils 0.18.1: http://docutils.sourceforge.net/" />
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>SizeDist_LS - a layer series (aka vertical profile) of size distributions &mdash; atmPy  documentation</title>
+      <link rel="stylesheet" href="../_static/pygments.css" type="text/css" />
+      <link rel="stylesheet" href="../_static/css/theme.css" type="text/css" />
+      <link rel="stylesheet" href="../_static/nbsphinx-code-cells.css" type="text/css" />
+  <!--[if lt IE 9]>
+    <script src="../_static/js/html5shiv.min.js"></script>
+  <![endif]-->
+  
+        <script src="../_static/jquery.js?v=5d32c60e"></script>
+        <script src="../_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+        <script src="../_static/documentation_options.js?v=5929fcd5"></script>
+        <script src="../_static/doctools.js?v=888ff710"></script>
+        <script src="../_static/sphinx_highlight.js?v=dc90522c"></script>
+        <script crossorigin="anonymous" integrity="sha256-Ae2Vz/4ePdIu6ZyI/5ZGsYnb+m0JlOmKPjt6XZ9JJkA=" src="https://cdnjs.cloudflare.com/ajax/libs/require.js/2.3.4/require.min.js"></script>
+        <script>window.MathJax = {"tex": {"inlineMath": [["$", "$"], ["\\(", "\\)"]], "processEscapes": true}, "options": {"ignoreHtmlClass": "tex2jax_ignore|mathjax_ignore|document", "processHtmlClass": "tex2jax_process|mathjax_process|math|output_area"}}</script>
+        <script defer="defer" src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+    <script src="../_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="../genindex.html" />
+    <link rel="search" title="Search" href="../search.html" />
+    <link rel="prev" title="SizeDist_TS (a time series of size distributions)" href="aerosols_sizedistribution_SizeDist_TS.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="../index.html" class="icon icon-home">
+            atmPy
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <p class="caption" role="heading"><span class="caption-text">getting started</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../installation.html">Installation</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">aerosols</span></p>
+<ul class="current">
+<li class="toctree-l1 current"><a class="reference internal" href="../aerosols_sizedistribution.html">Size distribution</a><ul class="current">
+<li class="toctree-l2"><a class="reference internal" href="aerosols_sizedistribution_SizeDist.html">SizeDist (a single size distribution)</a></li>
+<li class="toctree-l2"><a class="reference internal" href="aerosols_sizedistribution_SizeDist_TS.html">SizeDist_TS (a time series of size distributions)</a></li>
+<li class="toctree-l2 current"><a class="current reference internal" href="#">SizeDist_LS - a layer series (aka vertical profile) of size distributions</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#Create-instance">Create instance</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="#simulate-a-sizedistribution">simulate a sizedistribution</a></li>
+<li class="toctree-l4"><a class="reference internal" href="#format-your-own-data">format your own data</a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="#Methods">Methods</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="#Plotting">Plotting</a></li>
+<li class="toctree-l4"><a class="reference internal" href="#hygroscopic-growth-and-optical-properties">hygroscopic growth and optical properties</a></li>
+<li class="toctree-l4"><a class="reference internal" href="#AOD-(aerosol-optical-depth)">AOD (aerosol optical depth)</a></li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../index.html">atmPy</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../index.html" class="icon icon-home" aria-label="Home"></a></li>
+          <li class="breadcrumb-item"><a href="../aerosols_sizedistribution.html">Size distribution</a></li>
+      <li class="breadcrumb-item active">SizeDist_LS - a layer series (aka vertical profile) of size distributions</li>
+      <li class="wy-breadcrumbs-aside">
+            <a href="../_sources/notebooks/aerosols_sizedistribution_SizeDist_LS.ipynb.txt" rel="nofollow"> View page source</a>
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <div class="nbinput nblast docutils container">
+<div class="prompt highlight-none notranslate"><div class="highlight"><pre><span></span>[1]:
+</pre></div>
+</div>
+<div class="input_area highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="kn">import</span> <span class="nn">atmPy.aerosols.size_distribution.sizedistribution</span> <span class="k">as</span> <span class="nn">atmsd</span>
+</pre></div>
+</div>
+</div>
+<div class="nbinput nblast docutils container">
+<div class="prompt highlight-none notranslate"><div class="highlight"><pre><span></span>[30]:
+</pre></div>
+</div>
+<div class="input_area highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="kn">import</span> <span class="nn">warnings</span>
+<span class="n">warnings</span><span class="o">.</span><span class="n">simplefilter</span><span class="p">(</span><span class="s1">&#39;ignore&#39;</span><span class="p">)</span>
+</pre></div>
+</div>
+</div>
+<section id="SizeDist_LS---a-layer-series-(aka-vertical-profile)-of-size-distributions">
+<h1>SizeDist_LS - a layer series (aka vertical profile) of size distributions<a class="headerlink" href="#SizeDist_LS---a-layer-series-(aka-vertical-profile)-of-size-distributions" title="Link to this heading"></a></h1>
+<p>SizeDist_TS is a subclass of SizeDist with all its properties methods, etc. Here we will mostly focus on what is unique to the SizeDist_TS class.</p>
+<section id="Create-instance">
+<h2>Create instance<a class="headerlink" href="#Create-instance" title="Link to this heading"></a></h2>
+<section id="simulate-a-sizedistribution">
+<h3>simulate a sizedistribution<a class="headerlink" href="#simulate-a-sizedistribution" title="Link to this heading"></a></h3>
+<div class="nbinput nblast docutils container">
+<div class="prompt highlight-none notranslate"><div class="highlight"><pre><span></span>[31]:
+</pre></div>
+</div>
+<div class="input_area highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="n">sd</span> <span class="o">=</span> <span class="n">atmsd</span><span class="o">.</span><span class="n">simulate_sizedistribution_layerseries</span><span class="p">(</span><span class="n">diameter</span><span class="o">=</span><span class="p">[</span><span class="mi">10</span><span class="p">,</span> <span class="mi">2500</span><span class="p">],</span>
+                                                <span class="n">numberOfDiameters</span><span class="o">=</span><span class="mi">30</span><span class="p">,</span>
+                                                <span class="n">heightlimits</span><span class="o">=</span><span class="p">[</span><span class="mi">0</span><span class="p">,</span> <span class="mi">6000</span><span class="p">],</span>
+                                                <span class="n">noOflayers</span><span class="o">=</span><span class="mi">50</span><span class="p">,</span>
+                                                <span class="n">layerHeight</span><span class="o">=</span><span class="p">[</span><span class="mf">500.0</span><span class="p">,</span> <span class="mf">4000.0</span><span class="p">],</span>
+                                                <span class="n">layerThickness</span><span class="o">=</span><span class="p">[</span><span class="mf">100.0</span><span class="p">,</span> <span class="mf">300.0</span><span class="p">],</span>
+                                                <span class="n">layerDensity</span><span class="o">=</span><span class="p">[</span><span class="mf">1000.0</span><span class="p">,</span> <span class="mf">5000.0</span><span class="p">],</span>
+                                                <span class="n">layerModecenter</span><span class="o">=</span><span class="p">[</span><span class="mf">200.0</span><span class="p">,</span> <span class="mf">800.0</span><span class="p">],</span>
+                                                <span class="n">widthOfAerosolMode</span><span class="o">=</span><span class="mf">0.2</span><span class="p">,)</span>
+</pre></div>
+</div>
+</div>
+</section>
+<section id="format-your-own-data">
+<h3>format your own data<a class="headerlink" href="#format-your-own-data" title="Link to this heading"></a></h3>
+<p><code class="docutils literal notranslate"><span class="pre">data</span></code> should have a similar structure as below. However, column names are not required as they are calculated based on <code class="docutils literal notranslate"><span class="pre">bins</span></code></p>
+<div class="nbinput docutils container">
+<div class="prompt highlight-none notranslate"><div class="highlight"><pre><span></span>[3]:
+</pre></div>
+</div>
+<div class="input_area highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="n">sd</span><span class="o">.</span><span class="n">data</span>
+</pre></div>
+</div>
+</div>
+<div class="nboutput nblast docutils container">
+<div class="prompt highlight-none notranslate"><div class="highlight"><pre><span></span>[3]:
+</pre></div>
+</div>
+<div class="output_area rendered_html docutils container">
+<div>
+<style scoped>
+    .dataframe tbody tr th:only-of-type {
+        vertical-align: middle;
+    }
+
+    .dataframe tbody tr th {
+        vertical-align: top;
+    }
+
+    .dataframe thead th {
+        text-align: right;
+    }
+</style>
+<table border="1" class="dataframe">
+  <thead>
+    <tr style="text-align: right;">
+      <th>bincenters</th>
+      <th>11.048638</th>
+      <th>13.365842</th>
+      <th>16.169028</th>
+      <th>19.560119</th>
+      <th>23.662416</th>
+      <th>28.625078</th>
+      <th>34.628546</th>
+      <th>41.891108</th>
+      <th>50.676829</th>
+      <th>61.305159</th>
+      <th>...</th>
+      <th>411.502887</th>
+      <th>497.806397</th>
+      <th>602.210134</th>
+      <th>728.510216</th>
+      <th>881.298909</th>
+      <th>1066.131608</th>
+      <th>1289.728823</th>
+      <th>1560.220544</th>
+      <th>1887.441843</th>
+      <th>2283.290476</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <th>30.0</th>
+      <td>3.052113e-12</td>
+      <td>3.131145e-11</td>
+      <td>2.707518e-10</td>
+      <td>1.973355e-09</td>
+      <td>1.212285e-08</td>
+      <td>6.277254e-08</td>
+      <td>2.739684e-07</td>
+      <td>1.007852e-06</td>
+      <td>3.125064e-06</td>
+      <td>8.167451e-06</td>
+      <td>...</td>
+      <td>1.003399e-05</td>
+      <td>4.000585e-06</td>
+      <td>1.344432e-06</td>
+      <td>3.808201e-07</td>
+      <td>9.092150e-08</td>
+      <td>1.829696e-08</td>
+      <td>3.103537e-09</td>
+      <td>4.437113e-10</td>
+      <td>5.346995e-11</td>
+      <td>5.431060e-12</td>
+    </tr>
+    <tr>
+      <th>90.0</th>
+      <td>4.276988e-11</td>
+      <td>4.387737e-10</td>
+      <td>3.794100e-09</td>
+      <td>2.765302e-08</td>
+      <td>1.698799e-07</td>
+      <td>8.796444e-07</td>
+      <td>3.839175e-06</td>
+      <td>1.412324e-05</td>
+      <td>4.379215e-05</td>
+      <td>1.144522e-04</td>
+      <td>...</td>
+      <td>1.406084e-04</td>
+      <td>5.606101e-05</td>
+      <td>1.883980e-05</td>
+      <td>5.336510e-06</td>
+      <td>1.274101e-06</td>
+      <td>2.563990e-07</td>
+      <td>4.349049e-08</td>
+      <td>6.217817e-09</td>
+      <td>7.492852e-10</td>
+      <td>7.610656e-11</td>
+    </tr>
+    <tr>
+      <th>150.0</th>
+      <td>4.181474e-10</td>
+      <td>4.289750e-09</td>
+      <td>3.709370e-08</td>
+      <td>2.703547e-07</td>
+      <td>1.660862e-06</td>
+      <td>8.600002e-06</td>
+      <td>3.753438e-05</td>
+      <td>1.380784e-04</td>
+      <td>4.281419e-04</td>
+      <td>1.118962e-03</td>
+      <td>...</td>
+      <td>1.374683e-03</td>
+      <td>5.480906e-04</td>
+      <td>1.841907e-04</td>
+      <td>5.217335e-05</td>
+      <td>1.245648e-05</td>
+      <td>2.506731e-06</td>
+      <td>4.251926e-07</td>
+      <td>6.078961e-08</td>
+      <td>7.325522e-09</td>
+      <td>7.440695e-10</td>
+    </tr>
+    <tr>
+      <th>210.0</th>
+      <td>2.852166e-09</td>
+      <td>2.926021e-08</td>
+      <td>2.530146e-07</td>
+      <td>1.844078e-06</td>
+      <td>1.132867e-05</td>
+      <td>5.866026e-05</td>
+      <td>2.560205e-04</td>
+      <td>9.418269e-04</td>
+      <td>2.920338e-03</td>
+      <td>7.632395e-03</td>
+      <td>...</td>
+      <td>9.376656e-03</td>
+      <td>3.738503e-03</td>
+      <td>1.256357e-03</td>
+      <td>3.558723e-04</td>
+      <td>8.496515e-05</td>
+      <td>1.709831e-05</td>
+      <td>2.900221e-06</td>
+      <td>4.146434e-07</td>
+      <td>4.996708e-08</td>
+      <td>5.075267e-09</td>
+    </tr>
+    <tr>
+      <th>270.0</th>
+      <td>1.357295e-08</td>
+      <td>1.392441e-07</td>
+      <td>1.204051e-06</td>
+      <td>8.775639e-06</td>
+      <td>5.391110e-05</td>
+      <td>2.791537e-04</td>
+      <td>1.218356e-03</td>
+      <td>4.481986e-03</td>
+      <td>1.389737e-02</td>
+      <td>3.632120e-02</td>
+      <td>...</td>
+      <td>4.462183e-02</td>
+      <td>1.779087e-02</td>
+      <td>5.978779e-03</td>
+      <td>1.693533e-03</td>
+      <td>4.043340e-04</td>
+      <td>8.136780e-05</td>
+      <td>1.380163e-05</td>
+      <td>1.973214e-06</td>
+      <td>2.377844e-07</td>
+      <td>2.415229e-08</td>
+    </tr>
+    <tr>
+      <th>...</th>
+      <td>...</td>
+      <td>...</td>
+      <td>...</td>
+      <td>...</td>
+      <td>...</td>
+      <td>...</td>
+      <td>...</td>
+      <td>...</td>
+      <td>...</td>
+      <td>...</td>
+      <td>...</td>
+      <td>...</td>
+      <td>...</td>
+      <td>...</td>
+      <td>...</td>
+      <td>...</td>
+      <td>...</td>
+      <td>...</td>
+      <td>...</td>
+      <td>...</td>
+      <td>...</td>
+    </tr>
+    <tr>
+      <th>5730.0</th>
+      <td>3.630329e-24</td>
+      <td>1.292883e-22</td>
+      <td>3.880953e-21</td>
+      <td>9.819357e-20</td>
+      <td>2.094080e-18</td>
+      <td>3.764170e-17</td>
+      <td>5.703098e-16</td>
+      <td>7.283131e-15</td>
+      <td>7.839547e-14</td>
+      <td>7.112618e-13</td>
+      <td>...</td>
+      <td>2.220879e-07</td>
+      <td>3.073871e-07</td>
+      <td>3.586013e-07</td>
+      <td>3.526174e-07</td>
+      <td>2.922545e-07</td>
+      <td>2.041664e-07</td>
+      <td>1.202190e-07</td>
+      <td>5.966609e-08</td>
+      <td>2.496018e-08</td>
+      <td>8.801028e-09</td>
+    </tr>
+    <tr>
+      <th>5790.0</th>
+      <td>1.122985e-24</td>
+      <td>3.999329e-23</td>
+      <td>1.200511e-21</td>
+      <td>3.037462e-20</td>
+      <td>6.477705e-19</td>
+      <td>1.164386e-17</td>
+      <td>1.764163e-16</td>
+      <td>2.252921e-15</td>
+      <td>2.425039e-14</td>
+      <td>2.200175e-13</td>
+      <td>...</td>
+      <td>6.869938e-08</td>
+      <td>9.508530e-08</td>
+      <td>1.109276e-07</td>
+      <td>1.090766e-07</td>
+      <td>9.040428e-08</td>
+      <td>6.315564e-08</td>
+      <td>3.718784e-08</td>
+      <td>1.845676e-08</td>
+      <td>7.721035e-09</td>
+      <td>2.722458e-09</td>
+    </tr>
+    <tr>
+      <th>5850.0</th>
+      <td>3.337566e-25</td>
+      <td>1.188620e-23</td>
+      <td>3.567978e-22</td>
+      <td>9.027487e-21</td>
+      <td>1.925206e-19</td>
+      <td>3.460614e-18</td>
+      <td>5.243179e-17</td>
+      <td>6.695792e-16</td>
+      <td>7.207337e-15</td>
+      <td>6.539030e-14</td>
+      <td>...</td>
+      <td>2.041779e-08</td>
+      <td>2.825982e-08</td>
+      <td>3.296823e-08</td>
+      <td>3.241810e-08</td>
+      <td>2.686860e-08</td>
+      <td>1.877017e-08</td>
+      <td>1.105241e-08</td>
+      <td>5.485440e-09</td>
+      <td>2.294730e-09</td>
+      <td>8.091280e-10</td>
+    </tr>
+    <tr>
+      <th>5910.0</th>
+      <td>9.530465e-26</td>
+      <td>3.394122e-24</td>
+      <td>1.018841e-22</td>
+      <td>2.577811e-21</td>
+      <td>5.497452e-20</td>
+      <td>9.881830e-19</td>
+      <td>1.497197e-17</td>
+      <td>1.911992e-16</td>
+      <td>2.058065e-15</td>
+      <td>1.867229e-14</td>
+      <td>...</td>
+      <td>5.830329e-09</td>
+      <td>8.069631e-09</td>
+      <td>9.414124e-09</td>
+      <td>9.257032e-09</td>
+      <td>7.672365e-09</td>
+      <td>5.359848e-09</td>
+      <td>3.156031e-09</td>
+      <td>1.566375e-09</td>
+      <td>6.552632e-10</td>
+      <td>2.310476e-10</td>
+    </tr>
+    <tr>
+      <th>5970.0</th>
+      <td>2.614728e-26</td>
+      <td>9.311935e-25</td>
+      <td>2.795239e-23</td>
+      <td>7.072347e-22</td>
+      <td>1.508252e-20</td>
+      <td>2.711127e-19</td>
+      <td>4.107631e-18</td>
+      <td>5.245642e-17</td>
+      <td>5.646398e-16</td>
+      <td>5.122831e-15</td>
+      <td>...</td>
+      <td>1.599578e-09</td>
+      <td>2.213941e-09</td>
+      <td>2.582809e-09</td>
+      <td>2.539711e-09</td>
+      <td>2.104950e-09</td>
+      <td>1.470500e-09</td>
+      <td>8.658720e-10</td>
+      <td>4.297423e-10</td>
+      <td>1.797746e-10</td>
+      <td>6.338901e-11</td>
+    </tr>
+  </tbody>
+</table>
+<p>100 rows × 29 columns</p>
+</div></div>
+</div>
+<p><code class="docutils literal notranslate"><span class="pre">bins</span></code> are the binedges. For an example of how they should be formatted look again to the sizedistribution generated above</p>
+<div class="nbinput docutils container">
+<div class="prompt highlight-none notranslate"><div class="highlight"><pre><span></span>[4]:
+</pre></div>
+</div>
+<div class="input_area highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="n">sd</span><span class="o">.</span><span class="n">bins</span>
+</pre></div>
+</div>
+</div>
+<div class="nboutput nblast docutils container">
+<div class="prompt highlight-none notranslate"><div class="highlight"><pre><span></span>[4]:
+</pre></div>
+</div>
+<div class="output_area docutils container">
+<div class="highlight"><pre>
+array([  10.        ,   12.09727592,   14.63440848,   17.70364774,
+         21.41659115,   25.90824126,   31.34191432,   37.91517855,
+         45.86703767,   55.48662105,   67.1236965 ,   81.20138776,
+         98.23155932,  118.83342776,  143.75607647,  173.90569229,
+        210.37851445,  254.50069379,  307.87651158,  372.44671113,
+        450.55906317,  545.05373075,  659.36653747,  797.65389392,
+        964.9439247 , 1167.31929089, 1412.1383554 , 1708.3027329 ,
+       2066.58095226, 2500.        ])
+</pre></div></div>
+</div>
+<p>To see options for the <code class="docutils literal notranslate"><span class="pre">distType</span></code> argument see help file. This is what our generated was:</p>
+<div class="nbinput docutils container">
+<div class="prompt highlight-none notranslate"><div class="highlight"><pre><span></span>[5]:
+</pre></div>
+</div>
+<div class="input_area highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="n">sd</span><span class="o">.</span><span class="n">distributionType</span>
+</pre></div>
+</div>
+</div>
+<div class="nboutput nblast docutils container">
+<div class="prompt highlight-none notranslate"><div class="highlight"><pre><span></span>[5]:
+</pre></div>
+</div>
+<div class="output_area docutils container">
+<div class="highlight"><pre>
+&#39;dNdDp&#39;
+</pre></div></div>
+</div>
+<div class="nbinput docutils container">
+<div class="prompt highlight-none notranslate"><div class="highlight"><pre><span></span>[8]:
+</pre></div>
+</div>
+<div class="input_area highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="n">sd</span><span class="o">.</span><span class="n">layerbounderies</span>
+</pre></div>
+</div>
+</div>
+<div class="nboutput nblast docutils container">
+<div class="prompt highlight-none notranslate"><div class="highlight"><pre><span></span>[8]:
+</pre></div>
+</div>
+<div class="output_area docutils container">
+<div class="highlight"><pre>
+array([[   0.,   60.],
+       [  60.,  120.],
+       [ 120.,  180.],
+       [ 180.,  240.],
+       [ 240.,  300.],
+       [ 300.,  360.],
+       [ 360.,  420.],
+       [ 420.,  480.],
+       [ 480.,  540.],
+       [ 540.,  600.],
+       [ 600.,  660.],
+       [ 660.,  720.],
+       [ 720.,  780.],
+       [ 780.,  840.],
+       [ 840.,  900.],
+       [ 900.,  960.],
+       [ 960., 1020.],
+       [1020., 1080.],
+       [1080., 1140.],
+       [1140., 1200.],
+       [1200., 1260.],
+       [1260., 1320.],
+       [1320., 1380.],
+       [1380., 1440.],
+       [1440., 1500.],
+       [1500., 1560.],
+       [1560., 1620.],
+       [1620., 1680.],
+       [1680., 1740.],
+       [1740., 1800.],
+       [1800., 1860.],
+       [1860., 1920.],
+       [1920., 1980.],
+       [1980., 2040.],
+       [2040., 2100.],
+       [2100., 2160.],
+       [2160., 2220.],
+       [2220., 2280.],
+       [2280., 2340.],
+       [2340., 2400.],
+       [2400., 2460.],
+       [2460., 2520.],
+       [2520., 2580.],
+       [2580., 2640.],
+       [2640., 2700.],
+       [2700., 2760.],
+       [2760., 2820.],
+       [2820., 2880.],
+       [2880., 2940.],
+       [2940., 3000.],
+       [3000., 3060.],
+       [3060., 3120.],
+       [3120., 3180.],
+       [3180., 3240.],
+       [3240., 3300.],
+       [3300., 3360.],
+       [3360., 3420.],
+       [3420., 3480.],
+       [3480., 3540.],
+       [3540., 3600.],
+       [3600., 3660.],
+       [3660., 3720.],
+       [3720., 3780.],
+       [3780., 3840.],
+       [3840., 3900.],
+       [3900., 3960.],
+       [3960., 4020.],
+       [4020., 4080.],
+       [4080., 4140.],
+       [4140., 4200.],
+       [4200., 4260.],
+       [4260., 4320.],
+       [4320., 4380.],
+       [4380., 4440.],
+       [4440., 4500.],
+       [4500., 4560.],
+       [4560., 4620.],
+       [4620., 4680.],
+       [4680., 4740.],
+       [4740., 4800.],
+       [4800., 4860.],
+       [4860., 4920.],
+       [4920., 4980.],
+       [4980., 5040.],
+       [5040., 5100.],
+       [5100., 5160.],
+       [5160., 5220.],
+       [5220., 5280.],
+       [5280., 5340.],
+       [5340., 5400.],
+       [5400., 5460.],
+       [5460., 5520.],
+       [5520., 5580.],
+       [5580., 5640.],
+       [5640., 5700.],
+       [5700., 5760.],
+       [5760., 5820.],
+       [5820., 5880.],
+       [5880., 5940.],
+       [5940., 6000.]])
+</pre></div></div>
+</div>
+<p>create the instance</p>
+<div class="nbinput nblast docutils container">
+<div class="prompt highlight-none notranslate"><div class="highlight"><pre><span></span>[9]:
+</pre></div>
+</div>
+<div class="input_area highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="n">sdc</span> <span class="o">=</span> <span class="n">atmsd</span><span class="o">.</span><span class="n">SizeDist_LS</span><span class="p">(</span><span class="n">sd</span><span class="o">.</span><span class="n">data</span><span class="p">,</span> <span class="n">sd</span><span class="o">.</span><span class="n">bins</span><span class="p">,</span> <span class="n">sd</span><span class="o">.</span><span class="n">distributionType</span><span class="p">,</span> <span class="n">sd</span><span class="o">.</span><span class="n">layerbounderies</span><span class="p">)</span>
+</pre></div>
+</div>
+</div>
+</section>
+</section>
+<section id="Methods">
+<h2>Methods<a class="headerlink" href="#Methods" title="Link to this heading"></a></h2>
+<section id="Plotting">
+<h3>Plotting<a class="headerlink" href="#Plotting" title="Link to this heading"></a></h3>
+<div class="nbinput docutils container">
+<div class="prompt highlight-none notranslate"><div class="highlight"><pre><span></span>[10]:
+</pre></div>
+</div>
+<div class="input_area highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="n">sd</span><span class="o">.</span><span class="n">plot</span><span class="p">()</span>
+</pre></div>
+</div>
+</div>
+<div class="nboutput docutils container">
+<div class="prompt highlight-none notranslate"><div class="highlight"><pre><span></span>[10]:
+</pre></div>
+</div>
+<div class="output_area docutils container">
+<div class="highlight"><pre>
+(&lt;Figure size 1280x960 with 2 Axes&gt;,
+ &lt;Axes: xlabel=&#39;Diameter (nm)&#39;, ylabel=&#39;Altitude (m)&#39;&gt;,
+ &lt;matplotlib.collections.QuadMesh at 0x7efdf7dfcd60&gt;,
+ &lt;matplotlib.colorbar.Colorbar at 0x7efdf7c06470&gt;)
+</pre></div></div>
+</div>
+<div class="nboutput nblast docutils container">
+<div class="prompt empty docutils container">
+</div>
+<div class="output_area docutils container">
+<img alt="../_images/notebooks_aerosols_sizedistribution_SizeDist_LS_19_1.png" src="../_images/notebooks_aerosols_sizedistribution_SizeDist_LS_19_1.png" />
+</div>
+</div>
+</section>
+<section id="hygroscopic-growth-and-optical-properties">
+<h3>hygroscopic growth and optical properties<a class="headerlink" href="#hygroscopic-growth-and-optical-properties" title="Link to this heading"></a></h3>
+<p>The difference to hygroscopic growth and optical properties of the SizeDist instance is that you can let the RH and refractive index change over time.</p>
+<p><strong>GOTCHA</strong> you can loose particles when applying growth!!! See help of <code class="docutils literal notranslate"><span class="pre">sd.grow_sizedistribution</span></code> function! There are functions that extrapolate size distributions assuming normal distributions. Consider using those.</p>
+<div class="nbinput docutils container">
+<div class="prompt highlight-none notranslate"><div class="highlight"><pre><span></span>[43]:
+</pre></div>
+</div>
+<div class="input_area highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="n">reload</span><span class="p">(</span><span class="n">atmsd</span><span class="o">.</span><span class="n">hygroscopicity</span><span class="p">)</span>
+<span class="n">reload</span><span class="p">(</span><span class="n">atmsd</span><span class="o">.</span><span class="n">optical_properties</span><span class="p">)</span>
+<span class="n">reload</span><span class="p">(</span><span class="n">atmsd</span><span class="p">)</span>
+</pre></div>
+</div>
+</div>
+<div class="nboutput nblast docutils container">
+<div class="prompt highlight-none notranslate"><div class="highlight"><pre><span></span>[43]:
+</pre></div>
+</div>
+<div class="output_area docutils container">
+<div class="highlight"><pre>
+&lt;module &#39;atmPy.aerosols.size_distribution.sizedistribution&#39; from &#39;/export/htelg/prog/atm-py/atmPy/aerosols/size_distribution/sizedistribution.py&#39;&gt;
+</pre></div></div>
+</div>
+<div class="nbinput nblast docutils container">
+<div class="prompt highlight-none notranslate"><div class="highlight"><pre><span></span>[44]:
+</pre></div>
+</div>
+<div class="input_area highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="n">sd</span> <span class="o">=</span> <span class="n">atmsd</span><span class="o">.</span><span class="n">SizeDist_LS</span><span class="p">(</span><span class="n">sd</span><span class="o">.</span><span class="n">data</span><span class="p">,</span> <span class="n">sd</span><span class="o">.</span><span class="n">bins</span><span class="p">,</span> <span class="n">sd</span><span class="o">.</span><span class="n">distributionType</span><span class="p">,</span> <span class="n">sd</span><span class="o">.</span><span class="n">layerbounderies</span><span class="p">)</span>
+</pre></div>
+</div>
+</div>
+<div class="nbinput nblast docutils container">
+<div class="prompt highlight-none notranslate"><div class="highlight"><pre><span></span>[45]:
+</pre></div>
+</div>
+<div class="input_area highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="n">sd</span><span class="o">.</span><span class="n">optical_properties</span><span class="o">.</span><span class="n">parameters</span><span class="o">.</span><span class="n">refractive_index</span> <span class="o">=</span> <span class="mf">1.5</span>
+<span class="n">sd</span><span class="o">.</span><span class="n">optical_properties</span><span class="o">.</span><span class="n">parameters</span><span class="o">.</span><span class="n">wavelength</span> <span class="o">=</span> <span class="mi">500</span>
+</pre></div>
+</div>
+</div>
+<div class="nbinput docutils container">
+<div class="prompt highlight-none notranslate"><div class="highlight"><pre><span></span>[46]:
+</pre></div>
+</div>
+<div class="input_area highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="n">rh</span> <span class="o">=</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">(</span><span class="n">index</span> <span class="o">=</span> <span class="n">sd</span><span class="o">.</span><span class="n">data</span><span class="o">.</span><span class="n">index</span><span class="p">,</span> <span class="n">columns</span><span class="o">=</span><span class="p">[</span><span class="s1">&#39;RH&#39;</span><span class="p">],</span> <span class="n">dtype</span><span class="o">=</span><span class="nb">float</span><span class="p">)</span>
+<span class="n">rh</span><span class="o">.</span><span class="n">RH</span><span class="o">.</span><span class="n">iloc</span><span class="p">[[</span><span class="mi">0</span><span class="p">,</span><span class="o">-</span><span class="mi">1</span><span class="p">]]</span> <span class="o">=</span> <span class="p">[</span><span class="mi">0</span><span class="p">,</span><span class="mi">95</span><span class="p">]</span>
+<span class="n">rh</span> <span class="o">=</span> <span class="n">rh</span><span class="o">.</span><span class="n">interpolate</span><span class="p">()</span>
+<span class="n">rh</span><span class="o">.</span><span class="n">shape</span>
+</pre></div>
+</div>
+</div>
+<div class="nboutput nblast docutils container">
+<div class="prompt highlight-none notranslate"><div class="highlight"><pre><span></span>[46]:
+</pre></div>
+</div>
+<div class="output_area docutils container">
+<div class="highlight"><pre>
+(50, 1)
+</pre></div></div>
+</div>
+<div class="nbinput nblast docutils container">
+<div class="prompt highlight-none notranslate"><div class="highlight"><pre><span></span>[47]:
+</pre></div>
+</div>
+<div class="input_area highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="n">sd</span><span class="o">.</span><span class="n">hygroscopicity</span><span class="o">.</span><span class="n">parameters</span><span class="o">.</span><span class="n">kappa</span> <span class="o">=</span> <span class="mf">1.5</span>
+<span class="n">sd</span><span class="o">.</span><span class="n">hygroscopicity</span><span class="o">.</span><span class="n">parameters</span><span class="o">.</span><span class="n">RH</span> <span class="o">=</span> <span class="n">rh</span>
+</pre></div>
+</div>
+</div>
+<div class="nbinput docutils container">
+<div class="prompt highlight-none notranslate"><div class="highlight"><pre><span></span>[48]:
+</pre></div>
+</div>
+<div class="input_area highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="n">sd</span><span class="o">.</span><span class="n">hygroscopicity</span><span class="o">.</span><span class="n">grown_size_distribution</span><span class="o">.</span><span class="n">plot</span><span class="p">()</span>
+</pre></div>
+</div>
+</div>
+<div class="nboutput docutils container">
+<div class="prompt highlight-none notranslate"><div class="highlight"><pre><span></span>[48]:
+</pre></div>
+</div>
+<div class="output_area docutils container">
+<div class="highlight"><pre>
+(&lt;Figure size 1280x960 with 2 Axes&gt;,
+ &lt;Axes: xlabel=&#39;Diameter (nm)&#39;, ylabel=&#39;Altitude (m)&#39;&gt;,
+ &lt;matplotlib.collections.QuadMesh at 0x7efdec2d9060&gt;,
+ &lt;matplotlib.colorbar.Colorbar at 0x7efde9db9900&gt;)
+</pre></div></div>
+</div>
+<div class="nboutput nblast docutils container">
+<div class="prompt empty docutils container">
+</div>
+<div class="output_area docutils container">
+<img alt="../_images/notebooks_aerosols_sizedistribution_SizeDist_LS_27_1.png" src="../_images/notebooks_aerosols_sizedistribution_SizeDist_LS_27_1.png" />
+</div>
+</div>
+<div class="nbinput docutils container">
+<div class="prompt highlight-none notranslate"><div class="highlight"><pre><span></span>[49]:
+</pre></div>
+</div>
+<div class="input_area highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="n">a</span> <span class="o">=</span> <span class="n">sd</span><span class="o">.</span><span class="n">optical_properties</span><span class="o">.</span><span class="n">scattering_coeff</span><span class="o">.</span><span class="n">plot</span><span class="p">()</span>
+<span class="n">sd</span><span class="o">.</span><span class="n">hygroscopicity</span><span class="o">.</span><span class="n">grown_size_distribution</span><span class="o">.</span><span class="n">optical_properties</span><span class="o">.</span><span class="n">scattering_coeff</span><span class="o">.</span><span class="n">plot</span><span class="p">(</span><span class="n">ax</span> <span class="o">=</span> <span class="n">a</span><span class="p">)</span>
+</pre></div>
+</div>
+</div>
+<div class="nboutput docutils container">
+<div class="prompt highlight-none notranslate"><div class="highlight"><pre><span></span>[49]:
+</pre></div>
+</div>
+<div class="output_area docutils container">
+<div class="highlight"><pre>
+&lt;Axes: ylabel=&#39;Altitude&#39;&gt;
+</pre></div></div>
+</div>
+<div class="nboutput nblast docutils container">
+<div class="prompt empty docutils container">
+</div>
+<div class="output_area docutils container">
+<img alt="../_images/notebooks_aerosols_sizedistribution_SizeDist_LS_28_1.png" src="../_images/notebooks_aerosols_sizedistribution_SizeDist_LS_28_1.png" />
+</div>
+</div>
+<p><strong>Note</strong>, the refractive index of the hygroscopically grown size distribution is changing and approaches that of water.</p>
+<div class="nbinput docutils container">
+<div class="prompt highlight-none notranslate"><div class="highlight"><pre><span></span>[50]:
+</pre></div>
+</div>
+<div class="input_area highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="n">sd</span><span class="o">.</span><span class="n">hygroscopicity</span><span class="o">.</span><span class="n">grown_size_distribution</span><span class="o">.</span><span class="n">optical_properties</span><span class="o">.</span><span class="n">parameters</span>
+</pre></div>
+</div>
+</div>
+<div class="nboutput nblast docutils container">
+<div class="prompt highlight-none notranslate"><div class="highlight"><pre><span></span>[50]:
+</pre></div>
+</div>
+<div class="output_area docutils container">
+<div class="highlight"><pre>
+asphericity      :  1
+mie_result       :  None
+refractive_index :          index_of_refraction
+60.0               1.500000
+180.0              1.495104
+300.0              1.490300
+420.0              1.485588
+540.0              1.480963
+660.0              1.476423
+780.0              1.471967
+900.0              1.467592
+1020.0             1.463295
+1140.0             1.459076
+1260.0             1.454930
+1380.0             1.450858
+1500.0             1.446856
+1620.0             1.442923
+1740.0             1.439057
+1860.0             1.435256
+1980.0             1.431519
+2100.0             1.427845
+2220.0             1.424231
+2340.0             1.420676
+2460.0             1.417179
+2580.0             1.413739
+2700.0             1.410353
+2820.0             1.407021
+2940.0             1.403742
+3060.0             1.400513
+3180.0             1.397335
+3300.0             1.394205
+3420.0             1.391124
+3540.0             1.388088
+3660.0             1.385099
+3780.0             1.382154
+3900.0             1.379252
+4020.0             1.376394
+4140.0             1.373576
+4260.0             1.370800
+4380.0             1.368064
+4500.0             1.365366
+4620.0             1.362707
+4740.0             1.360085
+4860.0             1.357500
+4980.0             1.354951
+5100.0             1.352437
+5220.0             1.349957
+5340.0             1.347511
+5460.0             1.345098
+5580.0             1.342717
+5700.0             1.340368
+5820.0             1.338050
+5940.0             1.335763
+wavelength       :  500
+</pre></div></div>
+</div>
+</section>
+<section id="AOD-(aerosol-optical-depth)">
+<h3>AOD (aerosol optical depth)<a class="headerlink" href="#AOD-(aerosol-optical-depth)" title="Link to this heading"></a></h3>
+<p>A vertical profile of aerosol optical properties can be integrated to the AOD</p>
+<div class="nbinput docutils container">
+<div class="prompt highlight-none notranslate"><div class="highlight"><pre><span></span>[52]:
+</pre></div>
+</div>
+<div class="input_area highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="n">sd</span><span class="o">.</span><span class="n">optical_properties</span><span class="o">.</span><span class="n">aod</span><span class="p">,</span> <span class="n">sd</span><span class="o">.</span><span class="n">hygroscopicity</span><span class="o">.</span><span class="n">grown_size_distribution</span><span class="o">.</span><span class="n">optical_properties</span><span class="o">.</span><span class="n">aod</span>
+</pre></div>
+</div>
+</div>
+<div class="nboutput nblast docutils container">
+<div class="prompt highlight-none notranslate"><div class="highlight"><pre><span></span>[52]:
+</pre></div>
+</div>
+<div class="output_area docutils container">
+<div class="highlight"><pre>
+(7.599809165410463, 13.401056561321452)
+</pre></div></div>
+</div>
+<div class="nbinput nblast docutils container">
+<div class="prompt highlight-none notranslate"><div class="highlight"><pre><span></span>[ ]:
+</pre></div>
+</div>
+<div class="input_area highlight-ipython3 notranslate"><div class="highlight"><pre><span></span>
+</pre></div>
+</div>
+</div>
+</section>
+</section>
+</section>
+
+
+           </div>
+          </div>
+          <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
+        <a href="aerosols_sizedistribution_SizeDist_TS.html" class="btn btn-neutral float-left" title="SizeDist_TS (a time series of size distributions)" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2023, Hagen Telg.</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

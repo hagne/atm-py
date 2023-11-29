@@ -1,0 +1,1425 @@
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" >
+<head>
+  <meta charset="utf-8" /><meta name="generator" content="Docutils 0.18.1: http://docutils.sourceforge.net/" />
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>SizeDist_TS (a time series of size distributions) &mdash; atmPy  documentation</title>
+      <link rel="stylesheet" href="../_static/pygments.css" type="text/css" />
+      <link rel="stylesheet" href="../_static/css/theme.css" type="text/css" />
+      <link rel="stylesheet" href="../_static/nbsphinx-code-cells.css" type="text/css" />
+  <!--[if lt IE 9]>
+    <script src="../_static/js/html5shiv.min.js"></script>
+  <![endif]-->
+  
+        <script src="../_static/jquery.js?v=5d32c60e"></script>
+        <script src="../_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+        <script src="../_static/documentation_options.js?v=5929fcd5"></script>
+        <script src="../_static/doctools.js?v=888ff710"></script>
+        <script src="../_static/sphinx_highlight.js?v=dc90522c"></script>
+        <script crossorigin="anonymous" integrity="sha256-Ae2Vz/4ePdIu6ZyI/5ZGsYnb+m0JlOmKPjt6XZ9JJkA=" src="https://cdnjs.cloudflare.com/ajax/libs/require.js/2.3.4/require.min.js"></script>
+        <script>window.MathJax = {"tex": {"inlineMath": [["$", "$"], ["\\(", "\\)"]], "processEscapes": true}, "options": {"ignoreHtmlClass": "tex2jax_ignore|mathjax_ignore|document", "processHtmlClass": "tex2jax_process|mathjax_process|math|output_area"}}</script>
+        <script defer="defer" src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+    <script src="../_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="../genindex.html" />
+    <link rel="search" title="Search" href="../search.html" />
+    <link rel="prev" title="SizeDist (a single size distribution)" href="aerosols_sizedistribution_SizeDist.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="../index.html" class="icon icon-home">
+            atmPy
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <p class="caption" role="heading"><span class="caption-text">getting started</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../installation.html">Installation</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">aerosols</span></p>
+<ul class="current">
+<li class="toctree-l1 current"><a class="reference internal" href="../aerosols_sizedistribution.html">Size distribution</a><ul class="current">
+<li class="toctree-l2"><a class="reference internal" href="aerosols_sizedistribution_SizeDist.html">SizeDist (a single size distribution)</a></li>
+<li class="toctree-l2 current"><a class="current reference internal" href="#">SizeDist_TS (a time series of size distributions)</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#Create-instance">Create instance</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="#simulate-a-sizedistribution">simulate a sizedistribution</a></li>
+<li class="toctree-l4"><a class="reference internal" href="#format-your-own-data">format your own data</a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="#Methods">Methods</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="#Plotting">Plotting</a></li>
+<li class="toctree-l4"><a class="reference internal" href="#Conversion-to-Vertical-profile">Conversion to Vertical profile</a></li>
+<li class="toctree-l4"><a class="reference internal" href="#hygroscopic-growth-and-optical-properties">hygroscopic growth and optical properties</a></li>
+</ul>
+</li>
+</ul>
+</li>
+<li class="toctree-l2 current"><a class="current reference internal" href="#">SizeDist_TS (a time series of size distributions)</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#Create-instance">Create instance</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="#simulate-a-sizedistribution">simulate a sizedistribution</a></li>
+<li class="toctree-l4"><a class="reference internal" href="#format-your-own-data">format your own data</a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="#Methods">Methods</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="#Plotting">Plotting</a></li>
+<li class="toctree-l4"><a class="reference internal" href="#Conversion-to-Vertical-profile">Conversion to Vertical profile</a></li>
+<li class="toctree-l4"><a class="reference internal" href="#hygroscopic-growth-and-optical-properties">hygroscopic growth and optical properties</a></li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../index.html">atmPy</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../index.html" class="icon icon-home" aria-label="Home"></a></li>
+          <li class="breadcrumb-item"><a href="../aerosols_sizedistribution.html">Size distribution</a></li>
+      <li class="breadcrumb-item active">SizeDist_TS (a time series of size distributions)</li>
+      <li class="wy-breadcrumbs-aside">
+            <a href="../_sources/notebooks/aerosols_sizedistribution_SizeDist_TS.ipynb.txt" rel="nofollow"> View page source</a>
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <div class="nbinput nblast docutils container">
+<div class="prompt highlight-none notranslate"><div class="highlight"><pre><span></span>[2]:
+</pre></div>
+</div>
+<div class="input_area highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="kn">import</span> <span class="nn">atmPy.aerosols.size_distribution.sizedistribution</span> <span class="k">as</span> <span class="nn">atmsd</span>
+</pre></div>
+</div>
+</div>
+<section id="SizeDist_TS-(a-time-series-of-size-distributions)">
+<h1>SizeDist_TS (a time series of size distributions)<a class="headerlink" href="#SizeDist_TS-(a-time-series-of-size-distributions)" title="Link to this heading"></a></h1>
+<p>SizeDist_TS is a subclass of SizeDist with all its properties methods, etc. Here we will mostly focus on what is unique to the SizeDist_TS class.</p>
+<section id="Create-instance">
+<h2>Create instance<a class="headerlink" href="#Create-instance" title="Link to this heading"></a></h2>
+<section id="simulate-a-sizedistribution">
+<h3>simulate a sizedistribution<a class="headerlink" href="#simulate-a-sizedistribution" title="Link to this heading"></a></h3>
+<div class="nbinput nblast docutils container">
+<div class="prompt highlight-none notranslate"><div class="highlight"><pre><span></span>[271]:
+</pre></div>
+</div>
+<div class="input_area highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="n">sd</span> <span class="o">=</span> <span class="n">atmsd</span><span class="o">.</span><span class="n">simulate_sizedistribution_timeseries</span><span class="p">(</span><span class="n">diameter</span><span class="o">=</span><span class="p">[</span><span class="mi">10</span><span class="p">,</span> <span class="mi">2500</span><span class="p">],</span>
+                                                <span class="n">numberOfDiameters</span><span class="o">=</span><span class="mi">30</span><span class="p">,</span>
+                                                <span class="n">centerOfAerosolMode</span><span class="o">=</span><span class="mi">200</span><span class="p">,</span>
+                                                <span class="n">widthOfAerosolMode</span><span class="o">=</span><span class="mf">0.2</span><span class="p">,</span>
+                                                <span class="n">numberOfParticsInMode</span><span class="o">=</span><span class="mi">1000</span><span class="p">,</span>
+                                                <span class="n">startDate</span><span class="o">=</span><span class="s1">&#39;2014-11-24 17:00:00&#39;</span><span class="p">,</span>
+                                                <span class="n">endDate</span><span class="o">=</span><span class="s1">&#39;2014-11-24 18:00:00&#39;</span><span class="p">,</span>
+                                                <span class="n">frequency</span><span class="o">=</span><span class="mi">100</span><span class="p">,)</span>
+</pre></div>
+</div>
+</div>
+</section>
+<section id="format-your-own-data">
+<h3>format your own data<a class="headerlink" href="#format-your-own-data" title="Link to this heading"></a></h3>
+<p><code class="docutils literal notranslate"><span class="pre">data</span></code> should have a similar structure as below. However, column names are not required as they are calculated based on <code class="docutils literal notranslate"><span class="pre">bins</span></code></p>
+<div class="nbinput docutils container">
+<div class="prompt highlight-none notranslate"><div class="highlight"><pre><span></span>[272]:
+</pre></div>
+</div>
+<div class="input_area highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="n">sd</span><span class="o">.</span><span class="n">data</span>
+</pre></div>
+</div>
+</div>
+<div class="nboutput nblast docutils container">
+<div class="prompt highlight-none notranslate"><div class="highlight"><pre><span></span>[272]:
+</pre></div>
+</div>
+<div class="output_area rendered_html docutils container">
+<div>
+<style scoped>
+    .dataframe tbody tr th:only-of-type {
+        vertical-align: middle;
+    }
+
+    .dataframe tbody tr th {
+        vertical-align: top;
+    }
+
+    .dataframe thead th {
+        text-align: right;
+    }
+</style>
+<table border="1" class="dataframe">
+  <thead>
+    <tr style="text-align: right;">
+      <th>bincenters</th>
+      <th>11.048638</th>
+      <th>13.365842</th>
+      <th>16.169028</th>
+      <th>19.560119</th>
+      <th>23.662416</th>
+      <th>28.625078</th>
+      <th>34.628546</th>
+      <th>41.891108</th>
+      <th>50.676829</th>
+      <th>61.305159</th>
+      <th>...</th>
+      <th>411.502887</th>
+      <th>497.806397</th>
+      <th>602.210134</th>
+      <th>728.510216</th>
+      <th>881.298909</th>
+      <th>1066.131608</th>
+      <th>1289.728823</th>
+      <th>1560.220544</th>
+      <th>1887.441843</th>
+      <th>2283.290476</th>
+    </tr>
+    <tr>
+      <th>Time</th>
+      <th></th>
+      <th></th>
+      <th></th>
+      <th></th>
+      <th></th>
+      <th></th>
+      <th></th>
+      <th></th>
+      <th></th>
+      <th></th>
+      <th></th>
+      <th></th>
+      <th></th>
+      <th></th>
+      <th></th>
+      <th></th>
+      <th></th>
+      <th></th>
+      <th></th>
+      <th></th>
+      <th></th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <th>2014-11-24 17:00:00</th>
+      <td>1.911539e-07</td>
+      <td>1.961036e-06</td>
+      <td>1.695719e-05</td>
+      <td>0.000124</td>
+      <td>0.000759</td>
+      <td>0.003931</td>
+      <td>0.017159</td>
+      <td>0.063122</td>
+      <td>0.195723</td>
+      <td>0.511528</td>
+      <td>...</td>
+      <td>0.628429</td>
+      <td>0.250557</td>
+      <td>0.084202</td>
+      <td>0.023851</td>
+      <td>0.005694</td>
+      <td>0.001146</td>
+      <td>1.943746e-04</td>
+      <td>2.778965e-05</td>
+      <td>3.348824e-06</td>
+      <td>3.401474e-07</td>
+    </tr>
+    <tr>
+      <th>2014-11-24 17:01:40</th>
+      <td>1.621803e-09</td>
+      <td>2.237442e-08</td>
+      <td>2.601783e-07</td>
+      <td>0.000003</td>
+      <td>0.000021</td>
+      <td>0.000147</td>
+      <td>0.000861</td>
+      <td>0.004259</td>
+      <td>0.017761</td>
+      <td>0.062423</td>
+      <td>...</td>
+      <td>1.483342</td>
+      <td>0.795320</td>
+      <td>0.359425</td>
+      <td>0.136912</td>
+      <td>0.043958</td>
+      <td>0.011896</td>
+      <td>2.713505e-03</td>
+      <td>5.217054e-04</td>
+      <td>8.454455e-05</td>
+      <td>1.154813e-05</td>
+    </tr>
+    <tr>
+      <th>2014-11-24 17:03:20</th>
+      <td>5.773237e-10</td>
+      <td>8.459389e-09</td>
+      <td>1.044779e-07</td>
+      <td>0.000001</td>
+      <td>0.000010</td>
+      <td>0.000071</td>
+      <td>0.000440</td>
+      <td>0.002312</td>
+      <td>0.010238</td>
+      <td>0.038217</td>
+      <td>...</td>
+      <td>1.658889</td>
+      <td>0.944679</td>
+      <td>0.453437</td>
+      <td>0.183449</td>
+      <td>0.062557</td>
+      <td>0.017981</td>
+      <td>4.356151e-03</td>
+      <td>8.895361e-04</td>
+      <td>1.531052e-04</td>
+      <td>2.221171e-05</td>
+    </tr>
+    <tr>
+      <th>2014-11-24 17:05:00</th>
+      <td>1.190384e-08</td>
+      <td>1.456607e-07</td>
+      <td>1.502322e-06</td>
+      <td>0.000013</td>
+      <td>0.000096</td>
+      <td>0.000591</td>
+      <td>0.003077</td>
+      <td>0.013501</td>
+      <td>0.049931</td>
+      <td>0.155649</td>
+      <td>...</td>
+      <td>1.114449</td>
+      <td>0.529984</td>
+      <td>0.212437</td>
+      <td>0.071774</td>
+      <td>0.020439</td>
+      <td>0.004906</td>
+      <td>9.925650e-04</td>
+      <td>1.692603e-04</td>
+      <td>2.432860e-05</td>
+      <td>2.947437e-06</td>
+    </tr>
+    <tr>
+      <th>2014-11-24 17:06:40</th>
+      <td>4.706680e-06</td>
+      <td>3.876759e-05</td>
+      <td>2.691463e-04</td>
+      <td>0.001575</td>
+      <td>0.007768</td>
+      <td>0.032295</td>
+      <td>0.113168</td>
+      <td>0.334250</td>
+      <td>0.832119</td>
+      <td>1.746082</td>
+      <td>...</td>
+      <td>0.238763</td>
+      <td>0.076431</td>
+      <td>0.020622</td>
+      <td>0.004690</td>
+      <td>0.000899</td>
+      <td>0.000145</td>
+      <td>1.978151e-05</td>
+      <td>2.270673e-06</td>
+      <td>2.196926e-07</td>
+      <td>1.791604e-08</td>
+    </tr>
+    <tr>
+      <th>2014-11-24 17:08:20</th>
+      <td>6.223350e-04</td>
+      <td>3.503695e-03</td>
+      <td>1.662624e-02</td>
+      <td>0.066501</td>
+      <td>0.224195</td>
+      <td>0.637076</td>
+      <td>1.525884</td>
+      <td>3.080473</td>
+      <td>5.241782</td>
+      <td>7.518068</td>
+      <td>...</td>
+      <td>0.022882</td>
+      <td>0.005007</td>
+      <td>0.000923</td>
+      <td>0.000144</td>
+      <td>0.000019</td>
+      <td>0.000002</td>
+      <td>1.933167e-07</td>
+      <td>1.516745e-08</td>
+      <td>1.003047e-09</td>
+      <td>5.591082e-11</td>
+    </tr>
+    <tr>
+      <th>2014-11-24 17:10:00</th>
+      <td>9.432527e-05</td>
+      <td>6.200413e-04</td>
+      <td>3.435412e-03</td>
+      <td>0.016044</td>
+      <td>0.063153</td>
+      <td>0.209530</td>
+      <td>0.585960</td>
+      <td>1.381193</td>
+      <td>2.744141</td>
+      <td>4.595408</td>
+      <td>...</td>
+      <td>0.065858</td>
+      <td>0.016825</td>
+      <td>0.003623</td>
+      <td>0.000658</td>
+      <td>0.000101</td>
+      <td>0.000013</td>
+      <td>1.409726e-06</td>
+      <td>1.291422e-07</td>
+      <td>9.971660e-09</td>
+      <td>6.489816e-10</td>
+    </tr>
+    <tr>
+      <th>2014-11-24 17:11:40</th>
+      <td>1.911539e-07</td>
+      <td>1.961036e-06</td>
+      <td>1.695719e-05</td>
+      <td>0.000124</td>
+      <td>0.000759</td>
+      <td>0.003931</td>
+      <td>0.017159</td>
+      <td>0.063122</td>
+      <td>0.195723</td>
+      <td>0.511528</td>
+      <td>...</td>
+      <td>0.628429</td>
+      <td>0.250557</td>
+      <td>0.084202</td>
+      <td>0.023851</td>
+      <td>0.005694</td>
+      <td>0.001146</td>
+      <td>1.943746e-04</td>
+      <td>2.778965e-05</td>
+      <td>3.348824e-06</td>
+      <td>3.401474e-07</td>
+    </tr>
+    <tr>
+      <th>2014-11-24 17:13:20</th>
+      <td>1.621803e-09</td>
+      <td>2.237442e-08</td>
+      <td>2.601783e-07</td>
+      <td>0.000003</td>
+      <td>0.000021</td>
+      <td>0.000147</td>
+      <td>0.000861</td>
+      <td>0.004259</td>
+      <td>0.017761</td>
+      <td>0.062423</td>
+      <td>...</td>
+      <td>1.483342</td>
+      <td>0.795320</td>
+      <td>0.359425</td>
+      <td>0.136912</td>
+      <td>0.043958</td>
+      <td>0.011896</td>
+      <td>2.713505e-03</td>
+      <td>5.217054e-04</td>
+      <td>8.454455e-05</td>
+      <td>1.154813e-05</td>
+    </tr>
+    <tr>
+      <th>2014-11-24 17:15:00</th>
+      <td>5.773237e-10</td>
+      <td>8.459389e-09</td>
+      <td>1.044779e-07</td>
+      <td>0.000001</td>
+      <td>0.000010</td>
+      <td>0.000071</td>
+      <td>0.000440</td>
+      <td>0.002312</td>
+      <td>0.010238</td>
+      <td>0.038217</td>
+      <td>...</td>
+      <td>1.658889</td>
+      <td>0.944679</td>
+      <td>0.453437</td>
+      <td>0.183449</td>
+      <td>0.062557</td>
+      <td>0.017981</td>
+      <td>4.356151e-03</td>
+      <td>8.895361e-04</td>
+      <td>1.531052e-04</td>
+      <td>2.221171e-05</td>
+    </tr>
+    <tr>
+      <th>2014-11-24 17:16:40</th>
+      <td>1.190384e-08</td>
+      <td>1.456607e-07</td>
+      <td>1.502322e-06</td>
+      <td>0.000013</td>
+      <td>0.000096</td>
+      <td>0.000591</td>
+      <td>0.003077</td>
+      <td>0.013501</td>
+      <td>0.049931</td>
+      <td>0.155649</td>
+      <td>...</td>
+      <td>1.114449</td>
+      <td>0.529984</td>
+      <td>0.212437</td>
+      <td>0.071774</td>
+      <td>0.020439</td>
+      <td>0.004906</td>
+      <td>9.925650e-04</td>
+      <td>1.692603e-04</td>
+      <td>2.432860e-05</td>
+      <td>2.947437e-06</td>
+    </tr>
+    <tr>
+      <th>2014-11-24 17:18:20</th>
+      <td>4.706680e-06</td>
+      <td>3.876759e-05</td>
+      <td>2.691463e-04</td>
+      <td>0.001575</td>
+      <td>0.007768</td>
+      <td>0.032295</td>
+      <td>0.113168</td>
+      <td>0.334250</td>
+      <td>0.832119</td>
+      <td>1.746082</td>
+      <td>...</td>
+      <td>0.238763</td>
+      <td>0.076431</td>
+      <td>0.020622</td>
+      <td>0.004690</td>
+      <td>0.000899</td>
+      <td>0.000145</td>
+      <td>1.978151e-05</td>
+      <td>2.270673e-06</td>
+      <td>2.196926e-07</td>
+      <td>1.791604e-08</td>
+    </tr>
+    <tr>
+      <th>2014-11-24 17:20:00</th>
+      <td>6.223350e-04</td>
+      <td>3.503695e-03</td>
+      <td>1.662624e-02</td>
+      <td>0.066501</td>
+      <td>0.224195</td>
+      <td>0.637076</td>
+      <td>1.525884</td>
+      <td>3.080473</td>
+      <td>5.241782</td>
+      <td>7.518068</td>
+      <td>...</td>
+      <td>0.022882</td>
+      <td>0.005007</td>
+      <td>0.000923</td>
+      <td>0.000144</td>
+      <td>0.000019</td>
+      <td>0.000002</td>
+      <td>1.933167e-07</td>
+      <td>1.516745e-08</td>
+      <td>1.003047e-09</td>
+      <td>5.591082e-11</td>
+    </tr>
+    <tr>
+      <th>2014-11-24 17:21:40</th>
+      <td>9.432527e-05</td>
+      <td>6.200413e-04</td>
+      <td>3.435412e-03</td>
+      <td>0.016044</td>
+      <td>0.063153</td>
+      <td>0.209530</td>
+      <td>0.585960</td>
+      <td>1.381193</td>
+      <td>2.744141</td>
+      <td>4.595408</td>
+      <td>...</td>
+      <td>0.065858</td>
+      <td>0.016825</td>
+      <td>0.003623</td>
+      <td>0.000658</td>
+      <td>0.000101</td>
+      <td>0.000013</td>
+      <td>1.409726e-06</td>
+      <td>1.291422e-07</td>
+      <td>9.971660e-09</td>
+      <td>6.489816e-10</td>
+    </tr>
+    <tr>
+      <th>2014-11-24 17:23:20</th>
+      <td>1.911539e-07</td>
+      <td>1.961036e-06</td>
+      <td>1.695719e-05</td>
+      <td>0.000124</td>
+      <td>0.000759</td>
+      <td>0.003931</td>
+      <td>0.017159</td>
+      <td>0.063122</td>
+      <td>0.195723</td>
+      <td>0.511528</td>
+      <td>...</td>
+      <td>0.628429</td>
+      <td>0.250557</td>
+      <td>0.084202</td>
+      <td>0.023851</td>
+      <td>0.005694</td>
+      <td>0.001146</td>
+      <td>1.943746e-04</td>
+      <td>2.778965e-05</td>
+      <td>3.348824e-06</td>
+      <td>3.401474e-07</td>
+    </tr>
+    <tr>
+      <th>2014-11-24 17:25:00</th>
+      <td>1.621803e-09</td>
+      <td>2.237442e-08</td>
+      <td>2.601783e-07</td>
+      <td>0.000003</td>
+      <td>0.000021</td>
+      <td>0.000147</td>
+      <td>0.000861</td>
+      <td>0.004259</td>
+      <td>0.017761</td>
+      <td>0.062423</td>
+      <td>...</td>
+      <td>1.483342</td>
+      <td>0.795320</td>
+      <td>0.359425</td>
+      <td>0.136912</td>
+      <td>0.043958</td>
+      <td>0.011896</td>
+      <td>2.713505e-03</td>
+      <td>5.217054e-04</td>
+      <td>8.454455e-05</td>
+      <td>1.154813e-05</td>
+    </tr>
+    <tr>
+      <th>2014-11-24 17:26:40</th>
+      <td>5.773237e-10</td>
+      <td>8.459389e-09</td>
+      <td>1.044779e-07</td>
+      <td>0.000001</td>
+      <td>0.000010</td>
+      <td>0.000071</td>
+      <td>0.000440</td>
+      <td>0.002312</td>
+      <td>0.010238</td>
+      <td>0.038217</td>
+      <td>...</td>
+      <td>1.658889</td>
+      <td>0.944679</td>
+      <td>0.453437</td>
+      <td>0.183449</td>
+      <td>0.062557</td>
+      <td>0.017981</td>
+      <td>4.356151e-03</td>
+      <td>8.895361e-04</td>
+      <td>1.531052e-04</td>
+      <td>2.221171e-05</td>
+    </tr>
+    <tr>
+      <th>2014-11-24 17:28:20</th>
+      <td>1.190384e-08</td>
+      <td>1.456607e-07</td>
+      <td>1.502322e-06</td>
+      <td>0.000013</td>
+      <td>0.000096</td>
+      <td>0.000591</td>
+      <td>0.003077</td>
+      <td>0.013501</td>
+      <td>0.049931</td>
+      <td>0.155649</td>
+      <td>...</td>
+      <td>1.114449</td>
+      <td>0.529984</td>
+      <td>0.212437</td>
+      <td>0.071774</td>
+      <td>0.020439</td>
+      <td>0.004906</td>
+      <td>9.925650e-04</td>
+      <td>1.692603e-04</td>
+      <td>2.432860e-05</td>
+      <td>2.947437e-06</td>
+    </tr>
+    <tr>
+      <th>2014-11-24 17:30:00</th>
+      <td>4.706680e-06</td>
+      <td>3.876759e-05</td>
+      <td>2.691463e-04</td>
+      <td>0.001575</td>
+      <td>0.007768</td>
+      <td>0.032295</td>
+      <td>0.113168</td>
+      <td>0.334250</td>
+      <td>0.832119</td>
+      <td>1.746082</td>
+      <td>...</td>
+      <td>0.238763</td>
+      <td>0.076431</td>
+      <td>0.020622</td>
+      <td>0.004690</td>
+      <td>0.000899</td>
+      <td>0.000145</td>
+      <td>1.978151e-05</td>
+      <td>2.270673e-06</td>
+      <td>2.196926e-07</td>
+      <td>1.791604e-08</td>
+    </tr>
+    <tr>
+      <th>2014-11-24 17:31:40</th>
+      <td>6.223350e-04</td>
+      <td>3.503695e-03</td>
+      <td>1.662624e-02</td>
+      <td>0.066501</td>
+      <td>0.224195</td>
+      <td>0.637076</td>
+      <td>1.525884</td>
+      <td>3.080473</td>
+      <td>5.241782</td>
+      <td>7.518068</td>
+      <td>...</td>
+      <td>0.022882</td>
+      <td>0.005007</td>
+      <td>0.000923</td>
+      <td>0.000144</td>
+      <td>0.000019</td>
+      <td>0.000002</td>
+      <td>1.933167e-07</td>
+      <td>1.516745e-08</td>
+      <td>1.003047e-09</td>
+      <td>5.591082e-11</td>
+    </tr>
+    <tr>
+      <th>2014-11-24 17:33:20</th>
+      <td>9.432527e-05</td>
+      <td>6.200413e-04</td>
+      <td>3.435412e-03</td>
+      <td>0.016044</td>
+      <td>0.063153</td>
+      <td>0.209530</td>
+      <td>0.585960</td>
+      <td>1.381193</td>
+      <td>2.744141</td>
+      <td>4.595408</td>
+      <td>...</td>
+      <td>0.065858</td>
+      <td>0.016825</td>
+      <td>0.003623</td>
+      <td>0.000658</td>
+      <td>0.000101</td>
+      <td>0.000013</td>
+      <td>1.409726e-06</td>
+      <td>1.291422e-07</td>
+      <td>9.971660e-09</td>
+      <td>6.489816e-10</td>
+    </tr>
+    <tr>
+      <th>2014-11-24 17:35:00</th>
+      <td>1.911539e-07</td>
+      <td>1.961036e-06</td>
+      <td>1.695719e-05</td>
+      <td>0.000124</td>
+      <td>0.000759</td>
+      <td>0.003931</td>
+      <td>0.017159</td>
+      <td>0.063122</td>
+      <td>0.195723</td>
+      <td>0.511528</td>
+      <td>...</td>
+      <td>0.628429</td>
+      <td>0.250557</td>
+      <td>0.084202</td>
+      <td>0.023851</td>
+      <td>0.005694</td>
+      <td>0.001146</td>
+      <td>1.943746e-04</td>
+      <td>2.778965e-05</td>
+      <td>3.348824e-06</td>
+      <td>3.401474e-07</td>
+    </tr>
+    <tr>
+      <th>2014-11-24 17:36:40</th>
+      <td>1.621803e-09</td>
+      <td>2.237442e-08</td>
+      <td>2.601783e-07</td>
+      <td>0.000003</td>
+      <td>0.000021</td>
+      <td>0.000147</td>
+      <td>0.000861</td>
+      <td>0.004259</td>
+      <td>0.017761</td>
+      <td>0.062423</td>
+      <td>...</td>
+      <td>1.483342</td>
+      <td>0.795320</td>
+      <td>0.359425</td>
+      <td>0.136912</td>
+      <td>0.043958</td>
+      <td>0.011896</td>
+      <td>2.713505e-03</td>
+      <td>5.217054e-04</td>
+      <td>8.454455e-05</td>
+      <td>1.154813e-05</td>
+    </tr>
+    <tr>
+      <th>2014-11-24 17:38:20</th>
+      <td>5.773237e-10</td>
+      <td>8.459389e-09</td>
+      <td>1.044779e-07</td>
+      <td>0.000001</td>
+      <td>0.000010</td>
+      <td>0.000071</td>
+      <td>0.000440</td>
+      <td>0.002312</td>
+      <td>0.010238</td>
+      <td>0.038217</td>
+      <td>...</td>
+      <td>1.658889</td>
+      <td>0.944679</td>
+      <td>0.453437</td>
+      <td>0.183449</td>
+      <td>0.062557</td>
+      <td>0.017981</td>
+      <td>4.356151e-03</td>
+      <td>8.895361e-04</td>
+      <td>1.531052e-04</td>
+      <td>2.221171e-05</td>
+    </tr>
+    <tr>
+      <th>2014-11-24 17:40:00</th>
+      <td>1.190384e-08</td>
+      <td>1.456607e-07</td>
+      <td>1.502322e-06</td>
+      <td>0.000013</td>
+      <td>0.000096</td>
+      <td>0.000591</td>
+      <td>0.003077</td>
+      <td>0.013501</td>
+      <td>0.049931</td>
+      <td>0.155649</td>
+      <td>...</td>
+      <td>1.114449</td>
+      <td>0.529984</td>
+      <td>0.212437</td>
+      <td>0.071774</td>
+      <td>0.020439</td>
+      <td>0.004906</td>
+      <td>9.925650e-04</td>
+      <td>1.692603e-04</td>
+      <td>2.432860e-05</td>
+      <td>2.947437e-06</td>
+    </tr>
+    <tr>
+      <th>2014-11-24 17:41:40</th>
+      <td>4.706680e-06</td>
+      <td>3.876759e-05</td>
+      <td>2.691463e-04</td>
+      <td>0.001575</td>
+      <td>0.007768</td>
+      <td>0.032295</td>
+      <td>0.113168</td>
+      <td>0.334250</td>
+      <td>0.832119</td>
+      <td>1.746082</td>
+      <td>...</td>
+      <td>0.238763</td>
+      <td>0.076431</td>
+      <td>0.020622</td>
+      <td>0.004690</td>
+      <td>0.000899</td>
+      <td>0.000145</td>
+      <td>1.978151e-05</td>
+      <td>2.270673e-06</td>
+      <td>2.196926e-07</td>
+      <td>1.791604e-08</td>
+    </tr>
+    <tr>
+      <th>2014-11-24 17:43:20</th>
+      <td>6.223350e-04</td>
+      <td>3.503695e-03</td>
+      <td>1.662624e-02</td>
+      <td>0.066501</td>
+      <td>0.224195</td>
+      <td>0.637076</td>
+      <td>1.525884</td>
+      <td>3.080473</td>
+      <td>5.241782</td>
+      <td>7.518068</td>
+      <td>...</td>
+      <td>0.022882</td>
+      <td>0.005007</td>
+      <td>0.000923</td>
+      <td>0.000144</td>
+      <td>0.000019</td>
+      <td>0.000002</td>
+      <td>1.933167e-07</td>
+      <td>1.516745e-08</td>
+      <td>1.003047e-09</td>
+      <td>5.591082e-11</td>
+    </tr>
+    <tr>
+      <th>2014-11-24 17:45:00</th>
+      <td>9.432527e-05</td>
+      <td>6.200413e-04</td>
+      <td>3.435412e-03</td>
+      <td>0.016044</td>
+      <td>0.063153</td>
+      <td>0.209530</td>
+      <td>0.585960</td>
+      <td>1.381193</td>
+      <td>2.744141</td>
+      <td>4.595408</td>
+      <td>...</td>
+      <td>0.065858</td>
+      <td>0.016825</td>
+      <td>0.003623</td>
+      <td>0.000658</td>
+      <td>0.000101</td>
+      <td>0.000013</td>
+      <td>1.409726e-06</td>
+      <td>1.291422e-07</td>
+      <td>9.971660e-09</td>
+      <td>6.489816e-10</td>
+    </tr>
+    <tr>
+      <th>2014-11-24 17:46:40</th>
+      <td>1.911539e-07</td>
+      <td>1.961036e-06</td>
+      <td>1.695719e-05</td>
+      <td>0.000124</td>
+      <td>0.000759</td>
+      <td>0.003931</td>
+      <td>0.017159</td>
+      <td>0.063122</td>
+      <td>0.195723</td>
+      <td>0.511528</td>
+      <td>...</td>
+      <td>0.628429</td>
+      <td>0.250557</td>
+      <td>0.084202</td>
+      <td>0.023851</td>
+      <td>0.005694</td>
+      <td>0.001146</td>
+      <td>1.943746e-04</td>
+      <td>2.778965e-05</td>
+      <td>3.348824e-06</td>
+      <td>3.401474e-07</td>
+    </tr>
+    <tr>
+      <th>2014-11-24 17:48:20</th>
+      <td>1.621803e-09</td>
+      <td>2.237442e-08</td>
+      <td>2.601783e-07</td>
+      <td>0.000003</td>
+      <td>0.000021</td>
+      <td>0.000147</td>
+      <td>0.000861</td>
+      <td>0.004259</td>
+      <td>0.017761</td>
+      <td>0.062423</td>
+      <td>...</td>
+      <td>1.483342</td>
+      <td>0.795320</td>
+      <td>0.359425</td>
+      <td>0.136912</td>
+      <td>0.043958</td>
+      <td>0.011896</td>
+      <td>2.713505e-03</td>
+      <td>5.217054e-04</td>
+      <td>8.454455e-05</td>
+      <td>1.154813e-05</td>
+    </tr>
+    <tr>
+      <th>2014-11-24 17:50:00</th>
+      <td>5.773237e-10</td>
+      <td>8.459389e-09</td>
+      <td>1.044779e-07</td>
+      <td>0.000001</td>
+      <td>0.000010</td>
+      <td>0.000071</td>
+      <td>0.000440</td>
+      <td>0.002312</td>
+      <td>0.010238</td>
+      <td>0.038217</td>
+      <td>...</td>
+      <td>1.658889</td>
+      <td>0.944679</td>
+      <td>0.453437</td>
+      <td>0.183449</td>
+      <td>0.062557</td>
+      <td>0.017981</td>
+      <td>4.356151e-03</td>
+      <td>8.895361e-04</td>
+      <td>1.531052e-04</td>
+      <td>2.221171e-05</td>
+    </tr>
+    <tr>
+      <th>2014-11-24 17:51:40</th>
+      <td>1.190384e-08</td>
+      <td>1.456607e-07</td>
+      <td>1.502322e-06</td>
+      <td>0.000013</td>
+      <td>0.000096</td>
+      <td>0.000591</td>
+      <td>0.003077</td>
+      <td>0.013501</td>
+      <td>0.049931</td>
+      <td>0.155649</td>
+      <td>...</td>
+      <td>1.114449</td>
+      <td>0.529984</td>
+      <td>0.212437</td>
+      <td>0.071774</td>
+      <td>0.020439</td>
+      <td>0.004906</td>
+      <td>9.925650e-04</td>
+      <td>1.692603e-04</td>
+      <td>2.432860e-05</td>
+      <td>2.947437e-06</td>
+    </tr>
+    <tr>
+      <th>2014-11-24 17:53:20</th>
+      <td>4.706680e-06</td>
+      <td>3.876759e-05</td>
+      <td>2.691463e-04</td>
+      <td>0.001575</td>
+      <td>0.007768</td>
+      <td>0.032295</td>
+      <td>0.113168</td>
+      <td>0.334250</td>
+      <td>0.832119</td>
+      <td>1.746082</td>
+      <td>...</td>
+      <td>0.238763</td>
+      <td>0.076431</td>
+      <td>0.020622</td>
+      <td>0.004690</td>
+      <td>0.000899</td>
+      <td>0.000145</td>
+      <td>1.978151e-05</td>
+      <td>2.270673e-06</td>
+      <td>2.196926e-07</td>
+      <td>1.791604e-08</td>
+    </tr>
+    <tr>
+      <th>2014-11-24 17:55:00</th>
+      <td>6.223350e-04</td>
+      <td>3.503695e-03</td>
+      <td>1.662624e-02</td>
+      <td>0.066501</td>
+      <td>0.224195</td>
+      <td>0.637076</td>
+      <td>1.525884</td>
+      <td>3.080473</td>
+      <td>5.241782</td>
+      <td>7.518068</td>
+      <td>...</td>
+      <td>0.022882</td>
+      <td>0.005007</td>
+      <td>0.000923</td>
+      <td>0.000144</td>
+      <td>0.000019</td>
+      <td>0.000002</td>
+      <td>1.933167e-07</td>
+      <td>1.516745e-08</td>
+      <td>1.003047e-09</td>
+      <td>5.591082e-11</td>
+    </tr>
+    <tr>
+      <th>2014-11-24 17:56:40</th>
+      <td>9.432527e-05</td>
+      <td>6.200413e-04</td>
+      <td>3.435412e-03</td>
+      <td>0.016044</td>
+      <td>0.063153</td>
+      <td>0.209530</td>
+      <td>0.585960</td>
+      <td>1.381193</td>
+      <td>2.744141</td>
+      <td>4.595408</td>
+      <td>...</td>
+      <td>0.065858</td>
+      <td>0.016825</td>
+      <td>0.003623</td>
+      <td>0.000658</td>
+      <td>0.000101</td>
+      <td>0.000013</td>
+      <td>1.409726e-06</td>
+      <td>1.291422e-07</td>
+      <td>9.971660e-09</td>
+      <td>6.489816e-10</td>
+    </tr>
+    <tr>
+      <th>2014-11-24 17:58:20</th>
+      <td>1.911539e-07</td>
+      <td>1.961036e-06</td>
+      <td>1.695719e-05</td>
+      <td>0.000124</td>
+      <td>0.000759</td>
+      <td>0.003931</td>
+      <td>0.017159</td>
+      <td>0.063122</td>
+      <td>0.195723</td>
+      <td>0.511528</td>
+      <td>...</td>
+      <td>0.628429</td>
+      <td>0.250557</td>
+      <td>0.084202</td>
+      <td>0.023851</td>
+      <td>0.005694</td>
+      <td>0.001146</td>
+      <td>1.943746e-04</td>
+      <td>2.778965e-05</td>
+      <td>3.348824e-06</td>
+      <td>3.401474e-07</td>
+    </tr>
+  </tbody>
+</table>
+<p>36 rows × 29 columns</p>
+</div></div>
+</div>
+<p><code class="docutils literal notranslate"><span class="pre">bins</span></code> are the binedges. For an example of how they should be formatted look again to the sizedistribution generated above</p>
+<div class="nbinput docutils container">
+<div class="prompt highlight-none notranslate"><div class="highlight"><pre><span></span>[273]:
+</pre></div>
+</div>
+<div class="input_area highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="n">sd</span><span class="o">.</span><span class="n">bins</span>
+</pre></div>
+</div>
+</div>
+<div class="nboutput nblast docutils container">
+<div class="prompt highlight-none notranslate"><div class="highlight"><pre><span></span>[273]:
+</pre></div>
+</div>
+<div class="output_area docutils container">
+<div class="highlight"><pre>
+array([  10.        ,   12.09727592,   14.63440848,   17.70364774,
+         21.41659115,   25.90824126,   31.34191432,   37.91517855,
+         45.86703767,   55.48662105,   67.1236965 ,   81.20138776,
+         98.23155932,  118.83342776,  143.75607647,  173.90569229,
+        210.37851445,  254.50069379,  307.87651158,  372.44671113,
+        450.55906317,  545.05373075,  659.36653747,  797.65389392,
+        964.9439247 , 1167.31929089, 1412.1383554 , 1708.3027329 ,
+       2066.58095226, 2500.        ])
+</pre></div></div>
+</div>
+<p>To see options for the <code class="docutils literal notranslate"><span class="pre">distType</span></code> argument see help file. This is what our generated was:</p>
+<div class="nbinput docutils container">
+<div class="prompt highlight-none notranslate"><div class="highlight"><pre><span></span>[274]:
+</pre></div>
+</div>
+<div class="input_area highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="n">sd</span><span class="o">.</span><span class="n">distributionType</span>
+</pre></div>
+</div>
+</div>
+<div class="nboutput nblast docutils container">
+<div class="prompt highlight-none notranslate"><div class="highlight"><pre><span></span>[274]:
+</pre></div>
+</div>
+<div class="output_area docutils container">
+<div class="highlight"><pre>
+&#39;dNdDp&#39;
+</pre></div></div>
+</div>
+<p>create the instance</p>
+<div class="nbinput nblast docutils container">
+<div class="prompt highlight-none notranslate"><div class="highlight"><pre><span></span>[275]:
+</pre></div>
+</div>
+<div class="input_area highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="n">sdc</span> <span class="o">=</span> <span class="n">atmsd</span><span class="o">.</span><span class="n">SizeDist_TS</span><span class="p">(</span><span class="n">sd</span><span class="o">.</span><span class="n">data</span><span class="p">,</span> <span class="n">sd</span><span class="o">.</span><span class="n">bins</span><span class="p">,</span> <span class="n">sd</span><span class="o">.</span><span class="n">distributionType</span><span class="p">)</span>
+</pre></div>
+</div>
+</div>
+</section>
+</section>
+<section id="Methods">
+<h2>Methods<a class="headerlink" href="#Methods" title="Link to this heading"></a></h2>
+<section id="Plotting">
+<h3>Plotting<a class="headerlink" href="#Plotting" title="Link to this heading"></a></h3>
+<div class="nbinput docutils container">
+<div class="prompt highlight-none notranslate"><div class="highlight"><pre><span></span>[277]:
+</pre></div>
+</div>
+<div class="input_area highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="n">sd</span><span class="o">.</span><span class="n">plot</span><span class="p">()</span>
+</pre></div>
+</div>
+</div>
+<div class="nboutput docutils container">
+<div class="prompt highlight-none notranslate"><div class="highlight"><pre><span></span>[277]:
+</pre></div>
+</div>
+<div class="output_area docutils container">
+<div class="highlight"><pre>
+(&lt;Figure size 1280x960 with 2 Axes&gt;,
+ &lt;Axes: xlabel=&#39;Time (UTC)&#39;, ylabel=&#39;Diameter (nm)&#39;&gt;,
+ &lt;matplotlib.collections.QuadMesh at 0x7f011fc96e90&gt;,
+ &lt;matplotlib.colorbar.Colorbar at 0x7f0123b27040&gt;)
+</pre></div></div>
+</div>
+<div class="nboutput nblast docutils container">
+<div class="prompt empty docutils container">
+</div>
+<div class="output_area docutils container">
+<img alt="../_images/notebooks_aerosols_sizedistribution_SizeDist_TS_17_1.png" src="../_images/notebooks_aerosols_sizedistribution_SizeDist_TS_17_1.png" />
+</div>
+</div>
+</section>
+<section id="Conversion-to-Vertical-profile">
+<h3>Conversion to Vertical profile<a class="headerlink" href="#Conversion-to-Vertical-profile" title="Link to this heading"></a></h3>
+<p>To convert the timeseries to a vertical profile one needs to attach a “housekeeping” file which it self needs to be a <code class="docutils literal notranslate"><span class="pre">TimeSeries</span></code> instance and has a column with the nam <code class="docutils literal notranslate"><span class="pre">Altitude</span></code>. BTW, the housekeeping file will also be converted into a vertical profile.</p>
+<div class="nbinput nblast docutils container">
+<div class="prompt highlight-none notranslate"><div class="highlight"><pre><span></span>[292]:
+</pre></div>
+</div>
+<div class="input_area highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="kn">import</span> <span class="nn">atmPy.general.timeseries</span> <span class="k">as</span> <span class="nn">atmts</span>
+</pre></div>
+</div>
+</div>
+<div class="nbinput nblast docutils container">
+<div class="prompt highlight-none notranslate"><div class="highlight"><pre><span></span>[ ]:
+</pre></div>
+</div>
+<div class="input_area highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="c1"># connect the housekeeping, sorry for the awkward solution</span>
+<span class="n">hk</span> <span class="o">=</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">(</span><span class="n">index</span> <span class="o">=</span> <span class="n">sd</span><span class="o">.</span><span class="n">data</span><span class="o">.</span><span class="n">index</span><span class="p">,</span> <span class="n">columns</span><span class="o">=</span><span class="p">[</span><span class="s1">&#39;Altitude&#39;</span><span class="p">],</span> <span class="n">dtype</span><span class="o">=</span><span class="nb">float</span><span class="p">)</span>
+<span class="n">hk</span><span class="o">.</span><span class="n">Altitude</span><span class="o">.</span><span class="n">iloc</span><span class="p">[[</span><span class="mi">0</span><span class="p">,</span><span class="o">-</span><span class="mi">1</span><span class="p">]]</span> <span class="o">=</span> <span class="p">[</span><span class="mi">0</span><span class="p">,</span><span class="mi">3000</span><span class="p">]</span>
+<span class="n">hk</span> <span class="o">=</span> <span class="n">hk</span><span class="o">.</span><span class="n">interpolate</span><span class="p">()</span>
+
+<span class="n">sd</span><span class="o">.</span><span class="n">housekeeping</span> <span class="o">=</span> <span class="n">atmts</span><span class="o">.</span><span class="n">TimeSeries</span><span class="p">(</span><span class="n">hk</span><span class="p">)</span> <span class="c1">#this will take care of interpolation if the timestamps are different</span>
+</pre></div>
+</div>
+</div>
+<div class="nbinput nblast docutils container">
+<div class="prompt highlight-none notranslate"><div class="highlight"><pre><span></span>[295]:
+</pre></div>
+</div>
+<div class="input_area highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="c1"># convert Vertical profile</span>
+<span class="n">sdvp</span> <span class="o">=</span> <span class="n">sd</span><span class="o">.</span><span class="n">convert2verticalprofile</span><span class="p">(</span><span class="n">layer_thickness</span><span class="o">=</span><span class="mi">100</span><span class="p">)</span>
+</pre></div>
+</div>
+</div>
+<div class="nbinput docutils container">
+<div class="prompt highlight-none notranslate"><div class="highlight"><pre><span></span>[296]:
+</pre></div>
+</div>
+<div class="input_area highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="n">sdvp</span><span class="o">.</span><span class="n">plot</span><span class="p">()</span>
+</pre></div>
+</div>
+</div>
+<div class="nboutput docutils container">
+<div class="prompt highlight-none notranslate"><div class="highlight"><pre><span></span>[296]:
+</pre></div>
+</div>
+<div class="output_area docutils container">
+<div class="highlight"><pre>
+(&lt;Figure size 1280x960 with 2 Axes&gt;,
+ &lt;Axes: xlabel=&#39;Diameter (nm)&#39;, ylabel=&#39;Altitude (m)&#39;&gt;,
+ &lt;matplotlib.collections.QuadMesh at 0x7f01250a67d0&gt;,
+ &lt;matplotlib.colorbar.Colorbar at 0x7f0121daf850&gt;)
+</pre></div></div>
+</div>
+<div class="nboutput nblast docutils container">
+<div class="prompt empty docutils container">
+</div>
+<div class="output_area docutils container">
+<img alt="../_images/notebooks_aerosols_sizedistribution_SizeDist_TS_23_1.png" src="../_images/notebooks_aerosols_sizedistribution_SizeDist_TS_23_1.png" />
+</div>
+</div>
+</section>
+<section id="hygroscopic-growth-and-optical-properties">
+<h3>hygroscopic growth and optical properties<a class="headerlink" href="#hygroscopic-growth-and-optical-properties" title="Link to this heading"></a></h3>
+<p>The difference to hygroscopic growth and optical properties of the SizeDist instance is that you can let the RH and refractive index change over time.</p>
+<p><strong>GOTCHA</strong> you can loose particles when applying growth!!! See help of <code class="docutils literal notranslate"><span class="pre">sd.grow_sizedistribution</span></code> function! There are functions that extrapolate size distributions assuming normal distributions. Consider using those.</p>
+<div class="nbinput nblast docutils container">
+<div class="prompt highlight-none notranslate"><div class="highlight"><pre><span></span>[280]:
+</pre></div>
+</div>
+<div class="input_area highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="n">sd</span><span class="o">.</span><span class="n">optical_properties</span><span class="o">.</span><span class="n">parameters</span><span class="o">.</span><span class="n">refractive_index</span> <span class="o">=</span> <span class="mf">1.5</span>
+<span class="n">sd</span><span class="o">.</span><span class="n">optical_properties</span><span class="o">.</span><span class="n">parameters</span><span class="o">.</span><span class="n">wavelength</span> <span class="o">=</span> <span class="mi">500</span>
+</pre></div>
+</div>
+</div>
+<div class="nbinput nblast docutils container">
+<div class="prompt highlight-none notranslate"><div class="highlight"><pre><span></span>[287]:
+</pre></div>
+</div>
+<div class="input_area highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="n">rh</span> <span class="o">=</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">(</span><span class="n">index</span> <span class="o">=</span> <span class="n">sd</span><span class="o">.</span><span class="n">data</span><span class="o">.</span><span class="n">index</span><span class="p">,</span> <span class="n">columns</span><span class="o">=</span><span class="p">[</span><span class="s1">&#39;RH&#39;</span><span class="p">],</span> <span class="n">dtype</span><span class="o">=</span><span class="nb">float</span><span class="p">)</span>
+<span class="n">rh</span><span class="o">.</span><span class="n">RH</span><span class="o">.</span><span class="n">iloc</span><span class="p">[[</span><span class="mi">0</span><span class="p">,</span><span class="o">-</span><span class="mi">1</span><span class="p">]]</span> <span class="o">=</span> <span class="p">[</span><span class="mi">0</span><span class="p">,</span><span class="mi">95</span><span class="p">]</span>
+<span class="n">rh</span> <span class="o">=</span> <span class="n">rh</span><span class="o">.</span><span class="n">interpolate</span><span class="p">()</span>
+</pre></div>
+</div>
+</div>
+<div class="nbinput nblast docutils container">
+<div class="prompt highlight-none notranslate"><div class="highlight"><pre><span></span>[282]:
+</pre></div>
+</div>
+<div class="input_area highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="n">sd</span><span class="o">.</span><span class="n">hygroscopicity</span><span class="o">.</span><span class="n">parameters</span><span class="o">.</span><span class="n">kappa</span> <span class="o">=</span> <span class="mf">1.5</span>
+<span class="n">sd</span><span class="o">.</span><span class="n">hygroscopicity</span><span class="o">.</span><span class="n">parameters</span><span class="o">.</span><span class="n">RH</span> <span class="o">=</span> <span class="n">rh</span>
+</pre></div>
+</div>
+</div>
+<div class="nbinput docutils container">
+<div class="prompt highlight-none notranslate"><div class="highlight"><pre><span></span>[283]:
+</pre></div>
+</div>
+<div class="input_area highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="n">sd</span><span class="o">.</span><span class="n">hygroscopicity</span><span class="o">.</span><span class="n">grown_size_distribution</span><span class="o">.</span><span class="n">plot</span><span class="p">()</span>
+</pre></div>
+</div>
+</div>
+<div class="nboutput docutils container">
+<div class="prompt highlight-none notranslate"><div class="highlight"><pre><span></span>[283]:
+</pre></div>
+</div>
+<div class="output_area docutils container">
+<div class="highlight"><pre>
+(&lt;Figure size 1280x960 with 2 Axes&gt;,
+ &lt;Axes: xlabel=&#39;Time (UTC)&#39;, ylabel=&#39;Diameter (nm)&#39;&gt;,
+ &lt;matplotlib.collections.QuadMesh at 0x7f0123095960&gt;,
+ &lt;matplotlib.colorbar.Colorbar at 0x7f01201cd0f0&gt;)
+</pre></div></div>
+</div>
+<div class="nboutput nblast docutils container">
+<div class="prompt empty docutils container">
+</div>
+<div class="output_area docutils container">
+<img alt="../_images/notebooks_aerosols_sizedistribution_SizeDist_TS_29_1.png" src="../_images/notebooks_aerosols_sizedistribution_SizeDist_TS_29_1.png" />
+</div>
+</div>
+<div class="nbinput docutils container">
+<div class="prompt highlight-none notranslate"><div class="highlight"><pre><span></span>[284]:
+</pre></div>
+</div>
+<div class="input_area highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="n">a</span> <span class="o">=</span> <span class="n">sd</span><span class="o">.</span><span class="n">optical_properties</span><span class="o">.</span><span class="n">scattering_coeff</span><span class="o">.</span><span class="n">plot</span><span class="p">()</span>
+<span class="n">sd</span><span class="o">.</span><span class="n">hygroscopicity</span><span class="o">.</span><span class="n">grown_size_distribution</span><span class="o">.</span><span class="n">optical_properties</span><span class="o">.</span><span class="n">scattering_coeff</span><span class="o">.</span><span class="n">plot</span><span class="p">(</span><span class="n">ax</span> <span class="o">=</span> <span class="n">a</span><span class="p">)</span>
+</pre></div>
+</div>
+</div>
+<div class="nboutput docutils container">
+<div class="prompt highlight-none notranslate"><div class="highlight"><pre><span></span>[284]:
+</pre></div>
+</div>
+<div class="output_area docutils container">
+<div class="highlight"><pre>
+&lt;Axes: xlabel=&#39;Time&#39;&gt;
+</pre></div></div>
+</div>
+<div class="nboutput nblast docutils container">
+<div class="prompt empty docutils container">
+</div>
+<div class="output_area docutils container">
+<img alt="../_images/notebooks_aerosols_sizedistribution_SizeDist_TS_30_1.png" src="../_images/notebooks_aerosols_sizedistribution_SizeDist_TS_30_1.png" />
+</div>
+</div>
+<p><strong>Note</strong>, the refractive index of the hygroscopically grown size distribution is changing and approaches that of water.</p>
+<div class="nbinput docutils container">
+<div class="prompt highlight-none notranslate"><div class="highlight"><pre><span></span>[285]:
+</pre></div>
+</div>
+<div class="input_area highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="n">sd</span><span class="o">.</span><span class="n">hygroscopicity</span><span class="o">.</span><span class="n">grown_size_distribution</span><span class="o">.</span><span class="n">optical_properties</span><span class="o">.</span><span class="n">parameters</span>
+</pre></div>
+</div>
+</div>
+<div class="nboutput nblast docutils container">
+<div class="prompt highlight-none notranslate"><div class="highlight"><pre><span></span>[285]:
+</pre></div>
+</div>
+<div class="output_area docutils container">
+<div class="highlight"><pre>
+asphericity      :  1
+mie_result       :  None
+refractive_index :                       index_of_refraction
+2014-11-24 17:00:00             1.500000
+2014-11-24 17:01:40             1.493171
+2014-11-24 17:03:20             1.486523
+2014-11-24 17:05:00             1.480048
+2014-11-24 17:06:40             1.473740
+2014-11-24 17:08:20             1.467592
+2014-11-24 17:10:00             1.461598
+2014-11-24 17:11:40             1.455753
+2014-11-24 17:13:20             1.450052
+2014-11-24 17:15:00             1.444488
+2014-11-24 17:16:40             1.439057
+2014-11-24 17:18:20             1.433754
+2014-11-24 17:20:00             1.428575
+2014-11-24 17:21:40             1.423515
+2014-11-24 17:23:20             1.418571
+2014-11-24 17:25:00             1.413739
+2014-11-24 17:26:40             1.409014
+2014-11-24 17:28:20             1.404393
+2014-11-24 17:30:00             1.399874
+2014-11-24 17:31:40             1.395451
+2014-11-24 17:33:20             1.391124
+2014-11-24 17:35:00             1.386887
+2014-11-24 17:36:40             1.382739
+2014-11-24 17:38:20             1.378677
+2014-11-24 17:40:00             1.374698
+2014-11-24 17:41:40             1.370800
+2014-11-24 17:43:20             1.366980
+2014-11-24 17:45:00             1.363236
+2014-11-24 17:46:40             1.359565
+2014-11-24 17:48:20             1.355966
+2014-11-24 17:50:00             1.352437
+2014-11-24 17:51:40             1.348974
+2014-11-24 17:53:20             1.345578
+2014-11-24 17:55:00             1.342245
+2014-11-24 17:56:40             1.338974
+2014-11-24 17:58:20             1.335763
+wavelength       :  500
+</pre></div></div>
+</div>
+<div class="nbinput nblast docutils container">
+<div class="prompt highlight-none notranslate"><div class="highlight"><pre><span></span>[ ]:
+</pre></div>
+</div>
+<div class="input_area highlight-ipython3 notranslate"><div class="highlight"><pre><span></span>
+</pre></div>
+</div>
+</div>
+</section>
+</section>
+</section>
+
+
+           </div>
+          </div>
+          <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
+        <a href="aerosols_sizedistribution_SizeDist.html" class="btn btn-neutral float-left" title="SizeDist (a single size distribution)" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2023, Hagen Telg.</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

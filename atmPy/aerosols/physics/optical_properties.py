@@ -112,6 +112,8 @@ def size_dist2optical_properties(op, sd, aod=False, noOfAngles=100):
             # mie['angular_scatt_func'] = angular_scatt_func
             
         out['mie_result'] = mie_result #{'mie': mie}
+    else:
+        out['mie_result'] = None #when n changes there is no single mie_result!
         
     if aod:
         #todo: use function that does a the interpolation instead of the sum?!? I guess this can lead to errors when layers are very thick, since centers are used instea dof edges?
@@ -873,41 +875,33 @@ class DEPRECATEDOpticalProperties(object):
 
 
 class OpticalProperties_TS(OpticalProperties):
-
     @property
     def hemispheric_forwardscattering(self):
-        super().hemispheric_forwardscattering
-        return _timeseries.TimeSeries(self._hemispheric_forwardscattering, sampling_period = self._parent_sizedist._data_period)
+        return _timeseries.TimeSeries(super().hemispheric_forwardscattering, sampling_period = self._parent_sizedist._data_period)
 
     @property
     def hemispheric_backscattering(self):
-        super().hemispheric_backscattering
-        return _timeseries.TimeSeries(self._hemispheric_backscattering, sampling_period = self._parent_sizedist._data_period)
+        return _timeseries.TimeSeries(super().hemispheric_backscattering, sampling_period = self._parent_sizedist._data_period)
 
     @property
     def hemispheric_backscattering_ratio(self):
-        self.hemispheric_backscattering
-        return _timeseries.TimeSeries(self._hemispheric_backscattering_ratio, sampling_period = self._parent_sizedist._data_period)
+        return _timeseries.TimeSeries(super().hemispheric_backscattering_ratio, sampling_period = self._parent_sizedist._data_period)
 
     @property
     def hemispheric_forwardscattering_ratio(self):
-        self.hemispheric_forwardscattering
-        return _timeseries.TimeSeries(self._hemispheric_forwardscattering_ratio, sampling_period = self._parent_sizedist._data_period)
+        return _timeseries.TimeSeries(super().hemispheric_forwardscattering_ratio, sampling_period = self._parent_sizedist._data_period)
 
     @property
     def absorption_coeff(self):
-        self._optical_porperties
-        return _timeseries.TimeSeries(self._absorption_coeff, sampling_period = self._parent_sizedist._data_period)
+        return _timeseries.TimeSeries(super().absorption_coeff, sampling_period = self._parent_sizedist._data_period)
 
     @property
     def extinction_coeff(self):
-        self._optical_porperties
-        return _timeseries.TimeSeries(self._extinction_coeff, sampling_period = self._parent_sizedist._data_period)
+        return _timeseries.TimeSeries(super().extinction_coeff, sampling_period = self._parent_sizedist._data_period)
 
     @property
     def scattering_coeff(self):
-        self._optical_porperties
-        return _timeseries.TimeSeries(self._scattering_coeff, sampling_period = self._parent_sizedist._data_period)
+        return _timeseries.TimeSeries(super().scattering_coeff, sampling_period = self._parent_sizedist._data_period)
 
     # def __init__(self, *args, **kwargs):
     #     super().__init__(*args, **kwargs)
@@ -978,38 +972,31 @@ class OpticalProperties_VP(OpticalProperties):
 
     @property
     def hemispheric_forwardscattering(self):
-        super().hemispheric_forwardscattering
-        return _vertical_profile.VerticalProfile(self._hemispheric_forwardscattering)
+        return _vertical_profile.VerticalProfile(super().hemispheric_forwardscattering)
 
     @property
     def hemispheric_backscattering(self):
-        super().hemispheric_backscattering
-        return _vertical_profile.VerticalProfile(self._hemispheric_backscattering)
+        return _vertical_profile.VerticalProfile(super().hemispheric_backscattering)
 
     @property
     def hemispheric_backscattering_ratio(self):
-        self.hemispheric_backscattering
-        return _vertical_profile.VerticalProfile(self._hemispheric_backscattering_ratio)
+        return _vertical_profile.VerticalProfile(super().hemispheric_backscattering_ratio)
 
     @property
     def hemispheric_forwardscattering_ratio(self):
-        self.hemispheric_forwardscattering
-        return _vertical_profile.VerticalProfile(self._hemispheric_forwardscattering_ratio)
+        return _vertical_profile.VerticalProfile(super().hemispheric_forwardscattering_ratio)
 
     @property
     def absorption_coeff(self):
-        self._optical_porperties
-        return _vertical_profile.VerticalProfile(self._absorption_coeff)
+        return _vertical_profile.VerticalProfile(super().absorption_coeff)
 
     @property
     def extinction_coeff(self):
-        self._optical_porperties
-        return _vertical_profile.VerticalProfile(self._extinction_coeff)
+        return _vertical_profile.VerticalProfile(super().extinction_coeff)
 
     @property
     def scattering_coeff(self):
-        self._optical_porperties
-        return _vertical_profile.VerticalProfile(self._scattering_coeff)
+        return _vertical_profile.VerticalProfile(super().scattering_coeff)
 
     @property
     def _optical_porperties(self):

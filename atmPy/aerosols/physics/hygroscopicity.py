@@ -620,7 +620,10 @@ def calc_mixing_state(growth_modes):
 
 
 def apply_growth2sizedist(sd, gf):
-    assert(False), 'Maybe just make sure to go to numberconcentration before applying any of this below!!! Warning, this function has a problem when the growth is larger than a single bin width, check the function grow_sizedistribution in the sizedistribution function'
+    assert(False), 'this function is deprecated, use grow_sizedistribution function of sizedistribution instances.'
+    #### FIXME 'Maybe just make sure to go to numberconcentration before applying any of this below!!! 
+    # Warning, this function has a problem when the growth is larger than a single bin width, 
+    # check the function grow_sizedistribution in the sizedistribution function'
     def apply_growth_factor_gf_const(data, gf, bins):
         if gf == 1.:
             return data.copy(), bins.copy()
@@ -784,13 +787,15 @@ def apply_hygro_growth2sizedist(sizedist, how='shift_data', adjust_refractive_in
     elif hasattr(kappa, 'data'):
         kappa = kappa.data.iloc[:, 0].values
 
-    if type(RH).__name__ in ('ndarray', 'float', 'float16', 'float32', 'float64', 'float128'):
+    if type(RH).__name__ in ('ndarray', 'float', 'float16', 'float32', 'float64', 'float128', 'int'):
         pass
     elif type(RH).__name__ == 'DataFrame':
         RH = RH.iloc[:, 0].values
     elif hasattr(RH, 'data'):
         RH = RH.data.iloc[:, 0].values
-
+    else:
+        assert(False), f'RH has wrong type ({type(RH)})'
+        
     gf = kappa_simple(kappa, RH, refractive_index = refract_idx)
     if type(gf) == tuple:
         gf, n_mix = gf
@@ -803,7 +808,11 @@ def apply_hygro_growth2sizedist(sizedist, how='shift_data', adjust_refractive_in
             It is %s''' % (type(RH).__name__)
             raise TypeError(txt)
 
-    dist_g = apply_growth2sizedist(dist_g, gf)
+    # dist_g = apply_growth2sizedist(dist_g, gf)
+    dist_g = dist_g.grow_sizedistribution(gf,
+                             extend_diameter_limits=False,
+                             raise_particle_loss_error=False,
+                             )
     dist_g.gf = gf
     if how == 'shift_bins':
         dist_g.parameters4reductions.refractive_index = n_mix
