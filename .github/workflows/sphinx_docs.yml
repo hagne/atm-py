@@ -22,9 +22,7 @@ jobs:
 
     - name: Install dependencies
       run: |
-        pip install sphinx
-        pip install sphinx_rtd_theme
-        pip install nbsphinx pandoc
+        pip install sphinx sphinx_rtd_theme  nbsphinx pandoc
         # Add any other dependencies here
 
     - name: Build Sphinx Documentation
