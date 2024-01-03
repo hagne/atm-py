@@ -50,9 +50,122 @@
 <p class="caption" role="heading"><span class="caption-text">aerosols</span></p>
 <ul class="current">
 <li class="toctree-l1 current"><a class="current reference internal" href="#">Size distribution</a><ul>
-<li class="toctree-l2"><a class="reference internal" href="notebooks/aerosols_sizedistribution_SizeDist.html">SizeDist (a single size distribution)</a></li>
-<li class="toctree-l2"><a class="reference internal" href="notebooks/aerosols_sizedistribution_SizeDist_TS.html">SizeDist_TS (a time series of size distributions)</a></li>
-<li class="toctree-l2"><a class="reference internal" href="notebooks/aerosols_sizedistribution_SizeDist_LS.html">SizeDist_LS - a layer series (aka vertical profile) of size distributions</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#examples">Examples</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="notebooks/aerosols_sizedistribution_SizeDist.html">SizeDist (a single size distribution)</a></li>
+<li class="toctree-l3"><a class="reference internal" href="notebooks/aerosols_sizedistribution_SizeDist_TS.html">SizeDist_TS (a time series of size distributions)</a></li>
+<li class="toctree-l3"><a class="reference internal" href="notebooks/aerosols_sizedistribution_SizeDist_LS.html">SizeDist_LS - a layer series (aka vertical profile) of size distributions</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="#module-atmPy.aerosols.size_distribution.sizedistribution">Module Overview</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#atmPy.aerosols.size_distribution.sizedistribution.SizeDist"><code class="docutils literal notranslate"><span class="pre">SizeDist</span></code></a><ul>
+<li class="toctree-l4"><a class="reference internal" href="#atmPy.aerosols.size_distribution.sizedistribution.SizeDist.DEPRECATEDoptical_properties"><code class="docutils literal notranslate"><span class="pre">SizeDist.DEPRECATEDoptical_properties</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#atmPy.aerosols.size_distribution.sizedistribution.SizeDist.bincenters"><code class="docutils literal notranslate"><span class="pre">SizeDist.bincenters</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#atmPy.aerosols.size_distribution.sizedistribution.SizeDist.bins"><code class="docutils literal notranslate"><span class="pre">SizeDist.bins</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#atmPy.aerosols.size_distribution.sizedistribution.SizeDist.binwidth"><code class="docutils literal notranslate"><span class="pre">SizeDist.binwidth</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#atmPy.aerosols.size_distribution.sizedistribution.SizeDist.convert2dNdDp"><code class="docutils literal notranslate"><span class="pre">SizeDist.convert2dNdDp()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#atmPy.aerosols.size_distribution.sizedistribution.SizeDist.convert2dNdlogDp"><code class="docutils literal notranslate"><span class="pre">SizeDist.convert2dNdlogDp()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#atmPy.aerosols.size_distribution.sizedistribution.SizeDist.convert2dSdDp"><code class="docutils literal notranslate"><span class="pre">SizeDist.convert2dSdDp()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#atmPy.aerosols.size_distribution.sizedistribution.SizeDist.convert2dSdlogDp"><code class="docutils literal notranslate"><span class="pre">SizeDist.convert2dSdlogDp()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#atmPy.aerosols.size_distribution.sizedistribution.SizeDist.convert2dVdDp"><code class="docutils literal notranslate"><span class="pre">SizeDist.convert2dVdDp()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#atmPy.aerosols.size_distribution.sizedistribution.SizeDist.convert2dVdlogDp"><code class="docutils literal notranslate"><span class="pre">SizeDist.convert2dVdlogDp()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#atmPy.aerosols.size_distribution.sizedistribution.SizeDist.convert2numberconcentration"><code class="docutils literal notranslate"><span class="pre">SizeDist.convert2numberconcentration()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#atmPy.aerosols.size_distribution.sizedistribution.SizeDist.copy"><code class="docutils literal notranslate"><span class="pre">SizeDist.copy()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#atmPy.aerosols.size_distribution.sizedistribution.SizeDist.correct4ambient_LFE_tmp_difference"><code class="docutils literal notranslate"><span class="pre">SizeDist.correct4ambient_LFE_tmp_difference()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#atmPy.aerosols.size_distribution.sizedistribution.SizeDist.correct4flowrate"><code class="docutils literal notranslate"><span class="pre">SizeDist.correct4flowrate()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#atmPy.aerosols.size_distribution.sizedistribution.SizeDist.data"><code class="docutils literal notranslate"><span class="pre">SizeDist.data</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#atmPy.aerosols.size_distribution.sizedistribution.SizeDist.extend_bin_range"><code class="docutils literal notranslate"><span class="pre">SizeDist.extend_bin_range()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#atmPy.aerosols.size_distribution.sizedistribution.SizeDist.extrapolate_size_dist"><code class="docutils literal notranslate"><span class="pre">SizeDist.extrapolate_size_dist()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#atmPy.aerosols.size_distribution.sizedistribution.SizeDist.fillGaps"><code class="docutils literal notranslate"><span class="pre">SizeDist.fillGaps()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#atmPy.aerosols.size_distribution.sizedistribution.SizeDist.grow_sizedistribution"><code class="docutils literal notranslate"><span class="pre">SizeDist.grow_sizedistribution()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#atmPy.aerosols.size_distribution.sizedistribution.SizeDist.housekeeping"><code class="docutils literal notranslate"><span class="pre">SizeDist.housekeeping</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#atmPy.aerosols.size_distribution.sizedistribution.SizeDist.hygroscopicity"><code class="docutils literal notranslate"><span class="pre">SizeDist.hygroscopicity</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#atmPy.aerosols.size_distribution.sizedistribution.SizeDist.mean_diameter_geometric"><code class="docutils literal notranslate"><span class="pre">SizeDist.mean_diameter_geometric</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#atmPy.aerosols.size_distribution.sizedistribution.SizeDist.mode_analysis"><code class="docutils literal notranslate"><span class="pre">SizeDist.mode_analysis</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#atmPy.aerosols.size_distribution.sizedistribution.SizeDist.normal_distribution_fits"><code class="docutils literal notranslate"><span class="pre">SizeDist.normal_distribution_fits</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#atmPy.aerosols.size_distribution.sizedistribution.SizeDist.optical_properties"><code class="docutils literal notranslate"><span class="pre">SizeDist.optical_properties</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#atmPy.aerosols.size_distribution.sizedistribution.SizeDist.particle_mass_concentration"><code class="docutils literal notranslate"><span class="pre">SizeDist.particle_mass_concentration</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#atmPy.aerosols.size_distribution.sizedistribution.SizeDist.particle_mass_mixing_ratio"><code class="docutils literal notranslate"><span class="pre">SizeDist.particle_mass_mixing_ratio</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#atmPy.aerosols.size_distribution.sizedistribution.SizeDist.particle_mean_diameter"><code class="docutils literal notranslate"><span class="pre">SizeDist.particle_mean_diameter</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#atmPy.aerosols.size_distribution.sizedistribution.SizeDist.particle_number_concentration"><code class="docutils literal notranslate"><span class="pre">SizeDist.particle_number_concentration</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#atmPy.aerosols.size_distribution.sizedistribution.SizeDist.particle_number_mixing_ratio"><code class="docutils literal notranslate"><span class="pre">SizeDist.particle_number_mixing_ratio</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#atmPy.aerosols.size_distribution.sizedistribution.SizeDist.particle_surface_concentration"><code class="docutils literal notranslate"><span class="pre">SizeDist.particle_surface_concentration</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#atmPy.aerosols.size_distribution.sizedistribution.SizeDist.particle_volume_concentration"><code class="docutils literal notranslate"><span class="pre">SizeDist.particle_volume_concentration</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#atmPy.aerosols.size_distribution.sizedistribution.SizeDist.plot"><code class="docutils literal notranslate"><span class="pre">SizeDist.plot()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#atmPy.aerosols.size_distribution.sizedistribution.SizeDist.re_bin"><code class="docutils literal notranslate"><span class="pre">SizeDist.re_bin()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#atmPy.aerosols.size_distribution.sizedistribution.SizeDist.reduce2temp_press_ambient"><code class="docutils literal notranslate"><span class="pre">SizeDist.reduce2temp_press_ambient()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#atmPy.aerosols.size_distribution.sizedistribution.SizeDist.reduce2temp_press_standard"><code class="docutils literal notranslate"><span class="pre">SizeDist.reduce2temp_press_standard()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#atmPy.aerosols.size_distribution.sizedistribution.SizeDist.save_csv"><code class="docutils literal notranslate"><span class="pre">SizeDist.save_csv()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#atmPy.aerosols.size_distribution.sizedistribution.SizeDist.save_hdf"><code class="docutils literal notranslate"><span class="pre">SizeDist.save_hdf()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#atmPy.aerosols.size_distribution.sizedistribution.SizeDist.save_netcdf"><code class="docutils literal notranslate"><span class="pre">SizeDist.save_netcdf()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#atmPy.aerosols.size_distribution.sizedistribution.SizeDist.submicron_volume_ratio"><code class="docutils literal notranslate"><span class="pre">SizeDist.submicron_volume_ratio</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#atmPy.aerosols.size_distribution.sizedistribution.SizeDist.sup_optical_properties_wavelength"><code class="docutils literal notranslate"><span class="pre">SizeDist.sup_optical_properties_wavelength</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#atmPy.aerosols.size_distribution.sizedistribution.SizeDist.zoom_diameter"><code class="docutils literal notranslate"><span class="pre">SizeDist.zoom_diameter()</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="#atmPy.aerosols.size_distribution.sizedistribution.SizeDist_LS"><code class="docutils literal notranslate"><span class="pre">SizeDist_LS</span></code></a><ul>
+<li class="toctree-l4"><a class="reference internal" href="#atmPy.aerosols.size_distribution.sizedistribution.SizeDist_LS.add_layer"><code class="docutils literal notranslate"><span class="pre">SizeDist_LS.add_layer()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#atmPy.aerosols.size_distribution.sizedistribution.SizeDist_LS.average_overAllAltitudes"><code class="docutils literal notranslate"><span class="pre">SizeDist_LS.average_overAllAltitudes()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#atmPy.aerosols.size_distribution.sizedistribution.SizeDist_LS.average_overAltitude"><code class="docutils literal notranslate"><span class="pre">SizeDist_LS.average_overAltitude()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#atmPy.aerosols.size_distribution.sizedistribution.SizeDist_LS.deprecated_apply_growth"><code class="docutils literal notranslate"><span class="pre">SizeDist_LS.deprecated_apply_growth()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#atmPy.aerosols.size_distribution.sizedistribution.SizeDist_LS.deprecated_apply_hygro_growth"><code class="docutils literal notranslate"><span class="pre">SizeDist_LS.deprecated_apply_hygro_growth()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#atmPy.aerosols.size_distribution.sizedistribution.SizeDist_LS.deprecated_calculate_angstromex"><code class="docutils literal notranslate"><span class="pre">SizeDist_LS.deprecated_calculate_angstromex()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#atmPy.aerosols.size_distribution.sizedistribution.SizeDist_LS.fit_normal"><code class="docutils literal notranslate"><span class="pre">SizeDist_LS.fit_normal()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#atmPy.aerosols.size_distribution.sizedistribution.SizeDist_LS.grow_sizedistribution"><code class="docutils literal notranslate"><span class="pre">SizeDist_LS.grow_sizedistribution()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#atmPy.aerosols.size_distribution.sizedistribution.SizeDist_LS.housekeeping"><code class="docutils literal notranslate"><span class="pre">SizeDist_LS.housekeeping</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#atmPy.aerosols.size_distribution.sizedistribution.SizeDist_LS.layerbounderies"><code class="docutils literal notranslate"><span class="pre">SizeDist_LS.layerbounderies</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#atmPy.aerosols.size_distribution.sizedistribution.SizeDist_LS.layercenters"><code class="docutils literal notranslate"><span class="pre">SizeDist_LS.layercenters</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#atmPy.aerosols.size_distribution.sizedistribution.SizeDist_LS.optical_properties"><code class="docutils literal notranslate"><span class="pre">SizeDist_LS.optical_properties</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#atmPy.aerosols.size_distribution.sizedistribution.SizeDist_LS.particle_mass_concentration"><code class="docutils literal notranslate"><span class="pre">SizeDist_LS.particle_mass_concentration</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#atmPy.aerosols.size_distribution.sizedistribution.SizeDist_LS.particle_mass_mixing_ratio"><code class="docutils literal notranslate"><span class="pre">SizeDist_LS.particle_mass_mixing_ratio</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#atmPy.aerosols.size_distribution.sizedistribution.SizeDist_LS.particle_number_concentration"><code class="docutils literal notranslate"><span class="pre">SizeDist_LS.particle_number_concentration</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#atmPy.aerosols.size_distribution.sizedistribution.SizeDist_LS.particle_number_mixing_ratio"><code class="docutils literal notranslate"><span class="pre">SizeDist_LS.particle_number_mixing_ratio</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#atmPy.aerosols.size_distribution.sizedistribution.SizeDist_LS.plot"><code class="docutils literal notranslate"><span class="pre">SizeDist_LS.plot()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#atmPy.aerosols.size_distribution.sizedistribution.SizeDist_LS.plot_angstromex_LS"><code class="docutils literal notranslate"><span class="pre">SizeDist_LS.plot_angstromex_LS()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#atmPy.aerosols.size_distribution.sizedistribution.SizeDist_LS.plot_angstromex_fit"><code class="docutils literal notranslate"><span class="pre">SizeDist_LS.plot_angstromex_fit()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#atmPy.aerosols.size_distribution.sizedistribution.SizeDist_LS.plot_eachLayer"><code class="docutils literal notranslate"><span class="pre">SizeDist_LS.plot_eachLayer()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#atmPy.aerosols.size_distribution.sizedistribution.SizeDist_LS.plot_overview"><code class="docutils literal notranslate"><span class="pre">SizeDist_LS.plot_overview()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#atmPy.aerosols.size_distribution.sizedistribution.SizeDist_LS.zoom_altitude"><code class="docutils literal notranslate"><span class="pre">SizeDist_LS.zoom_altitude()</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="#atmPy.aerosols.size_distribution.sizedistribution.SizeDist_TS"><code class="docutils literal notranslate"><span class="pre">SizeDist_TS</span></code></a><ul>
+<li class="toctree-l4"><a class="reference internal" href="#atmPy.aerosols.size_distribution.sizedistribution.SizeDist_TS.average_overAllTime"><code class="docutils literal notranslate"><span class="pre">SizeDist_TS.average_overAllTime()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#atmPy.aerosols.size_distribution.sizedistribution.SizeDist_TS.average_time"><code class="docutils literal notranslate"><span class="pre">SizeDist_TS.average_time()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#atmPy.aerosols.size_distribution.sizedistribution.SizeDist_TS.close_gaps"><code class="docutils literal notranslate"><span class="pre">SizeDist_TS.close_gaps()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#atmPy.aerosols.size_distribution.sizedistribution.SizeDist_TS.convert2verticalprofile"><code class="docutils literal notranslate"><span class="pre">SizeDist_TS.convert2verticalprofile()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#atmPy.aerosols.size_distribution.sizedistribution.SizeDist_TS.deprecated_apply_growth"><code class="docutils literal notranslate"><span class="pre">SizeDist_TS.deprecated_apply_growth()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#atmPy.aerosols.size_distribution.sizedistribution.SizeDist_TS.deprecated_apply_hygro_growth"><code class="docutils literal notranslate"><span class="pre">SizeDist_TS.deprecated_apply_hygro_growth()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#atmPy.aerosols.size_distribution.sizedistribution.SizeDist_TS.detect_gaps"><code class="docutils literal notranslate"><span class="pre">SizeDist_TS.detect_gaps()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#atmPy.aerosols.size_distribution.sizedistribution.SizeDist_TS.dprecated_convert2layerseries"><code class="docutils literal notranslate"><span class="pre">SizeDist_TS.dprecated_convert2layerseries()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#atmPy.aerosols.size_distribution.sizedistribution.SizeDist_TS.fill_gaps_with"><code class="docutils literal notranslate"><span class="pre">SizeDist_TS.fill_gaps_with()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#atmPy.aerosols.size_distribution.sizedistribution.SizeDist_TS.fit_normal_deprecated"><code class="docutils literal notranslate"><span class="pre">SizeDist_TS.fit_normal_deprecated()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#atmPy.aerosols.size_distribution.sizedistribution.SizeDist_TS.get_timespan"><code class="docutils literal notranslate"><span class="pre">SizeDist_TS.get_timespan()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#atmPy.aerosols.size_distribution.sizedistribution.SizeDist_TS.grow_sizedistribution"><code class="docutils literal notranslate"><span class="pre">SizeDist_TS.grow_sizedistribution()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#atmPy.aerosols.size_distribution.sizedistribution.SizeDist_TS.optical_properties"><code class="docutils literal notranslate"><span class="pre">SizeDist_TS.optical_properties</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#atmPy.aerosols.size_distribution.sizedistribution.SizeDist_TS.particle_mass_concentration"><code class="docutils literal notranslate"><span class="pre">SizeDist_TS.particle_mass_concentration</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#atmPy.aerosols.size_distribution.sizedistribution.SizeDist_TS.particle_mass_mixing_ratio"><code class="docutils literal notranslate"><span class="pre">SizeDist_TS.particle_mass_mixing_ratio</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#atmPy.aerosols.size_distribution.sizedistribution.SizeDist_TS.particle_mean_diameter"><code class="docutils literal notranslate"><span class="pre">SizeDist_TS.particle_mean_diameter</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#atmPy.aerosols.size_distribution.sizedistribution.SizeDist_TS.particle_number_concentration"><code class="docutils literal notranslate"><span class="pre">SizeDist_TS.particle_number_concentration</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#atmPy.aerosols.size_distribution.sizedistribution.SizeDist_TS.particle_number_mixing_ratio"><code class="docutils literal notranslate"><span class="pre">SizeDist_TS.particle_number_mixing_ratio</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#atmPy.aerosols.size_distribution.sizedistribution.SizeDist_TS.plot"><code class="docutils literal notranslate"><span class="pre">SizeDist_TS.plot()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#atmPy.aerosols.size_distribution.sizedistribution.SizeDist_TS.zoom_time"><code class="docutils literal notranslate"><span class="pre">SizeDist_TS.zoom_time()</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="#atmPy.aerosols.size_distribution.sizedistribution.align2sizedist"><code class="docutils literal notranslate"><span class="pre">align2sizedist()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="#atmPy.aerosols.size_distribution.sizedistribution.fit_normal_distribution2sizedist"><code class="docutils literal notranslate"><span class="pre">fit_normal_distribution2sizedist()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="#atmPy.aerosols.size_distribution.sizedistribution.generate_aerosolLayer"><code class="docutils literal notranslate"><span class="pre">generate_aerosolLayer()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="#atmPy.aerosols.size_distribution.sizedistribution.get_label"><code class="docutils literal notranslate"><span class="pre">get_label()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="#atmPy.aerosols.size_distribution.sizedistribution.get_settings"><code class="docutils literal notranslate"><span class="pre">get_settings()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="#atmPy.aerosols.size_distribution.sizedistribution.merge_size_distributions"><code class="docutils literal notranslate"><span class="pre">merge_size_distributions()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="#atmPy.aerosols.size_distribution.sizedistribution.open_csv"><code class="docutils literal notranslate"><span class="pre">open_csv()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="#atmPy.aerosols.size_distribution.sizedistribution.open_netcdf"><code class="docutils literal notranslate"><span class="pre">open_netcdf()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="#atmPy.aerosols.size_distribution.sizedistribution.save_netcdf"><code class="docutils literal notranslate"><span class="pre">save_netcdf()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="#atmPy.aerosols.size_distribution.sizedistribution.simulate_sizedistribution"><code class="docutils literal notranslate"><span class="pre">simulate_sizedistribution()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="#atmPy.aerosols.size_distribution.sizedistribution.simulate_sizedistribution_layerseries"><code class="docutils literal notranslate"><span class="pre">simulate_sizedistribution_layerseries()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="#atmPy.aerosols.size_distribution.sizedistribution.simulate_sizedistribution_timeseries"><code class="docutils literal notranslate"><span class="pre">simulate_sizedistribution_timeseries()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="#atmPy.aerosols.size_distribution.sizedistribution.test_ext_coeff_vertical_profile"><code class="docutils literal notranslate"><span class="pre">test_ext_coeff_vertical_profile()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="#atmPy.aerosols.size_distribution.sizedistribution.test_generate_numberConcentration"><code class="docutils literal notranslate"><span class="pre">test_generate_numberConcentration()</span></code></a></li>
+</ul>
+</li>
 </ul>
 </li>
 </ul>
@@ -88,6 +201,8 @@ properties based on their size distribution. Size distributions are treated in t
 simple one dimensional (SizeDist), size distribution timeseries (SizeDist_TS),
 or size distribution vertical profile (SizeDist_LS). The latter are a subclasses of the first and therefore inherit most properties, but in addition have tools specific to the representation.
 Explore the examples below to learn about some basics.</p>
+<section id="examples">
+<h2>Examples<a class="headerlink" href="#examples" title="Link to this heading"></a></h2>
 <div class="toctree-wrapper compound">
 <ul>
 <li class="toctree-l1"><a class="reference internal" href="notebooks/aerosols_sizedistribution_SizeDist.html">SizeDist (a single size distribution)</a></li>
@@ -95,6 +210,1010 @@ Explore the examples below to learn about some basics.</p>
 <li class="toctree-l1"><a class="reference internal" href="notebooks/aerosols_sizedistribution_SizeDist_LS.html">SizeDist_LS - a layer series (aka vertical profile) of size distributions</a></li>
 </ul>
 </div>
+</section>
+<section id="module-atmPy.aerosols.size_distribution.sizedistribution">
+<span id="module-overview"></span><h2>Module Overview<a class="headerlink" href="#module-atmPy.aerosols.size_distribution.sizedistribution" title="Link to this heading"></a></h2>
+<dl class="py class">
+<dt class="sig sig-object py" id="atmPy.aerosols.size_distribution.sizedistribution.SizeDist">
+<em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">atmPy.aerosols.size_distribution.sizedistribution.</span></span><span class="sig-name descname"><span class="pre">SizeDist</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">data</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">bins</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">distType</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#atmPy.aerosols.size_distribution.sizedistribution.SizeDist" title="Link to this definition"></a></dt>
+<dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">object</span></code></p>
+<p>Object defining a log normal aerosol size distribution</p>
+<section id="arguments">
+<h3>Arguments<a class="headerlink" href="#arguments" title="Link to this heading"></a></h3>
+<dl class="simple">
+<dt>bincenters:         NumPy array, optional</dt><dd><p>this is if you actually want to pass the bincenters, if False they will be calculated</p>
+</dd>
+<dt>distributionType:</dt><dd><p>log normal: ‘dNdlogDp’,’dSdlogDp’,’dVdlogDp’
+natural: ‘dNdDp’,’dSdDp’,’dVdDp’
+number: ‘dNdlogDp’, ‘dNdDp’, ‘numberConcentration’
+surface: ‘dSdlogDp’,’dSdDp’
+volume: ‘dVdlogDp’,’dVdDp’</p>
+</dd>
+<dt>data:   pandas dataFrame, optional</dt><dd><dl class="simple">
+<dt>None, will generate an empty pandas data frame with columns defined by bins</dt><dd><ul class="simple">
+<li><dl class="simple">
+<dt>pandas dataFrame with</dt><dd><ul>
+<li><p>column names (each name is something like this: ‘150-200’)</p></li>
+<li><p>index is time (at some point this should be arbitrary, convertable to altitude for example?)</p></li>
+</ul>
+</dd>
+</dl>
+</li>
+</ul>
+</dd>
+</dl>
+</dd>
+<dt>unit conventions:</dt><dd><ul class="simple">
+<li><p>diameters: nanometers</p></li>
+<li><p>flowrates: cc (otherwise, axis label need to be adjusted an caution needs to be taken when dealing is AOD)</p></li>
+</ul>
+</dd>
+</dl>
+</section>
+<section id="notes">
+<h3>Notes<a class="headerlink" href="#notes" title="Link to this heading"></a></h3>
+<ul class="simple">
+<li><p>Diameters are specified in nanometers</p></li>
+</ul>
+<dl class="py property">
+<dt class="sig sig-object py" id="atmPy.aerosols.size_distribution.sizedistribution.SizeDist.DEPRECATEDoptical_properties">
+<em class="property"><span class="pre">property</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">DEPRECATEDoptical_properties</span></span><a class="headerlink" href="#atmPy.aerosols.size_distribution.sizedistribution.SizeDist.DEPRECATEDoptical_properties" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py property">
+<dt class="sig sig-object py" id="atmPy.aerosols.size_distribution.sizedistribution.SizeDist.bincenters">
+<em class="property"><span class="pre">property</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">bincenters</span></span><a class="headerlink" href="#atmPy.aerosols.size_distribution.sizedistribution.SizeDist.bincenters" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py property">
+<dt class="sig sig-object py" id="atmPy.aerosols.size_distribution.sizedistribution.SizeDist.bins">
+<em class="property"><span class="pre">property</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">bins</span></span><a class="headerlink" href="#atmPy.aerosols.size_distribution.sizedistribution.SizeDist.bins" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py property">
+<dt class="sig sig-object py" id="atmPy.aerosols.size_distribution.sizedistribution.SizeDist.binwidth">
+<em class="property"><span class="pre">property</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">binwidth</span></span><a class="headerlink" href="#atmPy.aerosols.size_distribution.sizedistribution.SizeDist.binwidth" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="atmPy.aerosols.size_distribution.sizedistribution.SizeDist.convert2dNdDp">
+<span class="sig-name descname"><span class="pre">convert2dNdDp</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#atmPy.aerosols.size_distribution.sizedistribution.SizeDist.convert2dNdDp" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="atmPy.aerosols.size_distribution.sizedistribution.SizeDist.convert2dNdlogDp">
+<span class="sig-name descname"><span class="pre">convert2dNdlogDp</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#atmPy.aerosols.size_distribution.sizedistribution.SizeDist.convert2dNdlogDp" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="atmPy.aerosols.size_distribution.sizedistribution.SizeDist.convert2dSdDp">
+<span class="sig-name descname"><span class="pre">convert2dSdDp</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#atmPy.aerosols.size_distribution.sizedistribution.SizeDist.convert2dSdDp" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="atmPy.aerosols.size_distribution.sizedistribution.SizeDist.convert2dSdlogDp">
+<span class="sig-name descname"><span class="pre">convert2dSdlogDp</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#atmPy.aerosols.size_distribution.sizedistribution.SizeDist.convert2dSdlogDp" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="atmPy.aerosols.size_distribution.sizedistribution.SizeDist.convert2dVdDp">
+<span class="sig-name descname"><span class="pre">convert2dVdDp</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#atmPy.aerosols.size_distribution.sizedistribution.SizeDist.convert2dVdDp" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="atmPy.aerosols.size_distribution.sizedistribution.SizeDist.convert2dVdlogDp">
+<span class="sig-name descname"><span class="pre">convert2dVdlogDp</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#atmPy.aerosols.size_distribution.sizedistribution.SizeDist.convert2dVdlogDp" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="atmPy.aerosols.size_distribution.sizedistribution.SizeDist.convert2numberconcentration">
+<span class="sig-name descname"><span class="pre">convert2numberconcentration</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#atmPy.aerosols.size_distribution.sizedistribution.SizeDist.convert2numberconcentration" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="atmPy.aerosols.size_distribution.sizedistribution.SizeDist.copy">
+<span class="sig-name descname"><span class="pre">copy</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#atmPy.aerosols.size_distribution.sizedistribution.SizeDist.copy" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="atmPy.aerosols.size_distribution.sizedistribution.SizeDist.correct4ambient_LFE_tmp_difference">
+<span class="sig-name descname"><span class="pre">correct4ambient_LFE_tmp_difference</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#atmPy.aerosols.size_distribution.sizedistribution.SizeDist.correct4ambient_LFE_tmp_difference" title="Link to this definition"></a></dt>
+<dd><p>corrects for temperature differences between ambient and instrument.
+The Problem is that the instrument samples at a constant flow at the temperature of
+the laminar flow element not the ambient temperatrue … this corrects for it
+Make sure your housekeeping has a column named Temperature and one named Temperature_instrument</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="atmPy.aerosols.size_distribution.sizedistribution.SizeDist.correct4flowrate">
+<span class="sig-name descname"><span class="pre">correct4flowrate</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">flowrate</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#atmPy.aerosols.size_distribution.sizedistribution.SizeDist.correct4flowrate" title="Link to this definition"></a></dt>
+<dd><p>This simply normalizes to to provided flow rate. In principle this could be the flow rate reported in the
+the housekeeping file … and in other instruments then POPS it probably shoud… However in POPS this value is
+questionable and the set_point is a more usefull value</p>
+</dd></dl>
+
+<dl class="py property">
+<dt class="sig sig-object py" id="atmPy.aerosols.size_distribution.sizedistribution.SizeDist.data">
+<em class="property"><span class="pre">property</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">data</span></span><a class="headerlink" href="#atmPy.aerosols.size_distribution.sizedistribution.SizeDist.data" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="atmPy.aerosols.size_distribution.sizedistribution.SizeDist.extend_bin_range">
+<span class="sig-name descname"><span class="pre">extend_bin_range</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">lower</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">upper</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">raise_uneven_bin_width_error</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">True</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">fill_value</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">0</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#atmPy.aerosols.size_distribution.sizedistribution.SizeDist.extend_bin_range" title="Link to this definition"></a></dt>
+<dd><p>Extends the bin range. This will only work if bins are log-equally spaced. Only tested for SizeDist (not for TS or LS). Currently works on the small
+diameter side only … easy programming will allow for larger diameters too</p>
+<section id="parameters">
+<h4>Parameters<a class="headerlink" href="#parameters" title="Link to this heading"></a></h4>
+<dl class="simple">
+<dt>lower: float</dt><dd><p>The new lower diameter limit.</p>
+</dd>
+</dl>
+<p>upper:</p>
+</section>
+<section id="returns">
+<h4>Returns<a class="headerlink" href="#returns" title="Link to this heading"></a></h4>
+<p>size distribution instance with extra bins. Data filled with nan.</p>
+</section>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="atmPy.aerosols.size_distribution.sizedistribution.SizeDist.extrapolate_size_dist">
+<span class="sig-name descname"><span class="pre">extrapolate_size_dist</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">newlimit</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#atmPy.aerosols.size_distribution.sizedistribution.SizeDist.extrapolate_size_dist" title="Link to this definition"></a></dt>
+<dd><p>Extrapolates the size distribution range assuming a nomal distributed aerosol mode. This will only work if bins are log-equally spaced. Only tested for SizeDist (not for TS or LS). Currently works on the small
+diameter side only … easy programming will allow for larger diameters too</p>
+<section id="id1">
+<h4>Parameters<a class="headerlink" href="#id1" title="Link to this heading"></a></h4>
+<dl class="simple">
+<dt>newlimit: float</dt><dd><p>The new lower diameter limit.</p>
+</dd>
+</dl>
+</section>
+<section id="id2">
+<h4>Returns<a class="headerlink" href="#id2" title="Link to this heading"></a></h4>
+<p>size distribution instance with extra bins. Data filled with results from fitting with normal distribution.</p>
+</section>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="atmPy.aerosols.size_distribution.sizedistribution.SizeDist.fillGaps">
+<span class="sig-name descname"><span class="pre">fillGaps</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">scale</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">1.1</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#atmPy.aerosols.size_distribution.sizedistribution.SizeDist.fillGaps" title="Link to this definition"></a></dt>
+<dd><p>Note: This function is purly esteticall and should be removed since it can also create errors …
+Finds gaps in dataset (e.g. when instrument was shut of) and fills them with zeros.</p>
+<p>It adds one line of zeros to the beginning and one to the end of the gap. 
+Therefore the gap is visible as zeros instead of the interpolated values</p>
+<section id="id3">
+<h4>Parameters<a class="headerlink" href="#id3" title="Link to this heading"></a></h4>
+<dl class="simple">
+<dt>scale:  float, optional</dt><dd><p>This is a scale.</p>
+</dd>
+</dl>
+</section>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="atmPy.aerosols.size_distribution.sizedistribution.SizeDist.grow_sizedistribution">
+<span class="sig-name descname"><span class="pre">grow_sizedistribution</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">growthfactor</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">extend_diameter_limits</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">raise_particle_loss_error</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">True</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#atmPy.aerosols.size_distribution.sizedistribution.SizeDist.grow_sizedistribution" title="Link to this definition"></a></dt>
+<dd><p>Shift the bins to simulate growth. But than rebins to the original bins.</p>
+<section id="id4">
+<h4>Parameters<a class="headerlink" href="#id4" title="Link to this heading"></a></h4>
+<dl class="simple">
+<dt>growthfactor<span class="classifier">TYPE</span></dt><dd><p>DESCRIPTION.</p>
+</dd>
+<dt>extend_diameter_limits<span class="classifier">TYPE, optional</span></dt><dd><p>DESCRIPTION. The default is False.</p>
+</dd>
+<dt>raise_particle_loss_error<span class="classifier">TYPE, optional</span></dt><dd><p>DESCRIPTION. The default is True.</p>
+</dd>
+</dl>
+</section>
+<section id="id5">
+<h4>Returns<a class="headerlink" href="#id5" title="Link to this heading"></a></h4>
+<dl class="simple">
+<dt>dist<span class="classifier">TYPE</span></dt><dd><p>DESCRIPTION.</p>
+</dd>
+</dl>
+</section>
+</dd></dl>
+
+<dl class="py property">
+<dt class="sig sig-object py" id="atmPy.aerosols.size_distribution.sizedistribution.SizeDist.housekeeping">
+<em class="property"><span class="pre">property</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">housekeeping</span></span><a class="headerlink" href="#atmPy.aerosols.size_distribution.sizedistribution.SizeDist.housekeeping" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py property">
+<dt class="sig sig-object py" id="atmPy.aerosols.size_distribution.sizedistribution.SizeDist.hygroscopicity">
+<em class="property"><span class="pre">property</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">hygroscopicity</span></span><a class="headerlink" href="#atmPy.aerosols.size_distribution.sizedistribution.SizeDist.hygroscopicity" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py property">
+<dt class="sig sig-object py" id="atmPy.aerosols.size_distribution.sizedistribution.SizeDist.mean_diameter_geometric">
+<em class="property"><span class="pre">property</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">mean_diameter_geometric</span></span><a class="headerlink" href="#atmPy.aerosols.size_distribution.sizedistribution.SizeDist.mean_diameter_geometric" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py property">
+<dt class="sig sig-object py" id="atmPy.aerosols.size_distribution.sizedistribution.SizeDist.mode_analysis">
+<em class="property"><span class="pre">property</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">mode_analysis</span></span><a class="headerlink" href="#atmPy.aerosols.size_distribution.sizedistribution.SizeDist.mode_analysis" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py property">
+<dt class="sig sig-object py" id="atmPy.aerosols.size_distribution.sizedistribution.SizeDist.normal_distribution_fits">
+<em class="property"><span class="pre">property</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">normal_distribution_fits</span></span><a class="headerlink" href="#atmPy.aerosols.size_distribution.sizedistribution.SizeDist.normal_distribution_fits" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py property">
+<dt class="sig sig-object py" id="atmPy.aerosols.size_distribution.sizedistribution.SizeDist.optical_properties">
+<em class="property"><span class="pre">property</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">optical_properties</span></span><a class="headerlink" href="#atmPy.aerosols.size_distribution.sizedistribution.SizeDist.optical_properties" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py property">
+<dt class="sig sig-object py" id="atmPy.aerosols.size_distribution.sizedistribution.SizeDist.particle_mass_concentration">
+<em class="property"><span class="pre">property</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">particle_mass_concentration</span></span><a class="headerlink" href="#atmPy.aerosols.size_distribution.sizedistribution.SizeDist.particle_mass_concentration" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py property">
+<dt class="sig sig-object py" id="atmPy.aerosols.size_distribution.sizedistribution.SizeDist.particle_mass_mixing_ratio">
+<em class="property"><span class="pre">property</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">particle_mass_mixing_ratio</span></span><a class="headerlink" href="#atmPy.aerosols.size_distribution.sizedistribution.SizeDist.particle_mass_mixing_ratio" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py property">
+<dt class="sig sig-object py" id="atmPy.aerosols.size_distribution.sizedistribution.SizeDist.particle_mean_diameter">
+<em class="property"><span class="pre">property</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">particle_mean_diameter</span></span><a class="headerlink" href="#atmPy.aerosols.size_distribution.sizedistribution.SizeDist.particle_mean_diameter" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py property">
+<dt class="sig sig-object py" id="atmPy.aerosols.size_distribution.sizedistribution.SizeDist.particle_number_concentration">
+<em class="property"><span class="pre">property</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">particle_number_concentration</span></span><a class="headerlink" href="#atmPy.aerosols.size_distribution.sizedistribution.SizeDist.particle_number_concentration" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py property">
+<dt class="sig sig-object py" id="atmPy.aerosols.size_distribution.sizedistribution.SizeDist.particle_number_mixing_ratio">
+<em class="property"><span class="pre">property</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">particle_number_mixing_ratio</span></span><a class="headerlink" href="#atmPy.aerosols.size_distribution.sizedistribution.SizeDist.particle_number_mixing_ratio" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py property">
+<dt class="sig sig-object py" id="atmPy.aerosols.size_distribution.sizedistribution.SizeDist.particle_surface_concentration">
+<em class="property"><span class="pre">property</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">particle_surface_concentration</span></span><a class="headerlink" href="#atmPy.aerosols.size_distribution.sizedistribution.SizeDist.particle_surface_concentration" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py property">
+<dt class="sig sig-object py" id="atmPy.aerosols.size_distribution.sizedistribution.SizeDist.particle_volume_concentration">
+<em class="property"><span class="pre">property</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">particle_volume_concentration</span></span><a class="headerlink" href="#atmPy.aerosols.size_distribution.sizedistribution.SizeDist.particle_volume_concentration" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="atmPy.aerosols.size_distribution.sizedistribution.SizeDist.plot">
+<span class="sig-name descname"><span class="pre">plot</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">showMinorTickLabels</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">True</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">removeTickLabels</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">['700',</span> <span class="pre">'900']</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">fit_res</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">True</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">fit_res_scale</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'log'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">ax</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#atmPy.aerosols.size_distribution.sizedistribution.SizeDist.plot" title="Link to this definition"></a></dt>
+<dd><p>Plots and returns f,a (figure, axis).</p>
+<section id="id6">
+<h4>Arguments<a class="headerlink" href="#id6" title="Link to this heading"></a></h4>
+<dl class="simple">
+<dt>showMinorTickLabels: bool [True], optional</dt><dd><p>if minor tick labels are labled</p>
+</dd>
+<dt>removeTickLabels: list of string [“700”, “900”], optional</dt><dd><p>list of tick labels aught to be removed (in case there are overlapping)</p>
+</dd>
+<dt>fit_res: bool [True], optional</dt><dd><p>allows plotting of fitresults if fit_normal was previously executed</p>
+</dd>
+<dt>fit_res: string</dt><dd><p>If fit_normal was done using log = False, you want to set this to linear!</p>
+</dd>
+<dt>ax: axis object [None], optional</dt><dd><p>option to provide axis to plot on</p>
+</dd>
+</dl>
+</section>
+<section id="id7">
+<h4>Returns<a class="headerlink" href="#id7" title="Link to this heading"></a></h4>
+<p>Handles to the figure and axes of the figure.</p>
+</section>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="atmPy.aerosols.size_distribution.sizedistribution.SizeDist.re_bin">
+<span class="sig-name descname"><span class="pre">re_bin</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">number_of_bins</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">50</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">spaced</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'log'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">bins</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#atmPy.aerosols.size_distribution.sizedistribution.SizeDist.re_bin" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="atmPy.aerosols.size_distribution.sizedistribution.SizeDist.reduce2temp_press_ambient">
+<span class="sig-name descname"><span class="pre">reduce2temp_press_ambient</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">tmp_is</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'auto'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">tmp_is_column</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'Temperature_instrument'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">press_is_column</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'Pressure_Pa'</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#atmPy.aerosols.size_distribution.sizedistribution.SizeDist.reduce2temp_press_ambient" title="Link to this definition"></a></dt>
+<dd><p>This function corrects the particles concentrations to ambient conditions. This is necessary if the
+temperature of the instrument is different then ambient. When the instrument is adjusting the flow to a constant
+rate it will be at the instrument temperature not ambient -&gt; correction required
+tmp in C
+press in hPa</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="atmPy.aerosols.size_distribution.sizedistribution.SizeDist.reduce2temp_press_standard">
+<span class="sig-name descname"><span class="pre">reduce2temp_press_standard</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">tmp_is</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'auto'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">tmp_is_column</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'Temperature_instrument'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">press_is_column</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'Pressure_Pa'</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#atmPy.aerosols.size_distribution.sizedistribution.SizeDist.reduce2temp_press_standard" title="Link to this definition"></a></dt>
+<dd><p>tmp in C
+press in hPa</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="atmPy.aerosols.size_distribution.sizedistribution.SizeDist.save_csv">
+<span class="sig-name descname"><span class="pre">save_csv</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">fname</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">header</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">True</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#atmPy.aerosols.size_distribution.sizedistribution.SizeDist.save_csv" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="atmPy.aerosols.size_distribution.sizedistribution.SizeDist.save_hdf">
+<span class="sig-name descname"><span class="pre">save_hdf</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">hdf</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">variable_name</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">info</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">''</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">force</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#atmPy.aerosols.size_distribution.sizedistribution.SizeDist.save_hdf" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="atmPy.aerosols.size_distribution.sizedistribution.SizeDist.save_netcdf">
+<span class="sig-name descname"><span class="pre">save_netcdf</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">fname</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">housekeeping</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">True</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">value_added_products</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">True</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">binunit</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'nm'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">tags</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">[]</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">test</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#atmPy.aerosols.size_distribution.sizedistribution.SizeDist.save_netcdf" title="Link to this definition"></a></dt>
+<dd><p>Save to netCDF format</p>
+<section id="id8">
+<h4>Parameters<a class="headerlink" href="#id8" title="Link to this heading"></a></h4>
+<p>fname: str
+housekeeping: bool [True]</p>
+<blockquote>
+<div><p>If housekeeping is saved</p>
+</div></blockquote>
+<dl class="simple">
+<dt>value_added_products: bool [True]</dt><dd><p>If value added products (currently, norm_fitresults) are going to be saved</p>
+</dd>
+<dt>binunit: str</dt><dd><p>The units of the diameter of the binedges and centers</p>
+</dd>
+</dl>
+<p>tags: list
+test: bool</p>
+<blockquote>
+<div><p>If true the xarray.Dataset is not saved but retured instead.</p>
+</div></blockquote>
+</section>
+</dd></dl>
+
+<dl class="py property">
+<dt class="sig sig-object py" id="atmPy.aerosols.size_distribution.sizedistribution.SizeDist.submicron_volume_ratio">
+<em class="property"><span class="pre">property</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">submicron_volume_ratio</span></span><a class="headerlink" href="#atmPy.aerosols.size_distribution.sizedistribution.SizeDist.submicron_volume_ratio" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py property">
+<dt class="sig sig-object py" id="atmPy.aerosols.size_distribution.sizedistribution.SizeDist.sup_optical_properties_wavelength">
+<em class="property"><span class="pre">property</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">sup_optical_properties_wavelength</span></span><a class="headerlink" href="#atmPy.aerosols.size_distribution.sizedistribution.SizeDist.sup_optical_properties_wavelength" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="atmPy.aerosols.size_distribution.sizedistribution.SizeDist.zoom_diameter">
+<span class="sig-name descname"><span class="pre">zoom_diameter</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">start</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">end</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#atmPy.aerosols.size_distribution.sizedistribution.SizeDist.zoom_diameter" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+</section>
+</dd></dl>
+
+<dl class="py class">
+<dt class="sig sig-object py" id="atmPy.aerosols.size_distribution.sizedistribution.SizeDist_LS">
+<em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">atmPy.aerosols.size_distribution.sizedistribution.</span></span><span class="sig-name descname"><span class="pre">SizeDist_LS</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">data</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">bins</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">distributionType</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">layerbounderies</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#atmPy.aerosols.size_distribution.sizedistribution.SizeDist_LS" title="Link to this definition"></a></dt>
+<dd><p>Bases: <a class="reference internal" href="#atmPy.aerosols.size_distribution.sizedistribution.SizeDist" title="atmPy.aerosols.size_distribution.sizedistribution.SizeDist"><code class="xref py py-class docutils literal notranslate"><span class="pre">SizeDist</span></code></a></p>
+<section id="id9">
+<h3>Parameters<a class="headerlink" href="#id9" title="Link to this heading"></a></h3>
+<p>data:    pandas DataFrame …
+bins:    array
+distributionType:   str
+layerbounderies:    array shape(n_layers,2)</p>
+</section>
+<section id="old">
+<h3>OLD<a class="headerlink" href="#old" title="Link to this heading"></a></h3>
+<dl>
+<dt>data: pandas dataFrame with</dt><dd><blockquote>
+<div><ul class="simple">
+<li><p>column names (each name is something like this: ‘150-200’)</p></li>
+<li><p>altitude (at some point this should be arbitrary, convertable to altitude for example?)</p></li>
+</ul>
+</div></blockquote>
+<dl class="simple">
+<dt>unit conventions:</dt><dd><ul class="simple">
+<li><p>diameters: nanometers</p></li>
+<li><p>flowrates: cc (otherwise, axis label need to be adjusted an caution needs to be taken when dealing is AOD)</p></li>
+</ul>
+</dd>
+<dt>distributionType:  </dt><dd><p>log normal: ‘dNdlogDp’,’dSdlogDp’,’dVdlogDp’
+natural: ‘dNdDp’,’dSdDp’,’dVdDp’
+number: ‘dNdlogDp’, ‘dNdDp’, ‘numberConcentration’
+surface: ‘dSdlogDp’,’dSdDp’
+volume: ‘dVdlogDp’,’dVdDp’</p>
+</dd>
+</dl>
+</dd>
+</dl>
+<dl class="py method">
+<dt class="sig sig-object py" id="atmPy.aerosols.size_distribution.sizedistribution.SizeDist_LS.add_layer">
+<span class="sig-name descname"><span class="pre">add_layer</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">sd</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">layerboundery</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#atmPy.aerosols.size_distribution.sizedistribution.SizeDist_LS.add_layer" title="Link to this definition"></a></dt>
+<dd><p>Adds a sizedistribution instance to the layerseries.
+layerboundery</p>
+<section id="id10">
+<h4>Parameters<a class="headerlink" href="#id10" title="Link to this heading"></a></h4>
+<p>sd:
+layerboundary:</p>
+</section>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="atmPy.aerosols.size_distribution.sizedistribution.SizeDist_LS.average_overAllAltitudes">
+<span class="sig-name descname"><span class="pre">average_overAllAltitudes</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#atmPy.aerosols.size_distribution.sizedistribution.SizeDist_LS.average_overAllAltitudes" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="atmPy.aerosols.size_distribution.sizedistribution.SizeDist_LS.average_overAltitude">
+<span class="sig-name descname"><span class="pre">average_overAltitude</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">window</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'1S'</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#atmPy.aerosols.size_distribution.sizedistribution.SizeDist_LS.average_overAltitude" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="atmPy.aerosols.size_distribution.sizedistribution.SizeDist_LS.deprecated_apply_growth">
+<span class="sig-name descname"><span class="pre">deprecated_apply_growth</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">growth_factor</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">how</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'shift_data'</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#atmPy.aerosols.size_distribution.sizedistribution.SizeDist_LS.deprecated_apply_growth" title="Link to this definition"></a></dt>
+<dd><p>see docstring of atmPy.sizedistribution.SizeDist for more information
+Parameters
+———-
+kappa: float
+RH: bool, float, or array.</p>
+<blockquote>
+<div><p>If None, RH from self.housekeeping will be taken</p>
+</div></blockquote>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="atmPy.aerosols.size_distribution.sizedistribution.SizeDist_LS.deprecated_apply_hygro_growth">
+<span class="sig-name descname"><span class="pre">deprecated_apply_hygro_growth</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">kappa</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">RH</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">how</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'shift_data'</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#atmPy.aerosols.size_distribution.sizedistribution.SizeDist_LS.deprecated_apply_hygro_growth" title="Link to this definition"></a></dt>
+<dd><p>see docstring of atmPy.sizedistribution.SizeDist for more information
+Parameters
+———-
+kappa: float
+RH: bool, float, or array.</p>
+<blockquote>
+<div><p>If None, RH from self.housekeeping will be taken</p>
+</div></blockquote>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="atmPy.aerosols.size_distribution.sizedistribution.SizeDist_LS.deprecated_calculate_angstromex">
+<span class="sig-name descname"><span class="pre">deprecated_calculate_angstromex</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">wavelengths</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">[460.3,</span> <span class="pre">550.4,</span> <span class="pre">671.2,</span> <span class="pre">860.7]</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">n</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">1.455</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#atmPy.aerosols.size_distribution.sizedistribution.SizeDist_LS.deprecated_calculate_angstromex" title="Link to this definition"></a></dt>
+<dd><p>Calculates the Anstrome coefficience (overall, layerdependent)</p>
+<section id="id11">
+<h4>Parameters<a class="headerlink" href="#id11" title="Link to this heading"></a></h4>
+<dl class="simple">
+<dt>wavelengths:    array-like, optional.</dt><dd><p>the angstrom coefficient will be calculated based on the AOD of these wavelength values (in nm)</p>
+</dd>
+<dt>n:              float, optional.</dt><dd><p>index of refraction used in the underlying mie calculation.</p>
+</dd>
+</dl>
+</section>
+<section id="id12">
+<h4>Returns<a class="headerlink" href="#id12" title="Link to this heading"></a></h4>
+<p>Angstrom exponent, float
+List containing the OpticalProperties instances for the different wavelengths</p>
+</section>
+<section id="new-attributes">
+<h4>New Attributes<a class="headerlink" href="#new-attributes" title="Link to this heading"></a></h4>
+<dl class="simple">
+<dt>angstromexp:        float</dt><dd><p>the resulting angstrom exponent</p>
+</dd>
+<dt>angstromexp_fit:    pandas instance.</dt><dd><p>AOD and fit result as a function of wavelength</p>
+</dd>
+<dt>angstromexp_LS:     pandas instance.</dt><dd><p>angstrom exponent as a function of altitude</p>
+</dd>
+</dl>
+</section>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="atmPy.aerosols.size_distribution.sizedistribution.SizeDist_LS.fit_normal">
+<span class="sig-name descname"><span class="pre">fit_normal</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#atmPy.aerosols.size_distribution.sizedistribution.SizeDist_LS.fit_normal" title="Link to this definition"></a></dt>
+<dd><p>Fits a single normal distribution to each line in the data frame.</p>
+<section id="id13">
+<h4>Returns<a class="headerlink" href="#id13" title="Link to this heading"></a></h4>
+<p>pandas DataFrame instance (also added to namespace as data_fit_normal)</p>
+</section>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="atmPy.aerosols.size_distribution.sizedistribution.SizeDist_LS.grow_sizedistribution">
+<span class="sig-name descname"><span class="pre">grow_sizedistribution</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">growthfactor</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">extend_diameter_limits</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">raise_particle_loss_error</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">True</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#atmPy.aerosols.size_distribution.sizedistribution.SizeDist_LS.grow_sizedistribution" title="Link to this definition"></a></dt>
+<dd><p>Shift the bins to simulate growth. But than rebins to the original bins.</p>
+<section id="id14">
+<h4>Parameters<a class="headerlink" href="#id14" title="Link to this heading"></a></h4>
+<dl class="simple">
+<dt>growthfactor<span class="classifier">TYPE</span></dt><dd><p>DESCRIPTION.</p>
+</dd>
+<dt>extend_diameter_limits<span class="classifier">TYPE, optional</span></dt><dd><p>DESCRIPTION. The default is False.</p>
+</dd>
+<dt>raise_particle_loss_error<span class="classifier">TYPE, optional</span></dt><dd><p>DESCRIPTION. The default is True.</p>
+</dd>
+</dl>
+</section>
+<section id="id15">
+<h4>Returns<a class="headerlink" href="#id15" title="Link to this heading"></a></h4>
+<dl class="simple">
+<dt>dist<span class="classifier">TYPE</span></dt><dd><p>DESCRIPTION.</p>
+</dd>
+</dl>
+</section>
+</dd></dl>
+
+<dl class="py property">
+<dt class="sig sig-object py" id="atmPy.aerosols.size_distribution.sizedistribution.SizeDist_LS.housekeeping">
+<em class="property"><span class="pre">property</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">housekeeping</span></span><a class="headerlink" href="#atmPy.aerosols.size_distribution.sizedistribution.SizeDist_LS.housekeeping" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py property">
+<dt class="sig sig-object py" id="atmPy.aerosols.size_distribution.sizedistribution.SizeDist_LS.layerbounderies">
+<em class="property"><span class="pre">property</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">layerbounderies</span></span><a class="headerlink" href="#atmPy.aerosols.size_distribution.sizedistribution.SizeDist_LS.layerbounderies" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py property">
+<dt class="sig sig-object py" id="atmPy.aerosols.size_distribution.sizedistribution.SizeDist_LS.layercenters">
+<em class="property"><span class="pre">property</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">layercenters</span></span><a class="headerlink" href="#atmPy.aerosols.size_distribution.sizedistribution.SizeDist_LS.layercenters" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py property">
+<dt class="sig sig-object py" id="atmPy.aerosols.size_distribution.sizedistribution.SizeDist_LS.optical_properties">
+<em class="property"><span class="pre">property</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">optical_properties</span></span><a class="headerlink" href="#atmPy.aerosols.size_distribution.sizedistribution.SizeDist_LS.optical_properties" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py property">
+<dt class="sig sig-object py" id="atmPy.aerosols.size_distribution.sizedistribution.SizeDist_LS.particle_mass_concentration">
+<em class="property"><span class="pre">property</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">particle_mass_concentration</span></span><a class="headerlink" href="#atmPy.aerosols.size_distribution.sizedistribution.SizeDist_LS.particle_mass_concentration" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py property">
+<dt class="sig sig-object py" id="atmPy.aerosols.size_distribution.sizedistribution.SizeDist_LS.particle_mass_mixing_ratio">
+<em class="property"><span class="pre">property</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">particle_mass_mixing_ratio</span></span><a class="headerlink" href="#atmPy.aerosols.size_distribution.sizedistribution.SizeDist_LS.particle_mass_mixing_ratio" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py property">
+<dt class="sig sig-object py" id="atmPy.aerosols.size_distribution.sizedistribution.SizeDist_LS.particle_number_concentration">
+<em class="property"><span class="pre">property</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">particle_number_concentration</span></span><a class="headerlink" href="#atmPy.aerosols.size_distribution.sizedistribution.SizeDist_LS.particle_number_concentration" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py property">
+<dt class="sig sig-object py" id="atmPy.aerosols.size_distribution.sizedistribution.SizeDist_LS.particle_number_mixing_ratio">
+<em class="property"><span class="pre">property</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">particle_number_mixing_ratio</span></span><a class="headerlink" href="#atmPy.aerosols.size_distribution.sizedistribution.SizeDist_LS.particle_number_mixing_ratio" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="atmPy.aerosols.size_distribution.sizedistribution.SizeDist_LS.plot">
+<span class="sig-name descname"><span class="pre">plot</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="pre">vmax=None,</span> <span class="pre">vmin=None,</span> <span class="pre">scale='linear',</span> <span class="pre">show_minor_tickLabels=True,</span> <span class="pre">removeTickLabels=['500',</span> <span class="pre">'700',</span> <span class="pre">'800',</span> <span class="pre">'900'],</span> <span class="pre">plotOnTheseAxes=False,</span> <span class="pre">cmap=&lt;matplotlib.colors.LinearSegmentedColormap</span> <span class="pre">object&gt;,</span> <span class="pre">fit_pos=False,</span> <span class="pre">ax=None,</span> <span class="pre">colorbar=True</span></em><span class="sig-paren">)</span><a class="headerlink" href="#atmPy.aerosols.size_distribution.sizedistribution.SizeDist_LS.plot" title="Link to this definition"></a></dt>
+<dd><p>plots and returns f,a,pc,cb (figure, axis, pcolormeshInstance, colorbar)</p>
+<section id="id16">
+<h4>Arguments<a class="headerlink" href="#id16" title="Link to this heading"></a></h4>
+<p>scale (optional): (‘log’,[‘linear’]) - defines how the z-direction is scaled
+vmax
+vmin
+show_minor_tickLabels:
+cma:
+fit_pos (optional): bool [True] - plots the position of a fitted normal distribution onto the plot.</p>
+<blockquote>
+<div><p>in order for this to work execute fit_normal</p>
+</div></blockquote>
+<p>ax (optional):  axes instance [None] - option to plot on existing axes</p>
+</section>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="atmPy.aerosols.size_distribution.sizedistribution.SizeDist_LS.plot_angstromex_LS">
+<span class="sig-name descname"><span class="pre">plot_angstromex_LS</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">corr_coeff</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">std</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#atmPy.aerosols.size_distribution.sizedistribution.SizeDist_LS.plot_angstromex_LS" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="atmPy.aerosols.size_distribution.sizedistribution.SizeDist_LS.plot_angstromex_fit">
+<span class="sig-name descname"><span class="pre">plot_angstromex_fit</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#atmPy.aerosols.size_distribution.sizedistribution.SizeDist_LS.plot_angstromex_fit" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="atmPy.aerosols.size_distribution.sizedistribution.SizeDist_LS.plot_eachLayer">
+<span class="sig-name descname"><span class="pre">plot_eachLayer</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">a</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">normalize</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#atmPy.aerosols.size_distribution.sizedistribution.SizeDist_LS.plot_eachLayer" title="Link to this definition"></a></dt>
+<dd><p>Plots the distribution of each layer in one plot.</p>
+<section id="id17">
+<h4>Returns<a class="headerlink" href="#id17" title="Link to this heading"></a></h4>
+<p>Handles to the figure and axes of the plot</p>
+</section>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="atmPy.aerosols.size_distribution.sizedistribution.SizeDist_LS.plot_overview">
+<span class="sig-name descname"><span class="pre">plot_overview</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">layers</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">show_center_of_layers</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">True</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">fit_pos</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">True</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#atmPy.aerosols.size_distribution.sizedistribution.SizeDist_LS.plot_overview" title="Link to this definition"></a></dt>
+<dd><p>Plot 3 plots: Size distribution Vertical profile, average size distribution, particle concentration.
+Optional layers can be defined that show up in the average plot instead of the overall average.</p>
+<section id="id18">
+<h4>Parameters<a class="headerlink" href="#id18" title="Link to this heading"></a></h4>
+<dl class="simple">
+<dt>layers: dict, e.g. {‘bottom’: [0, 300]}</dt><dd><p>define layers do average over here</p>
+</dd>
+<dt>show_center_of_layers: bool</dt><dd><p>if to show the centers of thelayers in the other plots</p>
+</dd>
+</dl>
+</section>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="atmPy.aerosols.size_distribution.sizedistribution.SizeDist_LS.zoom_altitude">
+<span class="sig-name descname"><span class="pre">zoom_altitude</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">bottom</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">top</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#atmPy.aerosols.size_distribution.sizedistribution.SizeDist_LS.zoom_altitude" title="Link to this definition"></a></dt>
+<dd><p>‘2014-11-24 16:02:30’</p>
+</dd></dl>
+
+</section>
+</dd></dl>
+
+<dl class="py class">
+<dt class="sig sig-object py" id="atmPy.aerosols.size_distribution.sizedistribution.SizeDist_TS">
+<em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">atmPy.aerosols.size_distribution.sizedistribution.</span></span><span class="sig-name descname"><span class="pre">SizeDist_TS</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="o"><span class="pre">*</span></span><span class="n"><span class="pre">args</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">fill_data_gaps_with</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">ignore_data_gap_error</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">True</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#atmPy.aerosols.size_distribution.sizedistribution.SizeDist_TS" title="Link to this definition"></a></dt>
+<dd><p>Bases: <a class="reference internal" href="#atmPy.aerosols.size_distribution.sizedistribution.SizeDist" title="atmPy.aerosols.size_distribution.sizedistribution.SizeDist"><code class="xref py py-class docutils literal notranslate"><span class="pre">SizeDist</span></code></a></p>
+<p>Returns a SizeDistribution_TS instance.</p>
+<section id="id19">
+<h3>Parameters:<a class="headerlink" href="#id19" title="Link to this heading"></a></h3>
+<dl class="simple">
+<dt>data: pandas dataFrame with</dt><dd><ul class="simple">
+<li><p>column names (each name is something like this: ‘150-200’)</p></li>
+<li><p>index is time (at some point this should be arbitrary, convertable to altitude for example?)</p></li>
+</ul>
+</dd>
+<dt>unit conventions:</dt><dd><ul class="simple">
+<li><p>diameters: nanometers</p></li>
+<li><p>flowrates: cc (otherwise, axis label need to be adjusted an caution needs to be taken when dealing is AOD)</p></li>
+</ul>
+</dd>
+<dt>distributionType:</dt><dd><p>log normal: ‘dNdlogDp’,’dSdlogDp’,’dVdlogDp’
+natural: ‘dNdDp’,’dSdDp’,’dVdDp’
+number: ‘dNdlogDp’, ‘dNdDp’, ‘numberConcentration’
+surface: ‘dSdlogDp’,’dSdDp’
+volume: ‘dVdlogDp’,’dVdDp’</p>
+</dd>
+</dl>
+<dl class="py method">
+<dt class="sig sig-object py" id="atmPy.aerosols.size_distribution.sizedistribution.SizeDist_TS.average_overAllTime">
+<span class="sig-name descname"><span class="pre">average_overAllTime</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">sigma</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">0</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">minmax</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">percentile</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#atmPy.aerosols.size_distribution.sizedistribution.SizeDist_TS.average_overAllTime" title="Link to this definition"></a></dt>
+<dd><p>averages over the entire dataFrame and returns a single sizedistribution (numpy.ndarray)</p>
+<section id="args">
+<h4>Args<a class="headerlink" href="#args" title="Link to this heading"></a></h4>
+<dl class="simple">
+<dt>minmax: bool</dt><dd><p>returns in addition size distribution that represent the min and max values</p>
+</dd>
+<dt>percentile: float</dt><dd><p>percentile to be calculated and returned in addition to averaged sizedist</p>
+</dd>
+<dt>sigma (!experimental!): int</dt><dd><p>if not ==0 this function will additionally return the std according to sigma</p>
+</dd>
+</dl>
+</section>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="atmPy.aerosols.size_distribution.sizedistribution.SizeDist_TS.average_time">
+<span class="sig-name descname"><span class="pre">average_time</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">window</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'10s'</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#atmPy.aerosols.size_distribution.sizedistribution.SizeDist_TS.average_time" title="Link to this definition"></a></dt>
+<dd><p>returns a copy of the sizedistribution_TS with reduced size by 
+averaging over a given window. Thesedays it is merely a wrap around
+pandas resample function</p>
+<section id="id20">
+<h4>Arguments<a class="headerlink" href="#id20" title="Link to this heading"></a></h4>
+<dl class="simple">
+<dt>window: str</dt><dd><p>see pandas resample doc</p>
+</dd>
+</dl>
+</section>
+<section id="id21">
+<h4>Returns<a class="headerlink" href="#id21" title="Link to this heading"></a></h4>
+<dl class="simple">
+<dt>SizeDistribution_TS instance</dt><dd><p>copy of current instance with resampled data frame</p>
+</dd>
+</dl>
+</section>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="atmPy.aerosols.size_distribution.sizedistribution.SizeDist_TS.close_gaps">
+<span class="sig-name descname"><span class="pre">close_gaps</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">verbose</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#atmPy.aerosols.size_distribution.sizedistribution.SizeDist_TS.close_gaps" title="Link to this definition"></a></dt>
+<dd><p>This is an older version to deal with gaps … rather consider using the ones in the data_structure module</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="atmPy.aerosols.size_distribution.sizedistribution.SizeDist_TS.convert2verticalprofile">
+<span class="sig-name descname"><span class="pre">convert2verticalprofile</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">layer_thickness</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">2</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#atmPy.aerosols.size_distribution.sizedistribution.SizeDist_TS.convert2verticalprofile" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="atmPy.aerosols.size_distribution.sizedistribution.SizeDist_TS.deprecated_apply_growth">
+<span class="sig-name descname"><span class="pre">deprecated_apply_growth</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">growth_factor</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">how</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'shift_data'</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#atmPy.aerosols.size_distribution.sizedistribution.SizeDist_TS.deprecated_apply_growth" title="Link to this definition"></a></dt>
+<dd><p>see docstring of atmPy.sizedistribution.SizeDist for more information
+Parameters
+———-
+kappa: float
+RH: bool, float, or array.</p>
+<blockquote>
+<div><p>If None, RH from self.housekeeping will be taken</p>
+</div></blockquote>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="atmPy.aerosols.size_distribution.sizedistribution.SizeDist_TS.deprecated_apply_hygro_growth">
+<span class="sig-name descname"><span class="pre">deprecated_apply_hygro_growth</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">kappa</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">RH</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">how</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'shift_data'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">adjust_refractive_index</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">True</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#atmPy.aerosols.size_distribution.sizedistribution.SizeDist_TS.deprecated_apply_hygro_growth" title="Link to this definition"></a></dt>
+<dd><p>see docstring of atmPy.sizedistribution.SizeDist for more information
+Parameters
+———-
+kappa: float
+RH: bool, float, or array.</p>
+<blockquote>
+<div><p>If None, RH from self.housekeeping will be taken</p>
+</div></blockquote>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="atmPy.aerosols.size_distribution.sizedistribution.SizeDist_TS.detect_gaps">
+<span class="sig-name descname"><span class="pre">detect_gaps</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">toleranz</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">1.95</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">return_all</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#atmPy.aerosols.size_distribution.sizedistribution.SizeDist_TS.detect_gaps" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="atmPy.aerosols.size_distribution.sizedistribution.SizeDist_TS.dprecated_convert2layerseries">
+<span class="sig-name descname"><span class="pre">dprecated_convert2layerseries</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">hk</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">layer_thickness</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">10</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">force</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#atmPy.aerosols.size_distribution.sizedistribution.SizeDist_TS.dprecated_convert2layerseries" title="Link to this definition"></a></dt>
+<dd><p>convertes the time series to a layer series.</p>
+<section id="note">
+<h4>Note<a class="headerlink" href="#note" title="Link to this heading"></a></h4>
+<p>nan values are excluded when an average is taken over a the time that corresponds to the particular layer
+(altitude). If there are only nan values nan is returned and there is a gap in the Layerseries.</p>
+<p>The the housekeeping instance has to have a column called “Altitude” and which is monotonicly in- or decreasing</p>
+</section>
+<section id="id22">
+<h4>Arguments<a class="headerlink" href="#id22" title="Link to this heading"></a></h4>
+<p>hk: housekeeping instance
+layer_thickness (optional): [10] thickness of each generated layer in meter</p>
+</section>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="atmPy.aerosols.size_distribution.sizedistribution.SizeDist_TS.fill_gaps_with">
+<span class="sig-name descname"><span class="pre">fill_gaps_with</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">what</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">0</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">toleranz</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">1.95</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#atmPy.aerosols.size_distribution.sizedistribution.SizeDist_TS.fill_gaps_with" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="atmPy.aerosols.size_distribution.sizedistribution.SizeDist_TS.fit_normal_deprecated">
+<span class="sig-name descname"><span class="pre">fit_normal_deprecated</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">log</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">True</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">p0</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">[10,</span> <span class="pre">180,</span> <span class="pre">0.2]</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#atmPy.aerosols.size_distribution.sizedistribution.SizeDist_TS.fit_normal_deprecated" title="Link to this definition"></a></dt>
+<dd><p>Fits a single normal distribution to each line in the data frame.</p>
+<section id="id23">
+<h4>Returns<a class="headerlink" href="#id23" title="Link to this heading"></a></h4>
+<p>pandas DataFrame instance (also added to namespace as data_fit_normal)</p>
+</section>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="atmPy.aerosols.size_distribution.sizedistribution.SizeDist_TS.get_timespan">
+<span class="sig-name descname"><span class="pre">get_timespan</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#atmPy.aerosols.size_distribution.sizedistribution.SizeDist_TS.get_timespan" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="atmPy.aerosols.size_distribution.sizedistribution.SizeDist_TS.grow_sizedistribution">
+<span class="sig-name descname"><span class="pre">grow_sizedistribution</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">growthfactor</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">extend_diameter_limits</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">raise_particle_loss_error</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">True</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#atmPy.aerosols.size_distribution.sizedistribution.SizeDist_TS.grow_sizedistribution" title="Link to this definition"></a></dt>
+<dd><p>Shift the bins to simulate growth. But than rebins to the original bins.</p>
+<section id="id24">
+<h4>Parameters<a class="headerlink" href="#id24" title="Link to this heading"></a></h4>
+<dl class="simple">
+<dt>growthfactor<span class="classifier">TYPE</span></dt><dd><p>DESCRIPTION.</p>
+</dd>
+<dt>extend_diameter_limits<span class="classifier">TYPE, optional</span></dt><dd><p>DESCRIPTION. The default is False.</p>
+</dd>
+<dt>raise_particle_loss_error<span class="classifier">TYPE, optional</span></dt><dd><p>DESCRIPTION. The default is True.</p>
+</dd>
+</dl>
+</section>
+<section id="id25">
+<h4>Returns<a class="headerlink" href="#id25" title="Link to this heading"></a></h4>
+<dl class="simple">
+<dt>dist<span class="classifier">TYPE</span></dt><dd><p>DESCRIPTION.</p>
+</dd>
+</dl>
+</section>
+</dd></dl>
+
+<dl class="py property">
+<dt class="sig sig-object py" id="atmPy.aerosols.size_distribution.sizedistribution.SizeDist_TS.optical_properties">
+<em class="property"><span class="pre">property</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">optical_properties</span></span><a class="headerlink" href="#atmPy.aerosols.size_distribution.sizedistribution.SizeDist_TS.optical_properties" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py property">
+<dt class="sig sig-object py" id="atmPy.aerosols.size_distribution.sizedistribution.SizeDist_TS.particle_mass_concentration">
+<em class="property"><span class="pre">property</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">particle_mass_concentration</span></span><a class="headerlink" href="#atmPy.aerosols.size_distribution.sizedistribution.SizeDist_TS.particle_mass_concentration" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py property">
+<dt class="sig sig-object py" id="atmPy.aerosols.size_distribution.sizedistribution.SizeDist_TS.particle_mass_mixing_ratio">
+<em class="property"><span class="pre">property</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">particle_mass_mixing_ratio</span></span><a class="headerlink" href="#atmPy.aerosols.size_distribution.sizedistribution.SizeDist_TS.particle_mass_mixing_ratio" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py property">
+<dt class="sig sig-object py" id="atmPy.aerosols.size_distribution.sizedistribution.SizeDist_TS.particle_mean_diameter">
+<em class="property"><span class="pre">property</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">particle_mean_diameter</span></span><a class="headerlink" href="#atmPy.aerosols.size_distribution.sizedistribution.SizeDist_TS.particle_mean_diameter" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py property">
+<dt class="sig sig-object py" id="atmPy.aerosols.size_distribution.sizedistribution.SizeDist_TS.particle_number_concentration">
+<em class="property"><span class="pre">property</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">particle_number_concentration</span></span><a class="headerlink" href="#atmPy.aerosols.size_distribution.sizedistribution.SizeDist_TS.particle_number_concentration" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py property">
+<dt class="sig sig-object py" id="atmPy.aerosols.size_distribution.sizedistribution.SizeDist_TS.particle_number_mixing_ratio">
+<em class="property"><span class="pre">property</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">particle_number_mixing_ratio</span></span><a class="headerlink" href="#atmPy.aerosols.size_distribution.sizedistribution.SizeDist_TS.particle_number_mixing_ratio" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="atmPy.aerosols.size_distribution.sizedistribution.SizeDist_TS.plot">
+<span class="sig-name descname"><span class="pre">plot</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">vmax=None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">vmin=None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">norm='linear'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">showMinorTickLabels=True</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">ax=None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">fit_pos=False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">cmap=&lt;matplotlib.colors.LinearSegmentedColormap</span> <span class="pre">object&gt;</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">colorbar=True</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#atmPy.aerosols.size_distribution.sizedistribution.SizeDist_TS.plot" title="Link to this definition"></a></dt>
+<dd><p>plots an intensity plot of all data</p>
+<section id="id26">
+<h4>Arguments<a class="headerlink" href="#id26" title="Link to this heading"></a></h4>
+<p>scale (optional): (‘log’,[‘linear’]) - defines how the z-direction is scaled
+vmax
+vmin
+show_minor_tickLabels:
+cma:
+fit_pos: bool[True]. Optional</p>
+<blockquote>
+<div><p>plots the position of a fitted normal distribution onto the plot.
+in order for this to work execute fit_normal</p>
+</div></blockquote>
+<p>ax (optional):  axes instance [None] - option to plot on existing axes</p>
+</section>
+<section id="id27">
+<h4>Returns<a class="headerlink" href="#id27" title="Link to this heading"></a></h4>
+<p>f,a,pc,cb (figure, axis, pcolormeshInstance, colorbar)</p>
+</section>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="atmPy.aerosols.size_distribution.sizedistribution.SizeDist_TS.zoom_time">
+<span class="sig-name descname"><span class="pre">zoom_time</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">start</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">end</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#atmPy.aerosols.size_distribution.sizedistribution.SizeDist_TS.zoom_time" title="Link to this definition"></a></dt>
+<dd><p>2014-11-24 16:02:30</p>
+</dd></dl>
+
+</section>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="atmPy.aerosols.size_distribution.sizedistribution.align2sizedist">
+<span class="sig-prename descclassname"><span class="pre">atmPy.aerosols.size_distribution.sizedistribution.</span></span><span class="sig-name descname"><span class="pre">align2sizedist</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">sizedist</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">other</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#atmPy.aerosols.size_distribution.sizedistribution.align2sizedist" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="atmPy.aerosols.size_distribution.sizedistribution.fit_normal_distribution2sizedist">
+<span class="sig-prename descclassname"><span class="pre">atmPy.aerosols.size_distribution.sizedistribution.</span></span><span class="sig-name descname"><span class="pre">fit_normal_distribution2sizedist</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">sizedist</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">log</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">True</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">p0</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">[10,</span> <span class="pre">180,</span> <span class="pre">0.2]</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">show_error</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">curve_fit_kwargs</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#atmPy.aerosols.size_distribution.sizedistribution.fit_normal_distribution2sizedist" title="Link to this definition"></a></dt>
+<dd><p>Fits a single normal distribution to each line in the data frame.</p>
+<section id="id28">
+<h3>Parameters<a class="headerlink" href="#id28" title="Link to this heading"></a></h3>
+<dl class="simple">
+<dt>p0: array-like</dt><dd><p>fit initiation parameters [amp, pos, width(log-width)]</p>
+</dd>
+<dt>curve_fit_kwargs: dict</dt><dd><p>Additional kwargs that are  passed to the fit routine</p>
+</dd>
+</dl>
+<p>log: not really working</p>
+</section>
+<section id="id29">
+<h3>Returns<a class="headerlink" href="#id29" title="Link to this heading"></a></h3>
+<p>pandas DataFrame instance (also added to namespace as data_fit_normal)</p>
+</section>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="atmPy.aerosols.size_distribution.sizedistribution.generate_aerosolLayer">
+<span class="sig-prename descclassname"><span class="pre">atmPy.aerosols.size_distribution.sizedistribution.</span></span><span class="sig-name descname"><span class="pre">generate_aerosolLayer</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">diameter</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">[0.01,</span> <span class="pre">2.5]</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">numberOfDiameters</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">30</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">centerOfAerosolMode</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">0.6</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">widthOfAerosolMode</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">0.2</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">numberOfParticsInMode</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">10000</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">layerBoundery</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">[0.0,</span> <span class="pre">10000]</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#atmPy.aerosols.size_distribution.sizedistribution.generate_aerosolLayer" title="Link to this definition"></a></dt>
+<dd><p>Probably deprecated!?! generates a numberconcentration of an aerosol layer which has a gaussian shape when plottet in dN/log(Dp). 
+However, returned is a numberconcentrations (simply the number of particles in each bin, no normalization)
+Returns</p>
+<blockquote>
+<div><p>Number concentration (#)
+bin edges (nm)</p>
+</div></blockquote>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="atmPy.aerosols.size_distribution.sizedistribution.get_label">
+<span class="sig-prename descclassname"><span class="pre">atmPy.aerosols.size_distribution.sizedistribution.</span></span><span class="sig-name descname"><span class="pre">get_label</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">distType</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#atmPy.aerosols.size_distribution.sizedistribution.get_label" title="Link to this definition"></a></dt>
+<dd><p>Return the appropriate label for a particular distribution type</p>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="atmPy.aerosols.size_distribution.sizedistribution.get_settings">
+<span class="sig-prename descclassname"><span class="pre">atmPy.aerosols.size_distribution.sizedistribution.</span></span><span class="sig-name descname"><span class="pre">get_settings</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#atmPy.aerosols.size_distribution.sizedistribution.get_settings" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="atmPy.aerosols.size_distribution.sizedistribution.merge_size_distributions">
+<span class="sig-prename descclassname"><span class="pre">atmPy.aerosols.size_distribution.sizedistribution.</span></span><span class="sig-name descname"><span class="pre">merge_size_distributions</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">dist_self</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">dist_other</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">fill_value</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">0</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">round_dec</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">5</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#atmPy.aerosols.size_distribution.sizedistribution.merge_size_distributions" title="Link to this definition"></a></dt>
+<dd><p>Experimental!!! Merges (adds) two sizedistributions that have different length. Currently this is only working if the
+overlapping section of the size distributions is aligned (bins are exactly the same where overlapping)</p>
+<section id="id30">
+<h3>Parameters<a class="headerlink" href="#id30" title="Link to this heading"></a></h3>
+<p>dist_self
+dist_other
+fill_value: float [0]</p>
+<blockquote>
+<div><p>When adding a value to nan the result is nan. Therefore all the nans are replaced with this value.</p>
+</div></blockquote>
+<dl class="simple">
+<dt>round_dec: int [5]</dt><dd><p>sometimes the bins are not equal due to rounding issue in the 10 or so digit. Rounding to the 5th digit ususally
+takes care of that without introducing an error</p>
+</dd>
+</dl>
+</section>
+<section id="id31">
+<h3>Returns<a class="headerlink" href="#id31" title="Link to this heading"></a></h3>
+<p>size distribution</p>
+</section>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="atmPy.aerosols.size_distribution.sizedistribution.open_csv">
+<span class="sig-prename descclassname"><span class="pre">atmPy.aerosols.size_distribution.sizedistribution.</span></span><span class="sig-name descname"><span class="pre">open_csv</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">fname</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">fill_data_gaps_with</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">ignore_data_gap_error</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#atmPy.aerosols.size_distribution.sizedistribution.open_csv" title="Link to this definition"></a></dt>
+<dd><dl>
+<dt>Args:</dt><dd><p>fname:
+fill_data_gaps_with: float</p>
+<blockquote>
+<div><p>If None gaps are not filled. This should eighter be np.nan (if the instrument failed) or 0 if particle
+concentration was so low, that no particle was detected in that time window</p>
+</div></blockquote>
+<p>ignore_data_gap_error:</p>
+</dd>
+</dl>
+<p>Returns:</p>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="atmPy.aerosols.size_distribution.sizedistribution.open_netcdf">
+<span class="sig-prename descclassname"><span class="pre">atmPy.aerosols.size_distribution.sizedistribution.</span></span><span class="sig-name descname"><span class="pre">open_netcdf</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">fname</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#atmPy.aerosols.size_distribution.sizedistribution.open_netcdf" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="atmPy.aerosols.size_distribution.sizedistribution.save_netcdf">
+<span class="sig-prename descclassname"><span class="pre">atmPy.aerosols.size_distribution.sizedistribution.</span></span><span class="sig-name descname"><span class="pre">save_netcdf</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">sizedist</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">fname</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">housekeeping</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">True</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">value_added_products</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">True</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">binunit</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'nm'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">tags</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">[]</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">test</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#atmPy.aerosols.size_distribution.sizedistribution.save_netcdf" title="Link to this definition"></a></dt>
+<dd><p>Save to netCDF format</p>
+<section id="id32">
+<h3>Parameters<a class="headerlink" href="#id32" title="Link to this heading"></a></h3>
+<p>fname: str
+housekeeping: bool [True]</p>
+<blockquote>
+<div><p>If housekeeping is saved</p>
+</div></blockquote>
+<dl class="simple">
+<dt>value_added_products: bool [True]</dt><dd><p>If value added products (currently, norm_fitresults) are going to be saved</p>
+</dd>
+<dt>binunit: str</dt><dd><p>The units of the diameter of the binedges and centers</p>
+</dd>
+</dl>
+<p>tags: list
+test: bool</p>
+<blockquote>
+<div><p>If true the xarray.Dataset is not saved but retured instead.</p>
+</div></blockquote>
+</section>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="atmPy.aerosols.size_distribution.sizedistribution.simulate_sizedistribution">
+<span class="sig-prename descclassname"><span class="pre">atmPy.aerosols.size_distribution.sizedistribution.</span></span><span class="sig-name descname"><span class="pre">simulate_sizedistribution</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">diameter</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">[10,</span> <span class="pre">2500]</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">numberOfDiameters</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">100</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">centerOfAerosolMode</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">200</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">widthOfAerosolMode</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">0.2</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">numberOfParticsInMode</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">1000</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#atmPy.aerosols.size_distribution.sizedistribution.simulate_sizedistribution" title="Link to this definition"></a></dt>
+<dd><p>generates a numberconcentration of an aerosol layer which has a gaussian shape when plottet in dN/log(Dp). 
+However, returned is a numberconcentrations (simply the number of particles in each bin, no normalization)
+Returns</p>
+<blockquote>
+<div><p>Number concentration (#)
+bin edges (nm)</p>
+</div></blockquote>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="atmPy.aerosols.size_distribution.sizedistribution.simulate_sizedistribution_layerseries">
+<span class="sig-prename descclassname"><span class="pre">atmPy.aerosols.size_distribution.sizedistribution.</span></span><span class="sig-name descname"><span class="pre">simulate_sizedistribution_layerseries</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">diameter</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">[10,</span> <span class="pre">2500]</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">numberOfDiameters</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">100</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">heightlimits</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">[0,</span> <span class="pre">6000]</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">noOflayers</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">100</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">layerHeight</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">[500.0,</span> <span class="pre">4000.0]</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">layerThickness</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">[100.0,</span> <span class="pre">300.0]</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">layerDensity</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">[1000.0,</span> <span class="pre">5000.0]</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">layerModecenter</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">[200.0,</span> <span class="pre">800.0]</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">widthOfAerosolMode</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">0.2</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#atmPy.aerosols.size_distribution.sizedistribution.simulate_sizedistribution_layerseries" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="atmPy.aerosols.size_distribution.sizedistribution.simulate_sizedistribution_timeseries">
+<span class="sig-prename descclassname"><span class="pre">atmPy.aerosols.size_distribution.sizedistribution.</span></span><span class="sig-name descname"><span class="pre">simulate_sizedistribution_timeseries</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">diameter</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">[10,</span> <span class="pre">2500]</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">numberOfDiameters</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">100</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">centerOfAerosolMode</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">200</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">widthOfAerosolMode</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">0.2</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">numberOfParticsInMode</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">1000</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">startDate</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'2014-11-24</span> <span class="pre">17:00:00'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">endDate</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'2014-11-24</span> <span class="pre">18:00:00'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">frequency</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">10</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#atmPy.aerosols.size_distribution.sizedistribution.simulate_sizedistribution_timeseries" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="atmPy.aerosols.size_distribution.sizedistribution.test_ext_coeff_vertical_profile">
+<span class="sig-prename descclassname"><span class="pre">atmPy.aerosols.size_distribution.sizedistribution.</span></span><span class="sig-name descname"><span class="pre">test_ext_coeff_vertical_profile</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#atmPy.aerosols.size_distribution.sizedistribution.test_ext_coeff_vertical_profile" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="atmPy.aerosols.size_distribution.sizedistribution.test_generate_numberConcentration">
+<span class="sig-prename descclassname"><span class="pre">atmPy.aerosols.size_distribution.sizedistribution.</span></span><span class="sig-name descname"><span class="pre">test_generate_numberConcentration</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#atmPy.aerosols.size_distribution.sizedistribution.test_generate_numberConcentration" title="Link to this definition"></a></dt>
+<dd><p>result should look identical to Atmospheric Chemistry and Physis page 422</p>
+</dd></dl>
+
+</section>
 </section>
 
 
