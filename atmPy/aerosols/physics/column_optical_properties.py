@@ -1824,7 +1824,7 @@ class AerosolAndCloudDetection(object):
     def get_minutes_to_bad(cmt):
         cmtones = cmt[cmt == 1]
         if cmtones.shape[0] == 0:
-            dist_df = _pd.Series(index = cmt.index)
+            dist_df = _pd.Series(index = cmt.index, dtype=float)
             dist_df[:] = 9999
         else:
             dist_df = _pd.DataFrame(index = cmt.index)
