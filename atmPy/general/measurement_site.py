@@ -122,8 +122,8 @@ class Network(object):
                 network_stations = network_stations.copy()
                 for station in network_stations:
                     station = station.copy()
-                    if isinstance(station['abbreviation'], list):
-                        station['abbreviation'] = station['abbreviation'][0]
+                    # if isinstance(station['abbreviation'], list):
+                    #     station['abbreviation'] = station['abbreviation'][0]
                     # else:
                     #     abb = station['abbreviation']
                     station['name'] = station['name']#.replace(' ', '_').replace('.', '')
@@ -310,7 +310,13 @@ class Station(object):
         self.lon = lon
         self.alt = alt
         self.name = name
-        self.abb = abbreviation
+        if isinstance(abbreviation, list):
+            self.abb = abbreviation[0]
+            self.abb_alternative = abbreviation
+        else:
+            self.abb = abbreviation
+            self.abb_alternative = [abbreviation]
+            
         self.state = state
         self.country = country
 
