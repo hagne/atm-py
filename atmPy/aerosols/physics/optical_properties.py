@@ -1196,8 +1196,8 @@ class Inversion2SizeDistribution_scenario(object):
             numbers = arguments.number.values
             arguments = [val for pair in zip(pos, numbers) for val in pair]
         else:
-            if self.parent.verbose:
-                print(f'arguments are type {type(arguments)}')
+            # if self.parent.verbose:
+            #     print(f'arguments are type {type(arguments)}')
             # if self.parent.verbose:
             #     print('initialize scenario: else')
             # width = self.parent.start_conditions.size_distribution_parameters.width.values # this cased a superloop
@@ -1244,7 +1244,7 @@ class Inversion2SizeDistribution_scenario(object):
                 self.AOD_of_simulated_dist()
                 
             modes = ('fine', 'coarse')
-            aods = _pd.DataFrame(index = modes, columns=self.parent.wavelengths, dtype = _np.float32)
+            aods = _pd.DataFrame(index = modes, columns=self.parent.wavelengths, dtype = _np.float64)
             for wl in self.parent.wavelengths:
                 for e,dist in enumerate(self.size_distribution_list):
                     # dist.optical_properties.parameters.refractive_index = self.parent.aerosol_refractive_index
@@ -1345,9 +1345,9 @@ class Inversion2SizeDistribution_scenario(object):
         first_run_results = {}
         mie_info = self.parent._mie_info
         
-        if isinstance(mie_info, type(None)):
-            if self.parent.verbose:
-                print('doing full mie calculation')
+        # if isinstance(mie_info, type(None)):
+        #     if self.parent.verbose:
+        #         print('doing full mie calculation')
 
         for wl in channels:
             res = {}
@@ -1500,8 +1500,8 @@ class Inversion2SizeDistribution(object):
         None.
 
         """
-        if self.verbose:
-            print('setting start_conditions')
+        # if self.verbose:
+        #     print('setting start_conditions')
         if isinstance(value, type(None)):
             if self.verbose:
                 print('start condition value is None, use default')
