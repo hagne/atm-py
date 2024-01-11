@@ -131,7 +131,7 @@ _locations = [{'name': 'Bondville',
               'type': 'permanent'},
               {'name': 'Fort Peck',
               'state': 'MT',
-              'abbreviation': ['FPK', 'fpk', 'FPE'],
+              'abbreviation': ['FPK', 'fpk', 'FPE', 'fpe'],
               'lon': -105.10170,
               'lat': 48.30783,
               'alt': 634,
@@ -549,9 +549,15 @@ def read_albedo(path2file, path2readme = '/nfs/grad/Inst/MFR/README.alb', verbos
     return ds
 
         
-def get_mfrsr_filter_responds(serial_no, path2folder = '/nfs/grad/Calibration_facilities/cucf/Surfrad/working'):
+def get_mfrsr_filter_responds(serial_no, path2folder = '/nfs/grad/Calibration_facilities/cucf/Surfrad/working', verbose = True):
     p2fld_filter = _pl.Path(path2folder)
     p2f_filter_resp = list(p2fld_filter.glob(f'*{serial_no:04d}*SPR.txt'))
+    if verbose:
+        print('responds functions:')
+        for i in p2f_filter_resp:
+            print(i)
+            
+    assert(len(p2f_filter_resp) > 0), f'no responds function found for serial no {serial_no:04d} in dir: {p2fld_filter}'
     assert(len(p2f_filter_resp) == 1), f'there should only be one responds function!! {len(p2f_filter_resp)} found'
     p2f_filter_resp = p2f_filter_resp[0]
 
@@ -700,7 +706,7 @@ def read_ccc(p2f, verbose = False):
     site_abb = p2f.name[:3]
     serial_no = int(p2f.name.split('_')[-1].split('.')[0])
 
-    site = [s for s in network.stations._stations_list if s.abb == site_abb.upper()][0]
+    site = [s for s in network.stations._stations_list if site_abb.upper() in s.abb_alternative][0]
     
     cols = list(range(fieldno))
     cols[0] = 'datetime'
