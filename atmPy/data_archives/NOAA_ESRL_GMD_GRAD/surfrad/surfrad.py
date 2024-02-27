@@ -275,7 +275,8 @@ def _read_data(fname, UTC = False, header=None):
 
     # dateparse = lambda x: _pd.datetime.strptime(x, "%d:%m:%Y %H:%M:%S")
     df = _pd.read_csv(fname, skiprows=header['header_size'],
-                     delim_whitespace=True,
+                      sep ='\s+',
+                     # delim_whitespace=True,
                      #                      na_values=['N/A'],
                      #                   parse_dates={'times': [0, 1]},
                      #                   date_parser=dateparse
@@ -485,7 +486,9 @@ def read_albedo(path2file, path2readme = '/nfs/grad/Inst/MFR/README.alb', verbos
 
 
     def read_data(p2f, colnames):
-        df = _pd.read_csv(p2f, delim_whitespace=True,
+        df = _pd.read_csv(p2f, 
+                          # delim_whitespace=True,
+                      sep ='\s+',
                     names = colnames,
                    )
 
@@ -719,7 +722,8 @@ def read_ccc(p2f, verbose = False):
         timezoneadjust = 0
     df = _pd.read_csv(p2f,
                 names =cols,
-                delim_whitespace = True,
+                      sep ='\s+',
+                # delim_whitespace = True,
                 skiprows = skiprows)
 
     index =  df.apply(lambda row: _pd.to_datetime('1900-01-01') + _pd.to_timedelta(row.datetime - 1, 'days'), axis = 1) # the -1 is bacause the year starts with day 1 not zero
@@ -823,6 +827,9 @@ def read_ccc(p2f, verbose = False):
     # return ds
     out = atmradobs.CombinedGlobalDiffuseDirect(ds)
     out.filter_functions = fresp
+    out.path2file = p2f
+    out.dataset.attrs['product_name'] = 'raw'
+    out.dataset.attrs['product_version'] = '1.0'
     return out
 
 def open_path(path = '/nfs/grad/',
