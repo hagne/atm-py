@@ -14,24 +14,432 @@ import atmPy.radiation.rayleigh.lab as atmraylab
 import pathlib as pl
 import atmPy.data_archives.NOAA_ESRL_GMD_GRAD.surfrad.surfrad as atmsrf
 import atmPy.data_archives.NOAA_ESRL_GMD_GRAD.baseline.baseline as atmbl
+import sqlite3
 
 import copy
 
-class GlobalHorizontalIrradiation(object):
-    def __init__(self, dataset):
-        self.dataset = dataset
+class RadiationDatabase(object):
+    def __init__(self, path2db = '/nfs/grad/surfrad/database/surfraddatabase.db', 
+                 # parent = None, 
+                 verbose = True):
+        if not isinstance(path2db, pl.Path):
+            path2db = pl.Path(path2db)
+        self.path2db = path2db
+        self.verbose = verbose
+        # self.parent = parent
+        
+        self._connection = None
 
-class DiffuseHorizontalIrradiation(object):
-    def __init__(self, dataset):
-        self.dataset = dataset
+    def initiat_new_db(self, si):
+        """
+        Initiate a new database so tables with the right format are present. This might be out of date since
+        
+        Arguments
+        ==========
+        si: SolarIrradiation instance (or inheritances)
+        
+        """
+        
+        site_id = self.add_site(si.dataset.site, si.dataset.site_name , 
+                     si.dataset.site_elevation, 
+                     si.dataset.site_latitude,
+                     si.dataset.site_longitude, overwrite=True)
+        
+        si.add_file_to_database(self)
+        
+        
+        self.add_instrument_type(
+            'mfrsr',
+            'Multi Filter Rotating Shadowband Radiomenter',
+            overwrite=False)
+        
+        for channel in si.dataset.channel:
+            channel = int(channel)
+            self.add_channel(channel, 'mfrsr', 'optical_narrowband', overwrite=True)
 
-class DirectNormalIrradiation(object):
+        return
+    
+    @property
+    def connection(self):
+        if isinstance(self._connection, type(None)):
+            self._connection = sqlite3.connect(self.path2db)
+        # check if connection has been closed ... or not alive for other reasons
+        else:
+            try:
+                self._connection.cursor()
+            except sqlite3.ProgrammingError as e:
+                self._connection = sqlite3.connect(self.path2db)
+
+        return self._connection
+
+    def add_site(self, abb, name, elevation, latitude, longitude, overwrite = False, closeconnection=True):
+        ### add new site
+        table_name = 'sites'
+        try:
+            index = self.connection.execute(f"SELECT max(site_id)+1 FROM {table_name}").fetchall()[0][0]
+            if isinstance(index, type(None)):
+                index = 1
+            exists = pd.read_sql_query(f"SELECT * FROM sites Where abb = '{abb}'", self.connection)
+            if exists.shape[0] != 0:  # 'site with that abbriviation already exists'
+                index = exists.site_id.iloc[0]
+                if overwrite:
+                    self.connection.execute(f'delete from sites where site_id={index}').fetchall()
+                else:
+                    return index
+        except Exception as e:
+            # Only needed on the very first run, when there is no sites yet
+            if e.args[0] == f'no such table: {table_name}':
+                index = 1
+            else:
+                raise
+        
+        df = pd.DataFrame({'abb': [abb,], 
+                           'name': [name,], 
+                           'elevation': [elevation,],
+                           'latitude': [latitude,],
+                           'longitude': [longitude,]},
+                          index = [index])
+        df.index.name = 'site_id'
+        df.to_sql(table_name, self.connection,
+                  if_exists = 'append'
+                 )
+        if closeconnection:
+            self.connection.close()
+        return index
+    
+    
+    def add_file(self, 
+                    path, date=None, date_created=None, site=None, 
+                    product_name = None, product_version = None, overwrite = True):
+        if date_created in ['NA', 'None']:
+            date_created = 'NA'
+        else:
+            dt = pd.to_datetime(date_created)  #ds.creation_timestamp)
+            date_created = f'{dt.year:04d}-{dt.month:02d}-{dt.day:02d}'
+        dt = pd.to_datetime(date)  #ds.datetime.values[0])
+        date = f'{dt.year:04d}-{dt.month:02d}-{dt.day:02d}'
+        site_id = self.connection.execute(f"SELECT site_id FROM sites Where abb='{site}'").fetchall()[0][0]
+        table_name = 'files'
+        try:
+            index = self.connection.execute(f"SELECT max(file_id)+1 FROM {table_name}").fetchall()[0][0]
+            exists = pd.read_sql_query(f"SELECT * FROM files Where path = '{path.as_posix()}'", self.connection)
+            if exists.shape[0] != 0:
+                index = exists.file_id.iloc[0]
+                if overwrite:
+                    self.connection.execute(f'delete from files where file_id={index}').fetchall()
+                else:
+                    return index
+        except Exception as e:
+            # Only needed on the very first run, when there is no sites yet
+            if e.args[0] == f'no such table: {table_name}':
+                index = 1
+            else:
+                raise
+        
+        df = pd.DataFrame({'site_id': [site_id,],
+                           'name': [path.name,],
+                           'date': [date,],
+                           'date_created': [date_created,],
+                           'product_name': [product_name,],
+                           'product_version': [product_version,],
+                           'path': [path.as_posix(),],
+                           },
+                          index = [index])
+        df.index.name = 'file_id'
+        df.to_sql(table_name, self.connection, 
+                  if_exists='append',
+                 )
+        return index
+    
+    
+    def add_instrument_type(self, abb, name, overwrite = False):
+        ### add new instrument
+        table_name = 'instrument_type'
+        try:
+            index = self.connection.execute(f"SELECT max(instrument_id)+1 FROM {table_name}").fetchall()[0][0]
+            exists = pd.read_sql_query(f"SELECT * FROM {table_name} Where abb = '{abb}'", self.connection)
+            if exists.shape[0] != 0:
+                index = exists.instrument_id.iloc[0]
+                if overwrite:
+                    self.connection.execute(f'delete from {table_name} where instrument_id={name}').fetchall()
+                else:
+                    return index
+        except Exception as e:
+            # Only needed on the very first run, when there is no sites yet
+            if e.args[0] == f'no such table: {table_name}':
+                index = 1
+            else:
+                raise
+        
+        df = pd.DataFrame({'abb': [abb,], 
+                           'name': [name,],
+                          },
+                          index = [index])
+        df.index.name = 'instrument_id'
+        df.to_sql(table_name, self.connection, 
+                  if_exists = 'append',
+                 )
+        return index
+    
+    ### add new wavelength channel
+    
+    def add_channel(self,
+                    name,
+                    instrument,
+                    channel_type,
+                    overwrite = False):
+    
+        instrument_id = self.connection.execute(f"SELECT instrument_id FROM instrument_type Where abb='{instrument}'").fetchall()[0][0]
+        table_name = 'channels'
+        try:
+            index = self.connection.execute(f"SELECT max(channel_id)+1 FROM {table_name}").fetchall()[0][0]
+            exists = pd.read_sql_query(f"SELECT * FROM {table_name} Where name = {name}", self.connection)
+            if exists.shape[0] != 0:
+                index = exists.channel_id.iloc[0]
+                if overwrite:
+                    self.connection.execute(f'delete from {table_name} where name={name}').fetchall()
+                else:
+                    return index
+        except Exception as e:
+            # Only needed on the very first run, when there is no sites yet
+            if e.args[0] == f'no such table: {table_name}':
+                index = 1
+            else:
+                raise
+        
+        df = pd.DataFrame({'instrument_id': [instrument_id,], 
+                           'name': [name,],  
+                           'channel_type': [channel_type,], 
+                          },
+                          index = [index])
+        df.index.name = 'channel_id'
+        df.to_sql(f'{table_name}', self.connection, 
+                  if_exists = 'append',
+                 )
+        return index
+
+    def add_clearsky_params(self, df,
+                            overwrite = True):
+        conn = self.connection
+        dft = pd.DataFrame(index = [0,])
+        try:
+            file_id = pd.read_sql_query(f"SELECT * FROM files where path='{df.file.iloc[0].as_posix()}'",
+                                        conn).file_id.iloc[0]
+        except IndexError:
+            raise IndexError('File not registerd yet. Do so with SunIrradiation.register_file_in_database.')
+        dft['file_id'] = file_id
+        site_id = pd.read_sql_query(f"SELECT * FROM sites where abb='{df.site.iloc[0]}'", conn).site_id.iloc[0]
+        dft['site_id'] = site_id
+        dft['channel_id'] = pd.read_sql_query(f"SELECT * FROM channels where name='{df.channel.iloc[0]}'", conn).channel_id.iloc[0]
+        
+        df = df.drop(['file', 'site','channel'], axis = 1)
+        df = pd.concat([dft, df], axis = 1)
+        
+        table_name = 'clearsky_params'
+        try:
+            index = self.connection.execute(f"SELECT max(fit_id)+1 FROM {table_name}").fetchall()[0][0]
+            exists = pd.read_sql_query(f'''select * from clearsky_params 
+                                              where file_id={df.file_id.iloc[0]}
+                                                  and channel_id={df.channel_id.iloc[0]}
+                                                  and observation="{df.observation.iloc[0]}"
+                                              ''', self.connection)
+            if exists.shape[0] != 0:
+                index = exists.fit_id.iloc[0]
+                if overwrite:
+                    self.connection.execute(f'''delete from clearsky_params 
+                                              where file_id={df.file_id.iloc[0]}
+                                                  and channel_id={df.channel_id.iloc[0]}
+                                                  and observation="{df.observation.iloc[0]}"
+                                              ''').fetchall()
+                else:
+                    return index
+        except Exception as e:
+            # Only needed on the very first run, when there is no sites yet
+            if e.args[0] == f'no such table: {table_name}':
+                index = 1
+            else:
+                raise
+        
+        df.index = [index]
+        df.index.name = 'fit_id'
+        df.to_sql(f'{table_name}', self.connection, 
+                  if_exists = 'append',
+                 )
+        self.connection.close()
+        return index
+                
+
+
+class ClearSky(object):
+    def __init__(self,parent):
+        self.parent = parent
+        self._testresults = None
+
+    @property
+    def test_results(self):
+        if isinstance(self._testresults, type(None)):
+            ds = self.parent.dataset.copy()
+            if 'sun_position' not in ds.variables:
+                try:
+                    df = self.parent.direct_normal_irradiation.sun_position
+                    df.columns.name = 'sun_params'
+                    ds['sun_position'] = df.drop('ampm', axis = 1)
+                    # return df
+                except:
+                    print('sun_position is not in dataset variables. I tried to get it, but it came back with the following error message')
+                    raise
+            
+            clearskylist = []
+            for channel in ds.channel:
+                
+                dst = xr.Dataset()
+                for param in ['global_horizontal', 'diffuse_horizontal', 'direct_normal']:
+                    # break
+                    if param not in ds.variables:
+                        continue
+                    # Do a fit as a function of airmass. This is therefore a symmetrical fit for pm and am and should quickly show if there is a problem with am and pm
+                    # todo make a test that indicates symmetry problems
+                    amlim = 12 # maximum airmass for visualization etc, 
+                    airmass = ds.sun_position.sel(sun_params = 'airmass')
+                    diffuse = ds[param].sel(channel = channel).dropna('datetime')
+                    diffuse = diffuse.where(airmass < amlim, drop = True).where(airmass > 1, drop = True)
+                    airmass = airmass.where(~diffuse.isnull())
+                    
+                    amlim = 10 # maximum airmass to which to consider the clearsky analysis
+                    diffusesel = diffuse.where(airmass < amlim, drop = True).where(airmass > 1, drop = True)
+                    airmasssel = airmass.where(~diffusesel.isnull(), drop = True)
+                
+                    degree = 3 # degree of polynomial fit; 2 might also be enough
+                    coeff = np.polyfit(airmasssel.values, diffusesel.values, degree)
+                    coeffsym = coeff
+                    diffpred = np.poly1d(coeff)(airmass)
+                    # aa[1].plot(airmass,diffuse - diffpred, label = degree)
+                    
+                    # Apply the fit from above to the entire day. Take the difference and analyse
+                    data = diffuse - diffpred
+                    dtfirst = data.datetime.values[0]
+                    x = (data.datetime - dtfirst)/pd.to_timedelta(1,'s')
+                    
+                    coeff = np.polyfit(x, data, 5)
+                    datapred = np.poly1d(coeff)(x)
+                    dst[f'{param}_clearsky_symmetric'] = xr.DataArray(np.array([diffpred,]), dims = ['channel', 'datetime'], coords = {'channel': [channel], 'datetime': data.datetime})
+                    dst[f'{param}_clearsky'] = xr.DataArray(np.array([diffpred + datapred,]), dims = ['channel', 'datetime'], coords = {'channel': [channel], 'datetime': data.datetime})
+                    dst[f'{param}_asymmetry_fit'] = xr.DataArray(np.array([datapred,]), dims = ['channel', 'datetime'], coords = {'channel': [channel], 'datetime': data.datetime})
+                    dst[f'{param}_asymmetry'] = xr.DataArray(np.array([data,]), dims = ['channel', 'datetime'], coords = {'channel': [channel], 'datetime': data.datetime})
+                    dst[f'{param}_asymmetry_fit_params'] = xr.DataArray(np.array([coeff,]), coords = {'channel': [channel], 'polynom_deg': range(6)[::-1]})
+                    dst[f'{param}_symmetric_fit_params'] = xr.DataArray(np.array([coeffsym,]), coords = {'channel': [channel], 'polynom_deg': range(4)[::-1]})
+                    #### Add some clearsky quality values to it which hopefully help identifying clear sky days?
+                    # relative or normalized RMSE (NRMSE)
+                    nrmse_sym = np.sqrt(((diffuse-diffpred) ** 2).mean())/diffuse.mean()
+                    nrmse_clearsky = np.sqrt(((diffuse-(diffpred + datapred)) ** 2).mean())/diffuse.mean()
+                    nrmse_sym = nrmse_sym.expand_dims({'clearsky_quality_params': ['nrmse_sym']})
+                    nrmse_clearsky = nrmse_clearsky.expand_dims({'clearsky_quality_params': ['nrmse_clearsky']})
+                    
+                    clearsky_quality = xr.concat([nrmse_sym, nrmse_clearsky], 'clearsky_quality_params')
+                    clearsky_quality = clearsky_quality.drop_vars('sun_params')
+                    clearsky_quality = clearsky_quality.expand_dims({"channel":[clearsky_quality.channel]})
+                    
+                    dst[f'{param}_clearsky_quality'] = clearsky_quality
+                    
+                clearskylist.append(dst)
+            
+            clearsky = xr.concat(clearskylist, 'channel')
+            clearsky.attrs['site'] = ds.site
+            self._testresults = clearsky
+        return self._testresults
+
+    def add_clearsky_parameters2database(self, database):
+        clearsky = self.test_results
+        site = clearsky.site
+        dt = pd.Timestamp.now()
+        dateoffit = f'{dt.year:04d}-{dt.month:02d}-{dt.day:02d}'
+            
+        for channel in clearsky.channel:
+            channel = int(channel)
+            csel = clearsky.sel(channel=channel)
+
+            for param in ['global_horizontal', 'diffuse_horizontal', 'direct_normal']:
+                df = csel[f'{param}_symmetric_fit_params'].dropna('polynom_deg').to_dataframe().drop('channel', axis = 1).transpose()
+                df.index = [0]
+                df.columns.name = None
+                df.columns = [f'psym{c}' for c in df.columns]
+                psym = df
+                
+                # format fit rest
+                df = csel[f'{param}_asymmetry_fit_params'].dropna('polynom_deg').to_dataframe().drop('channel', axis = 1).transpose()
+                df.index = [0]
+                df.columns.name = None
+                df.columns = [f'prest{c}' for c in df.columns]
+                prest = df
+                
+                # format quality
+                df = csel[f'{param}_clearsky_quality'].to_dataframe().drop('channel', axis = 1).transpose()
+                df.index = [0]
+                df.columns.name = None
+                cs_quali = df
+                
+                df = pd.DataFrame({'file': self.parent.path2file,
+                                   'site': site,
+                                   'channel': channel,
+                                   'dateoffit': dateoffit,
+                                   'observation': param,
+                                  }, 
+                                  index = [0])
+                
+                df = pd.concat([df,psym, prest, cs_quali], axis = 1)
+
+                database.add_clearsky_params(df)
+                
+    
+class SolarIrradiation(object):
+    def __init__(self, dataset):
+        self.dataset = self.unify_variables(dataset)
+        self.clearsky = ClearSky(self)
+
+    def unify_variables(self, dataset):
+        """Seach for variable names containing global, diffuse and direct and 
+        renames to global_horizontal, diffuse_horizontal, direct_normal"""
+        #### variable cleaining
+        # The exact variable name is sometimes
+        ds = dataset.copy()
+        for altvar in ['global_horizontal', 'diffuse_horizontal', 'direct_normal']:
+            altshort = altvar.split('_')[0]
+            match = [var for var in ds.variables if altshort in var]
+            assert(len(match) < 2), f'There are multiple variables with {altvar} in it ({match}).'
+            ds = ds.rename({match[0]: altvar})
+        return ds
+        
+
+    def register_file_in_database(self, database, overwrite = False):
+        ds = self.dataset
+        if 'creation_timestamp' in ds.attrs:
+            date_created = ds.date_created
+        else:
+            date_created = 'NA'
+            
+        database.add_file(self.path2file, 
+                             date=ds.datetime.values[0], 
+                             date_created=date_created, 
+                             site=ds.site, 
+                             product_name = ds.product_name, 
+                             product_version = ds.product_version, 
+                             overwrite = overwrite)
+
+class GlobalHorizontalIrradiation(SolarIrradiation):
+    def __init__(self, dataset):
+        super().__init__(dataset)
+
+class DiffuseHorizontalIrradiation(SolarIrradiation):
+    def __init__(self, dataset):
+        super().__init__(dataset)
+
+class DirectNormalIrradiation(SolarIrradiation):
     def __init__(self, dataset, 
                  site = None, 
                  langley_fit_settings = None,
                  calibration_strategy = 'johns',
                  metdata = 'surfrad'):
-        
+        super().__init__(dataset)
         self.raw_data = dataset #this is not exactly raw, it is cosine corrected voltag readings, thus, un-calibrated irradiances
         if isinstance(site, type(None)):
             assert('site' in dataset.attrs.keys()), 'If site is None, then the dataset has to have lat,lon,site, site_name, attributes'
@@ -632,9 +1040,9 @@ class DirectNormalIrradiation(object):
             print('done')
         return True
 
-class CombinedGlobalDiffuseDirect(object):
+class CombinedGlobalDiffuseDirect(SolarIrradiation):
     def __init__(self, dataset):
-        self.dataset = dataset
+        super().__init__(dataset)
         self.global_horizontal_irradiation = GlobalHorizontalIrradiation(dataset)
         self.diffuse_horizontal_irradiation = DiffuseHorizontalIrradiation(dataset)
         self.direct_normal_irradiation = DirectNormalIrradiation(dataset)
