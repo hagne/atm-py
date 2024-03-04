@@ -66,20 +66,42 @@ def _rgb_to_hex(rgb):
 
 
 class Color(object):
-    def __init__(self, color, model='hsv', color_scale = 1):
+    def __init__(self, color, model=None, color_scale = 1):
         """
         Parameters
         ----------
         color: depending ond model
-        model: (['hsv'], 'rgb', 'hex')
+        model: (['rgb'], 'hsv', 'hex', 'gray')
+            If left None it will try to infer. RGB and HSV can not be distinguished and rgb will be chosen by default.
         color_scale:
             ignored when model == 'hex'
         """
         if type(color).__name__ in ['list', 'tuple']:
-            color = _np.array(color)
+            color = _np.array(color, dtype = float)
+        
+        if isinstance(model, type(None)):
+            if isinstance(color, _np.ndarray):
+                model = 'rgb'
+            elif isinstance(color, str):
+                try:
+                    color = float(color)
+                    model = 'gray'
+                except ValueError:
+                    if len(color) == 7:
+                        model = 'hex'
+                    else:
+                        raise ValueError(f'{color} was neither recognized as gray nor as hex!')
+            else:
+                raise ValueError(f'Could not identify {color} as a particular color model.')
+                    
+                
+        if model == 'gray':
+            model = 'rgb'
+            color = _np.array([color,]*3)
+
 
         if model != 'hex':
-            color = color.astype(_np.float)
+            # color = color.astype(_np.float)
             color /= color_scale
 
         if len(color) == 4:
