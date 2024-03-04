@@ -3,35 +3,43 @@ import pandas as _pd
 
 def get_angle_of_line_at_pos(data, x, aspectratio=1):
     """Returns the angle of the line at the given index"""
+    px = x
     try:
-        px, py = data[data.x == x].iloc[0, :]
+        py = data.loc[x, 'y']
     except IndexError:
         raise IndexError('The postion is outside the date range ... adjust position to make this work')
-    psx, psy = data.shift()[data.x == x].iloc[0, :]
+    idx = data.index.get_loc(x)-1
+    psx = data.iloc[idx].name
+    psy = data.iloc[idx].y
     dx = px - psx
     dy = py - psy
-    deg = _np.rad2deg(_np.arctan(dx / dy))
-    print(deg)
+    dy *= aspectratio
+    deg = _np.degrees(_np.arctan2(dy , dx))
     return deg
 
 
-def get_interpolated_datapoint(x, y, position, axes='x', return_data=False):
-    add_datapoint = position
-    axes_alt = ['x', 'y']
-    axes_alt.remove(axes)
-    new_datapoint = {'y': [_np.nan], 'x': [_np.nan]}
-    new_datapoint[axes] = add_datapoint
-
-    data = _pd.DataFrame({'y': y, 'x': x})
-    data = data.append(_pd.DataFrame(new_datapoint)).sort_values(axes)
-    data.index = data[axes]
-    data = data.interpolate(method='slinear')
-    px, py = data.loc[add_datapoint, ['x', 'y']]
+def get_interpolated_datapoint(x, y, position, axes='x', return_data=False, verbose = True):
+    data = _pd.DataFrame({'y': y}, index = x)
+    if position not in data.index:
+        data.loc[position] = _np.nan
+        data.sort_index(inplace = True)
+        data = data.interpolate(method = 'index')
+    data.sort_index(inplace = True)
+    px = position
+    py = data.loc[position, 'y']
     if return_data:
         return px, py, data
     else:
         return px, py
 
+def get_aspect(ax):
+    fig = ax.figure
+    ll, ur = ax.get_position() * fig.get_size_inches()
+    width, height = ur - ll
+    axes_ratio = height / width
+    aspect = axes_ratio / ax.get_data_ratio()
+
+    return aspect
 
 def add_text_along_graph(graph, txt, position, axes='x', txtkwargs = None,  bbox = None):
     """as the name says :-)
@@ -60,6 +68,7 @@ def add_text_along_graph(graph, txt, position, axes='x', txtkwargs = None,  bbox
 
     """
     a = graph._axes
+    f = a.get_figure()
     col = graph.get_color()
     xt, yt = graph.get_data()
 
@@ -83,9 +92,9 @@ def add_text_along_graph(graph, txt, position, axes='x', txtkwargs = None,  bbox
 
 
     px, py, data = get_interpolated_datapoint(xt, yt, position, axes, return_data=True)
-
     txo = a.text(px, py, txt, bbox=bbox, **txtkwargs)
-    txo.set_rotation(get_angle_of_line_at_pos(data, px))
+    aspect_ratio = get_aspect(a)
+    txo.set_rotation(get_angle_of_line_at_pos(data, px, aspectratio = aspect_ratio))
     boxo = txo.get_bbox_patch()
     if bboxecef:
         boxo.set_edgecolor(col)
