@@ -373,8 +373,8 @@ class Correlation(object):
         # self.sy = sy
         # self.sx = sx
 
-        self._x_label_correlation = 'Reference'
-        self._y_label_correlation = 'Observation'
+        self._x_label_correlation = 'Observation'
+        self._y_label_correlation = 'Reference'
         self._x_label_orig = 'Item'
         self._y_label_orig_data = 'Data'
         self._y_label_orig_correlant = 'Correlant'
@@ -744,7 +744,7 @@ class Correlation(object):
                             xmax = xlim
                             xmin = data.min()
                             xlim = (xmin, xmax)
-                        elif type(xlim).__name__ == 'tuple''':
+                        elif type(xlim).__name__ == 'tuple':
                             xmax = xlim[1]
                             xmin = xlim[0]
                     else:

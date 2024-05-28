@@ -50,11 +50,19 @@ class NetworkStations(object):
             DESCRIPTION.
 
         """
-        res = [si for si in self._stations_list if site.upper() in si.abb]
+        res = [si for si in self._stations_list if site.lower() in si.abb]
         if len(res) == 0:
             res = [si for si in self._stations_list if site.upper() in si.abb]
             
-        assert(len(res) != 0), 'not found'
+        # test alternatives abb, isnt the abb in abb_alternative? Than we could get rid of the above?
+
+        
+        if len(res) == 0:
+            res = [si for si in self._stations_list if site in si.abb_alternative]
+        if len(res) == 0:
+            res = [si for si in self._stations_list if site.upper() in si.abb_alternative]
+
+        assert(len(res) != 0), f'No result for {site}'
         return res[0]
     
     @property

@@ -246,7 +246,10 @@ class ModeAnalysis(object):
             fit_res_param['area'] = fit_res_param['amp'] * fit_res_param['sig'] * np.sqrt(2 * np.pi)
             fit_res_param['area_rel'] = fit_res_param['area'] / fit_res_param['area'].sum()
             fit_res_param.index = [which] * fit_res_param.shape[0]
-            fit_res_all = fit_res_all.append(fit_res_param)
+            # fit_res_all = fit_res_all.append(fit_res_param) # deprecated
+            fit_res_all = pd.concat([fit_res_all, fit_res_param], 
+                                    # ignore_index=True,
+                                   )
             if 0:
                 f ,a = sd.plot()
                 a.set_title(which)

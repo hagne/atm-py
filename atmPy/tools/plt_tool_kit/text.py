@@ -1,5 +1,47 @@
 import numpy as _np
 import pandas as _pd
+import matplotlib.pyplot as plt
+
+def latex_formula(formula, textkwargs = {}):
+    """
+    Generates a figure with only the latex formula, noting else!
+    Example
+    --------
+    t = f'$\sigma = \sqrt{{\sigma_{{\\uparrow}}^2 + \sigma_{{\\downarrow}}^2}} = {sigupdown:0.1f}$'
+    to = pltkit.text.latex_formula(t)
+    
+    """
+    # Create a figure and an axes
+
+    if 'fontsize' not in textkwargs:
+        textkwargs={'fontsize':40}
+    
+    f, a = plt.subplots()
+
+    # Add text at the center of the axes
+    to = a.text(0, 0, formula, ha='center', va='center', **textkwargs)
+    to.set_horizontalalignment('left')
+    # Turn off the axes
+    a.set_axis_off()
+
+    # Draw the canvas to update the renderer and get the correct bounding box
+    f.canvas.draw()
+
+    # Get the bounding box of the text in inches
+    bbox = to.get_window_extent().transformed(f.dpi_scale_trans.inverted())
+
+    # Set the figure size based on the text bounding box, adding a small margin
+    margin = 0.  # inches
+    f.set_size_inches(bbox.width + 2 * margin, bbox.height + 2 * margin)
+
+    # Adjust the layout to remove any extra whitespace
+    f.tight_layout(pad=0)
+
+    # Show or save the figure
+    # plt.show()
+    return to 
+
+
 
 def get_angle_of_line_at_pos(data, x, aspectratio=1):
     """Returns the angle of the line at the given index"""

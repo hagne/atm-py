@@ -98,11 +98,13 @@ class Surfrad_Data(object):
         else:
             assert(False), f'the param:{param} is not set up yet ... programming required'
         return mfrsr
-    
+
+class FilterFunctionError(Exception):
+    pass
     
 _locations = [{'name': 'Bondville',
               'state' :'IL',
-              'abbreviation': ['BND', 'bon'],
+              'abbreviation': ['bnd', 'bon'],
               'lon': -88.37309,
               'lat': 40.05192,
               'alt' :230,
@@ -552,7 +554,7 @@ def read_albedo(path2file, path2readme = '/nfs/grad/Inst/MFR/README.alb', verbos
     return ds
 
         
-def get_mfrsr_filter_responds(serial_no, path2folder = '/nfs/grad/Calibration_facilities/cucf/Surfrad/working', verbose = True):
+def get_mfrsr_filter_responds(serial_no, path2folder = '/nfs/grad/Calibration_facilities/cucf/Surfrad/working', verbose = False):
     p2fld_filter = _pl.Path(path2folder)
     p2f_filter_resp = list(p2fld_filter.glob(f'*{serial_no:04d}*SPR.txt'))
     if verbose:
@@ -560,8 +562,13 @@ def get_mfrsr_filter_responds(serial_no, path2folder = '/nfs/grad/Calibration_fa
         for i in p2f_filter_resp:
             print(i)
             
-    assert(len(p2f_filter_resp) > 0), f'no responds function found for serial no {serial_no:04d} in dir: {p2fld_filter}'
-    assert(len(p2f_filter_resp) == 1), f'there should only be one responds function!! {len(p2f_filter_resp)} found'
+    # assert(len(p2f_filter_resp) > 0), f'no responds function found for serial no {serial_no:04d} in dir: {p2fld_filter}'
+    if len(p2f_filter_resp)  == 0:
+        raise FilterFunctionError(f'no responds function found for serial no {serial_no:04d} in dir: {p2fld_filter}')
+    # assert(len(p2f_filter_resp) == 1), f'there should only be one responds function!! {len(p2f_filter_resp)} found'
+    if len(p2f_filter_resp) > 1:
+        raise FilterFunctionError(f'there should only be one responds function!! {len(p2f_filter_resp)} found')
+        
     p2f_filter_resp = p2f_filter_resp[0]
 
     filter_resp = atmcucf.read_mfrsr_cal(p2f_filter_resp)
@@ -667,7 +674,7 @@ def read_sounding(p2f):
     
     return atmsound.BalloonSounding(ds_sonde)
 
-def read_ccc(p2f, verbose = False):
+def read_ccc(p2f, verbose = False, raisefilterfunctionerror = True):
     """
     Reads surfrads ccc (cosine corrected) files typically located somewhere 
     around here:
@@ -697,7 +704,7 @@ def read_ccc(p2f, verbose = False):
     
     if fieldno == 36:
         filetype = 'tu'
-    elif fieldno == 18:
+    elif fieldno in [18, 15, 16]:
         filetype = 'tu'
         instrument_type = 'MFR'
     
@@ -725,7 +732,7 @@ def read_ccc(p2f, verbose = False):
                       sep ='\s+',
                 # delim_whitespace = True,
                 skiprows = skiprows)
-
+    # return df
     index =  df.apply(lambda row: _pd.to_datetime('1900-01-01') + _pd.to_timedelta(row.datetime - 1, 'days'), axis = 1) # the -1 is bacause the year starts with day 1 not zero
     index -= _pd.to_timedelta(timezoneadjust, 'h')
     df.index = index
@@ -744,18 +751,20 @@ def read_ccc(p2f, verbose = False):
     elif filetype == 'tu':
         ds['temp_sensor'] = df[1]
         
-        ds['temp_housing_2'] = df.iloc[:,-5]
+        # ds['temp_housing_2'] = df.iloc[:,-5] #this is inconsistant
         da = _xr.DataArray(df[2])
         da = da.where(da != -9999.0, _np.nan)
         da = da.where(da != -9998.0, _np.nan)
         ds['broadband'] = da#df[2]
+    
+    
         no = 7
         if instrument_type == 'MFRSR':
             # ds['temp_housing_2'] = df.iloc[:,-5]
             start_col = 2
         elif instrument_type == 'MFR':
-            ds['temp_housing'] = df[10]
-            # ds['temp_housing_2'] = df.iloc[:,-5]
+            # ds['temp_housing'] = df[10]
+            # ds['temp_housing_2'] = df.iloc[:,-5] # inconsistant, different for different site
             start_col = 2
         else:
             assert(False), 'nenenenene'
@@ -799,14 +808,10 @@ def read_ccc(p2f, verbose = False):
         ds[groupnames[block]].attrs['corrections'] = 'cosine'
 
     if filetype == 'tu':
-        sel = df.iloc[:, -4:].copy()
-        ds['airmass'] = sel.iloc[0]
-        ds['solar_azimuth'] = sel.iloc[1]
-        ds['solar_zenith'] = sel.iloc[2]
-        ds['solar_elevation'] = sel.iloc[3]
-        # sel.columns = ['airmass', 'azimuth', 'zenith', 'elevation']
-        # sel.columns.name = 'sun_pos_params'
-        # ds['sun'] = sel
+        ds['airmass'] = df.iloc[:,-4] # airmass
+        ds['solar_azimuth'] = df.iloc[:,-3] # azimuth
+        ds['solar_elevation'] = df.iloc[:,-2] # sun elevation
+        ds['solar_zenith'] = df.iloc[:,-1] # sun zenith
 
     ds.solar_elevation.attrs['unit'] = 'radian'
     ds.attrs['info'] = 'Cosine corrected SURFRAD MFRSR measurments.'
@@ -820,11 +825,20 @@ def read_ccc(p2f, verbose = False):
     ds.attrs['serial_no'] = serial_no
     
     # name channels and clean up
-    fresp = get_mfrsr_filter_responds(serial_no)
+    
     ds = ds.drop_sel({'channel':1}) #this is the broadband channel
-    ds = ds.assign_coords(channel = fresp.channel) 
-    ds['channel_center'] = fresp.statistics.sel(stats = 'CENT').to_pandas()
-    # return ds
+
+    try:
+        fresp = get_mfrsr_filter_responds(serial_no)
+        ds = ds.assign_coords(channel = fresp.channel) 
+        ds['channel_center'] = fresp.statistics.sel(stats = 'CENT').to_pandas()
+        # return ds
+    except FilterFunctionError:
+        if not raisefilterfunctionerror:
+            ds = ds.assign_coords(channel = [415,500, 1625, 670, 870, 940])
+            fresp = None
+        else:
+            raise
     out = atmradobs.CombinedGlobalDiffuseDirect(ds)
     out.filter_functions = fresp
     out.path2file = p2f

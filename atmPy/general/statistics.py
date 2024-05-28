@@ -17,6 +17,8 @@ import matplotlib.dates as mdates
 import  matplotlib.lines as _mpllines
 import matplotlib.dates as _mpldates
 
+from statsmodels.graphics.tsaplots import plot_acf as statsmod_plot_acf
+
 import scipy.stats as scistats
 
 
@@ -51,6 +53,11 @@ class GamClimatology(object):
         '''
         self.distribution = 'normal'# 'normal' ['binomial' 'poisson' 'gamma' 'inv_gauss']
         self.link = 'identity' # 'identity' ('logit' 'inverse' 'log' 'inverse-squared')
+        self.trend_model = 'spline' # [spline, linear'] this is the overall trend model
+        self.interactions = False
+        # self.interactions_lam = None
+        # self.interactions_nsplines = None
+        self.interactions_only = False
         self._splines_per_year = 15
         self._parent_stats = parent_stats
         self._data = None
@@ -175,8 +182,8 @@ class GamClimatology(object):
             
             Xdf = _pd.DataFrame()
             
-            row = data.iloc[0,:]
-            start_date = row.name
+            row_s = data.iloc[0,:]
+            start_date = row_s.name
             self._start_date = start_date
             Xdf['dsincestart'] = data.apply(lambda row: (row.name - start_date )/ datetime.timedelta(days = 1), axis = 1)
             Xdf['doy'] = data.apply(lambda row: (row.name - _pd.to_datetime(row.name.year, format= '%Y')) / datetime.timedelta(days = 1), axis = 1)
@@ -215,20 +222,42 @@ class GamClimatology(object):
         return None #self._fit_res # this is still the same instance ..
         
     @property
-    def gam_inst(self, linear = False, ):
+    def gam_inst(self):
         if isinstance(self._gam, type(None)):
             import pygam
-            
-            if linear:
+            if self.trend_model == 'linear':
                 year = pygam.l(0)#, lam = resolution, n_splines=int(n_splines))
-            else:
+            elif self.trend_model == 'spline':
                 year = pygam.s(0, lam = self.trend_lambda, n_splines=self.trend_nsplines)#int(n_splines))
-            
-            doy = pygam.s(1, basis = 'cp', lam = self.seasonality_lambda, n_splines= self.seasonality_nsplines)
-            if self.distribution == 'normal':
-                self._gam = pygam.LinearGAM(year + doy)
             else:
-                self._gam = pygam.GAM(year + doy , distribution = self.distribution, link = self.link)
+                raise ValueError(f'trend_model has to be either "linear" or "spline". It is {self.trend_model} though.')
+                
+            doy = pygam.s(1, basis = 'cp', lam = self.seasonality_lambda, n_splines= self.seasonality_nsplines)
+            self.tp_term_doy = doy
+            models = year + doy
+
+            if self.interactions:
+                # Alternatively you could define the terms with s(1, ....). 
+                # I tried it with l too, but I could not find out how to add an intersect to that linear term
+                # Also tried to just use the doy and year from above (also newly defined so I am not using the very same instances
+                # but the problem is that I am using to many spline in those ... that just never finishes, might be worth trying again?
+                
+                te_term = pygam.te(0,1, 
+                                   lam = self.interactions_lam,#(self.trend_lambda, self.seasonality_lambda), 
+                                   n_splines = self.interactions_nsplines, #(self.trend_nsplines, self.seasonality_nsplines)
+                                   basis = ['ps', 'cp'], # first is for trend, second for the cyclic day of year
+                                  )
+
+                
+                if self.interactions_only:
+                    models = te_term
+                else:
+                    models += te_term
+            
+            if self.distribution == 'normal':
+                self._gam = pygam.LinearGAM(models)
+            else:
+                self._gam = pygam.GAM(models , distribution = self.distribution, link = self.link)
         return self._gam
     
     @property
@@ -282,36 +311,77 @@ class GamClimatology(object):
             Xdf = self.data.iloc[:,1:]
             Xdf.columns = [c.replace('x_', '') for c in Xdf.columns]
             gam = self.fit_res
-            for i,col in enumerate(Xdf.columns):
-                term = gam.terms[i]
-                XX = gam.generate_X_grid(term=i, n = self.prediction_grid_size)
-                pdep, confi = gam.partial_dependence(term=i, X=XX, width=self.prediction_confidence)
-                self.tp_confi = confi
-                self.tp_pdep = pdep
-                dsincestart_feat = XX[:, term.feature]
-                colname = Xdf.columns[i]
-                if colname == 'dsincestart':
-                    startd = Xdf.index[0]
-                    index = startd + (dsincestart_feat * _pd.to_timedelta(1, 'day'))
-                    colname = 'datetime'
+            
+            # if self.interactions_only:
+            #     i = 0
+            #     XX = gam.generate_X_grid(term=i, meshgrid=True)#n = self.prediction_grid_size)
+            #     pdep = gam.partial_dependence(term=i, X=XX, meshgrid = True)#width=self.prediction_confidence)
+            #     self.tp_pdep = pdep
+            #     # self.tp_confi = confi
+            #     self.tp_ds = ds
+            #     self.tp_XX = XX
+            #     return
+            if not self.interactions_only:
+                for i,col in enumerate(Xdf.columns):
+                    term = gam.terms[i]
+                    XX = gam.generate_X_grid(term=i, n = self.prediction_grid_size)
+                    pdep, confi = gam.partial_dependence(term=i, X=XX, width=self.prediction_confidence)
+                    self.tp_confi = confi
+                    self.tp_pdep = pdep
+                    dsincestart_feat = XX[:, term.feature]
+                    colname = Xdf.columns[i]
+                    if colname == 'dsincestart':
+                        startd = Xdf.index[0]
+                        index = startd + (dsincestart_feat * _pd.to_timedelta(1, 'day'))
+                        colname = 'datetime'
+                    else:
+                        index = dsincestart_feat
+                    # print(pdep.shape)
+                    self.tp_colname = colname
+                    self.tp_index = index
+                    ds[f'partial_{colname}'] =  _xr.DataArray(pdep, coords={colname:index})
+                    ds[f'partial_{colname}_confidence'] =  _xr.DataArray(confi, coords={colname:index,
+                                                                                        'boundary': ['top', 'bottom']})
+                    
+            if self.interactions:
+                if self.interactions_only:
+                    i = 0
                 else:
-                    index = dsincestart_feat
-                # print(pdep.shape)
-                self.tp_colname = colname
-                self.tp_index = index
-                ds[f'partial_{colname}'] =  _xr.DataArray(pdep, coords={colname:index})
-                ds[f'partial_{colname}_confidence'] =  _xr.DataArray(confi, coords={colname:index,
-                                                                                    'boundary': ['top', 'bottom']})
-                
+                    i = 2
+                # XX_trend = gam.generate_X_grid(term=0, n = self.prediction_grid_size)
+                # XX_season = gam.generate_X_grid(term=1, n = self.prediction_grid_size)
+                # self.tp_XX_trend = XX_trend
+                # self.tp_XX_season = XX_season
+                XX = gam.generate_X_grid(term=i,n = self.prediction_grid_size, meshgrid=True)#n = self.prediction_grid_size)
+                pred = gam.partial_dependence(term=i, X=XX, meshgrid = True)#width=self.prediction_confidence)
+                self.tp_pdep = pred
+                # self.tp_confi = confi
+                self.tp_ds = ds
+                self.tp_XX = XX
+                # ds['interaction'] = xr.DataArray(self.tp_pdep, #dims = ('bla', 'blub'), 
+                #                                  coords = {'dsincestart': self.tp_XX[0][:,0],
+                #                                            'doy' : self.tp_XX[1][0]})
+
+                dt = self.data.index[0] + (XX[0][:,0] * _pd.to_timedelta(1, 'day'))
+                ds['interactions'] = _xr.DataArray(pred, #dims = ('bla', 'blub'), 
+                                                   coords = {'datetime': dt,
+                                                             'doy' : XX[1][0]})
+            
             XX = self.data.iloc[:,1:].values
             pred = gam.predict(XX)  
             dindex = self._start_date + _pd.to_timedelta(XX[:,0], 'd')
             ds['prediction'] = _xr.DataArray(pred, coords = {'datetime_full': dindex})
-            
+            ds.attrs['intercept'] = gam.coef_[-1]
             if hasattr(gam, 'prediction_intervals'):
-                pred = gam.prediction_intervals(XX)
+                pred = gam.prediction_intervals(XX, width=self.prediction_confidence)
                 ds['prediction_confidence'] = _xr.DataArray(pred, coords = {'datetime_full': dindex,
-                                                                            'boundary': ['top', 'bottom']})
+                                                                            'boundary': ['bottom', 'top']})
+
+            #### add residual
+            res = self.data.iloc[:,0] - ds.prediction
+            res.index.name = 'datetime_full'
+            ds['residual'] = res
+            
             self._prediction = ds
         return self._prediction
     
@@ -323,7 +393,16 @@ class GamClimatology(object):
                          offset = 0,
                          xticklablesmonth = True,
                          show_confidence = True,
+                         orientation='horizontal',
+                         transform = None,
+                         # vcenter = True,
                          **plot_kwargs):
+        """"
+        Parameters
+        ===========
+        offset: float or str ['center', 'intercept']
+        transform: str ['log2lin', 'percent']
+            """
         
         if isinstance(ax, type(None)):
             f, a = _plt.subplots()
@@ -333,22 +412,59 @@ class GamClimatology(object):
         
         # if 'label' not in plot_kwargs:
         #     plot_kwargs['label'] = 'seasonal'
+        if orientation == 'vertical':
+            y = 'doy'
+        else:
+            y = None
+
+
+        # assert(not (vcenter and offset)), 'if vcenter is True, offset is set automatically' 
+        if offset == 'center':
+            offset = - float(self.prediction.partial_doy.mean())
+        elif offset == 'intercept':
+            offset = self.prediction.intercept
         
-        (self.prediction.partial_doy + offset).plot(ax = a, **plot_kwargs)   
+        da = self.prediction.partial_doy + offset
+        if transform == 'percent':
+            da = (10**da - 1) * 100
+        if transform == 'log2lin':
+            da = 10**da
+            
+        # else: 
+        #     da = self.prediction.partial_doy
+        da.plot(ax = a, y = y,**plot_kwargs)   
+        
+        # if transform == 'percent':
+        #     da = (10**self.prediction.partial_doy - 1) * 100
+        # else: 
+        #     da = self.prediction.partial_doy
+        # (da + offset).plot(ax = a, y = y,**plot_kwargs)   
         
         if show_confidence:
             bot,up = self.prediction.partial_doy_confidence.values.transpose()
-            fill = a.fill_between(self.prediction.doy,bot,up, color = [0,0,0,0.3])
+            bot = bot + offset
+            up = up + offset
+            if transform == 'percent': 
+                bot = (10**bot - 1) * 100
+                up = (10**up - 1) * 100
+            if orientation == 'vertical':
+                fill = a.fill_betweenx(self.prediction.doy,bot,up, color = [0,0,0,0.3])
+            else: 
+                fill = a.fill_between(self.prediction.doy,bot,up, color = [0,0,0,0.3])
         else:
             fill = None
         
         if xticklablesmonth:
-            a.xaxis.set_major_locator(mdates.MonthLocator())  # Set the major ticks to be at the beginning of each month
-            a.xaxis.set_minor_locator(mdates.WeekdayLocator())  # Set the minor ticks to be at the beginning of each week
-            a.xaxis.set_major_formatter(mdates.DateFormatter('%b'))  # Format the major ticks with abbreviated month names
-            
-            a.xaxis.set_minor_locator(_plt.NullLocator())
-        a.set_xlabel('')
+            if orientation == 'vertical':
+                axis = a.yaxis
+            else: 
+                axis = a.xaxis
+            axis.set_major_locator(mdates.MonthLocator())  # Set the major ticks to be at the beginning of each month
+            axis.set_minor_locator(mdates.WeekdayLocator())  # Set the minor ticks to be at the beginning of each week
+            axis.set_major_formatter(mdates.DateFormatter('%b'))  # Format the major ticks with abbreviated month names
+            axis.set_minor_locator(_plt.NullLocator())
+            axis.set_label_text('')
+        # a.set_xlabel('')
         # a.set_xlabel('Day of year')
         return f,a,fill
     
@@ -374,49 +490,176 @@ class GamClimatology(object):
             data = self._parent_stats._parent_ts.data
             a.plot(data.index, data.iloc[:,0], ls = '', marker = '.', markersize = 1, zorder = 1, label = 'observation', color = '0.7')
         return f,a
+
+    def plot_interactions(self, ax = None, xticklablesmonth = True, transform = None, cbkwargs = {}, offset = 'intercept'): 
+        """
+        Parameters
+        ===========
+        cbkwargs: dict or bool
+            if False, no colorbar will be shown
+        """
+        if isinstance(ax, type(None)):
+            f,a = _plt.subplots()
+        else:
+            a = ax 
+            f = a.get_figure()
+
+        if offset == 'intercept':
+            offset = self.prediction.intercept
         
-    def plot_overview(self, axis = None, show_confidence = True, show_original_data = True):
+        da = self.prediction.interactions + offset
+        
+        if transform == 'percent':
+            da = (10**da -1) * 100
+        else:
+            pass
+        
+            
+        pc = da.plot(x = 'datetime', ax = a, add_colorbar = False)
+        pc.set_cmap(_plt.cm.Spectral_r)
+
+        cbar = None
+        if cbkwargs:
+            cbar = f.colorbar(pc, **cbkwargs)
+                              # ax = axcb, 
+                              # # location = 'left',
+                              # anchor = (0,1.1), 
+                              # # pad = 1.5,
+                              # aspect = 10,
+                              # shrink = 1.8) 
+        
+        
+        if xticklablesmonth:
+            axis = a.yaxis
+            axis.set_major_locator(mdates.MonthLocator())  # Set the major ticks to be at the beginning of each month
+            axis.set_minor_locator(mdates.WeekdayLocator())  # Set the minor ticks to be at the beginning of each week
+            axis.set_major_formatter(mdates.DateFormatter('%b'))  # Format the major ticks with abbreviated month names
+            axis.set_minor_locator(_plt.NullLocator())
+            axis.set_label_text('')
+        return f,a, pc, cbar
+        
+    def plot_overview(self, axis = None, show_confidence = True, show_original_data = True, 
+                      shade_seasons = True, transform = None, offset_season = 0):
+        """
+        Parameters
+        ===========
+        offset_season: see plot_seasonality
+        """
+        
+        out = []
         if isinstance(axis, type(None)):
-            aa = []
-            f = _plt.figure()
-            f.set_figheight(f.get_figheight() * 1.5)
-            aa.append(f.add_subplot(3,1,1))
-            aa.append(f.add_subplot(3,1,2, sharex = aa[0]))
-            aa.append(f.add_subplot(3,1,3))
-            shade_seasons = {'color': '#02401A', 'alpha': 0.5}
+            if self.interactions:
+                f,aa = _plt.subplots(3,2, #sharex=True, sharey=True,
+                    height_ratios=[1,1,3], 
+                    width_ratios=[3,1], 
+                    gridspec_kw={'hspace':0, 'wspace': 0})
+                aaf = aa.flatten()
+                
+                for a in (aa[0,1], aa[1,1]):
+                    a.spines['right'].set_visible(False)
+                    # a.spines['left'].set_visible(False)
+                    a.spines['top'].set_visible(False)
+                    a.spines['bottom'].set_visible(False)
+                    a.xaxis.set_ticks([])
+                    a.yaxis.set_ticks([])
+                # a = aa[1,1]
+                # a.spines['right'].set_visible(False)
+                # a.spines['top'].set_visible(False)
+            else:
+                aa = []
+                f = _plt.figure()
+                f.set_figheight(f.get_figheight() * 1.5)
+                aa.append(f.add_subplot(3,1,1))
+                aa.append(f.add_subplot(3,1,2, 
+                                        # sharex = aa[0]
+                                       ))
+                aa.append(f.add_subplot(3,1,3))
+                
+            if shade_seasons:
+                shade_seasons = {'color': '#02401A', 'alpha': 0.5}
         else:
             aa = axis
             f = aa[0].get_figure()
             shade_seasons = False
+
+        out.append(f)
+        out.append(aa)
             
+        if self.interactions:
+            a_pred = aa[0,0]
+            a_trend = aa[1,0]
+            a_season = aa[2,1]
+            a_inter = aa[2,0]
+            orientation='vertical'
+
+        else: 
+            a_pred = aa[0]
+            a_trend = aa[1]
+            a_season = aa[2]
+            orientation='horizontal'
+        
         xshift = 0
         
-        self.plot_prediction(ax = aa[0], show_confidence=show_confidence, show_original_data=show_original_data)
-        self.plot_trend(ax=aa[1], shade_seasons=shade_seasons, show_confidence=show_confidence)
-        self.plot_seasonality(ax=aa[2], show_confidence = show_confidence)
+        self.plot_prediction(ax = a_pred, show_confidence=show_confidence, show_original_data=show_original_data)
+        self.plot_trend(ax=a_trend, shade_seasons=shade_seasons, show_confidence=show_confidence, transform = transform)
+
+
+        self.plot_seasonality(ax=a_season, show_confidence = show_confidence, orientation=orientation, transform = transform, offset = offset_season)
         
-        
+        if self.interactions:
+            # a = aa[2,0]
+            a = a_inter
+            cbkwargs = dict(ax = aa[0,1], 
+                               anchor = (0,1.1), 
+                               aspect = 10,
+                               shrink = 1.8
+                    ) 
+            f,a,pc,cb = self.plot_interactions(ax = a, cbkwargs = cbkwargs, transform = transform)
+            out.append(pc)
+            out.append(cb)
+            
+            
         # a = aa[0]
         # fillb = a.get_children()[2]
         # fillb.set_color('0.3')
         # fillb.set_zorder(10)
-        for e,a in enumerate(aa):
-            if e == 0:
-                continue
-            poslast = aa[e-1].get_position().bounds
-            pos = list(a.get_position().bounds)
-            if e == 1:
-                xshift += poslast[1] - (pos[1] + pos[3])
-            pos[1] = pos[1] + xshift
-            a.set_position(pos)
-        aa[0].legend(fontsize = 'small')
+        if self.interactions:
+            for a in (aa[0,0], aa[1,0]):
+                a.set_xlim(aa[2,0].get_xlim())
+            
+            a = aa[2,1]
+            a.set_ylim(aa[2,0].get_ylim())
+            a.yaxis.tick_right()
+            
+            cb.ax.yaxis.tick_left()
+
+            a_inter.set_xlabel('')
+            
+        else:
+            for e,a in enumerate(aa):
+                if e == 0:
+                    continue
+                poslast = aa[e-1].get_position().bounds
+                pos = list(a.get_position().bounds)
+                if e == 1:
+                    xshift += poslast[1] - (pos[1] + pos[3])
+                pos[1] = pos[1] + xshift
+                a.set_position(pos)
+
+            # make sure the trend and full data have the same xrange
+            a_trend.set_xlim(a_pred.get_xlim())
+            a_pred.set_xticklabels([])
+            
+        a_trend.legend(fontsize = 'small')
         
-        return f,aa
+        return out
     
     def plot_trend(self, ax = None, 
                    shade_seasons = False, 
                    show_confidence = True,
-                   offset= 0, **plot_kwargs):
+                   offset= 0,
+                   transform = None,
+                   **plot_kwargs):
         """
         
 
@@ -463,16 +706,24 @@ class GamClimatology(object):
         else:
             a = ax
             f = a.get_figure()
-            
- 
-        (self.prediction.partial_datetime + offset).plot(ax = a, **plot_kwargs)   
-         
 
-            
+        if transform == 'percent':
+            da = (10**self.prediction.partial_datetime -1) * 100
+        else:
+            da = self.prediction.partial_datetime 
+        (da + offset).plot(ax = a, **plot_kwargs)   
+
+        
         if show_confidence:
+            if transform == 'percent':
+                top = (10**self.prediction.partial_datetime_confidence.sel(boundary='top') -1) * 100
+                bottom = (10**self.prediction.partial_datetime_confidence.sel(boundary='bottom') -1) * 100
+            else:                
+                top = self.prediction.partial_datetime_confidence.sel(boundary='top') + offset
+                bottom = self.prediction.partial_datetime_confidence.sel(boundary='bottom') + offset
             a.fill_between(self.prediction.datetime, 
-                   self.prediction.partial_datetime_confidence.sel(boundary='top'), 
-                   self.prediction.partial_datetime_confidence.sel(boundary='bottom'), 
+                   top, 
+                   bottom, 
                    alpha=0.5, zorder = 2, color = '0.5', label = 'confidence')
             
             
@@ -534,8 +785,223 @@ class GamClimatology(object):
             a.xaxis.tick_bottom()
             a.set_xlabel('')
         return f,a
+
+    def plot_test_residual_vs_obs(self, 
+                                  ul=0.999,
+                                  ll=0.001, 
+                                  ax=None):
+        if not isinstance(ax, type(None)):
+            a = ax
+            f = a.get_figure()
+        else:
+            f,a = _plt.subplots()
         
+        pred = self.prediction
+        # residual = self.data.iloc[:,0] - pred.prediction
+        residual = pred.residual
+    # a.scatter(gamcl.data.y_aod, residual)
+        cmap = _plt.cm.gnuplot2
+        cmap.set_under(color='none')
+        #(xmin, xmax, ymin, ymax)
+        maxi = self.data.iloc[:,0].quantile(ul)
+        mini = self.data.iloc[:,0].quantile(ll)
+        maxiy = residual.quantile(ul)
+        miniy = residual.quantile(ll)
+        extent = _np.array((mini, maxi, mini, maxi))
+        extent = _np.array((mini, maxi, miniy, maxiy))
+        pc = a.hexbin(self.data.iloc[:,0], residual, 
+                      cmap = cmap, 
+                      vmin = 0.000000001, 
+                      linewidths=0.2, 
+                      extent=extent,
+                     )
+        f.colorbar(pc)
+        
+        a.set_xlabel('Observation')
+        a.set_ylabel('Residual')
+        a.set_title('Observation vs Residual')
+        return f,a
+        
+    def plot_test_dist_of_res(self, bins = 50, ax = None):
+        if not isinstance(ax, type(None)):
+            a = ax
+            f = a.get_figure()
+        else:
+            f,a = _plt.subplots()
+        pred = self.prediction
+        # residual = self.data.iloc[:,0] - pred.prediction
+        residual = pred.residual
+        a.hist(residual, bins = bins, density=True, alpha = 0.6)
+
+        mu, sigma = scistats.norm.fit(residual)
+        x = _np.linspace(residual.min(), residual.max(), bins*3)
+        p = scistats.norm.pdf(x, mu, sigma)
+        a.plot(x, p, 'k', linewidth=2)
+        
+        a.set_title('Distribution of residual')
+        a.set_xlabel('Residual')
+        
+        return f,a 
     
+    def plot_test_qq(self, ax = None, textpos = (0.1, 0.9), sig_fig = 2):
+        def format_significant(x, sig_digits=2):
+            if x == 0:
+                return f"{0:.{sig_digits-1}f}"  # handle zero specially
+        
+            if x > 1e-2 and x < 1e2:
+                magnitude = int(_np.floor(_np.log10(abs(x))))  # find magnitude of the number
+                factor = 10**(sig_digits - 1 - magnitude)
+                pres = sig_digits - 1 - magnitude
+                if pres < 0:
+                    pres = 0
+                return f"{round(x * factor) / factor:.{pres}f}"
+            else:    
+                # Get the order of magnitude of the number
+                exponent = int(_np.floor(_np.log10(abs(x))))
+                # Normalize the number to its significant digits
+                scaled = round(x / 10**exponent, sig_digits - 1)
+                # Format using LaTeX scientific notation style
+                # if exponent == 0:
+                
+                    # return f"{scaled:.{sig_digits-1}f}"
+                return r"${:.{prec}f} \cdot 10^{{{exp}}}$".format(scaled, prec=sig_digits-1, exp=exponent)
+            
+        if not isinstance(ax, type(None)):
+            a = ax
+            f = a.get_figure()
+        else:
+            f,a = _plt.subplots()
+        pred = self.prediction
+        # residual = self.data.iloc[:,0] - pred.prediction
+        residual = pred.residual
+        out = scistats.probplot(residual, dist="norm", plot=a)
+        gs = a.get_lines()
+        gs[0].remove()
+        ((osm, osr),(slope, intercept, r)) = out
+        cmap = _plt.cm.gnuplot2
+        cmap.set_under(color='none')
+        a.hexbin(osm, osr, cmap = cmap, vmin = 0.000000001, linewidths=0.2
+                 # zorder = 10
+                )
+        a.grid()
+        a.text(*textpos, f'm = {format_significant(slope, sig_fig)}\nc = {format_significant(intercept, sig_fig)}\nr={format_significant(r, sig_fig)}',  transform = a.transAxes, 
+               ha = 'left', va= 'top')
+        return f,a 
+    
+    def plot_test_residual(self, window = 2*365, ax = None, show_std = True, gridsize = 80):
+        if not isinstance(ax, type(None)):
+        #     a = ax
+        #     f = a.get_figure()
+        # else:
+            if show_std:
+                aa = ax
+            else:
+                aa = [ax,]
+            # assert(False), "ax has to be none right now, sorry, programming required"
+            f = aa[0].get_figure()
+            
+            # f,a = _plt.subplots()
+        else:
+            if show_std:
+                f,aa = _plt.subplots(2, height_ratios=[2,1], gridspec_kw={'hspace':0})
+    
+            else:
+                f, a = _plt.subplots()
+                aa = [a,]
+                
+        # residual = self.data.iloc[:,0] - self.prediction.prediction
+        residual = self.prediction.residual
+        residualdf = _pd.DataFrame(residual)
+        roll = residualdf.rolling(window, center = True, win_type='gaussian')
+
+       
+        
+        a = aa[0]
+        out = a.hexbin(mdates.date2num(residual.datetime_full), residual, linewidths=0.2,
+                       gridsize = gridsize
+                      )
+        qm = out
+        cmap = _plt.cm.gnuplot2
+        cmap.set_under(color='none')
+        # cm = _plt.cm.inferno_r
+        # cm.set_under([1,1,1,0])
+        qm.set_cmap(cmap)
+        qm.set_clim(vmin = 0.0001)
+        # a.xaxis_date()
+        format_str = '%Y'
+        format_ = mdates.DateFormatter(format_str)
+        a.xaxis.set_major_formatter(format_)
+        
+        std = window/3
+        roll.mean(std=std).plot(ax = a, color = 'white')
+
+        if show_std:
+            a  = aa[1]
+            roll.std(std=std).plot(ax = a)
+            a.set_xlim(aa[0].get_xlim())
+            a.set_ylabel('Std')
+            
+            a = aa[0]
+            a.set_xticklabels([]) 
+            a.set_title('Residual time series')
+            a.set_ylabel('Residual')
+            
+        for a in aa:
+            a.legend().remove()
+            a.set_xlabel('')
+        
+        return f,a 
+    
+    def plot_test_autocorr(self, acf_kwargs = {'lags':60}, ax = None):
+        """
+        Parameters
+        -----------
+        acf_kwargs: see https://www.statsmodels.org/stable/generated/statsmodels.graphics.tsaplots.plot_acf.html
+        """
+        if not isinstance(ax, type(None)):
+            a = ax
+            f = a.get_figure()
+        else:
+            f,a = _plt.subplots()
+        # residual = self.data.iloc[:,0] - self.prediction.prediction
+        residual = self.prediction.residual
+        # _plt.figure(figsize=(10, 5))  # Set the figure size for better readability
+        statsmod_plot_acf(residual, ax = a, **acf_kwargs,
+                 # lags=160, 
+                 # use_vlines=True,
+                 # alpha=0.05
+                )  # Adjust 'lags' as necessary
+        a.set_title('Autocorrelation Function')
+        a.set_ylim(auto = True)
+        return f,a 
+    
+    def plot_test_obs_vs_pred(self, ll = 0.05, ul = 0.95, ax = None):
+        if not isinstance(ax, type(None)):
+            a = ax
+            f = a.get_figure()
+        else:
+            f,a = _plt.subplots()
+    
+        maxi = self.data.iloc[:,0].quantile(ul)
+        mini = self.data.iloc[:,0].quantile(ll)
+        extent = _np.array((mini, maxi, mini, maxi))
+        
+        # a.scatter(gamcl.data.y_aod, residual)
+        cmap = _plt.cm.gnuplot2
+        cmap.set_under(color='none')
+        
+        pc = a.hexbin(self.data.iloc[:,0], self.prediction.prediction, 
+                      cmap = cmap, 
+                      vmin = 0.000000001, 
+                      linewidths=0.2, 
+                      gridsize=50,
+                      extent = extent)
+        f.colorbar(pc)
+        a.set_xlabel('observation')
+        a.set_ylabel('prediction')
+        a.set_title('Observation vs Prediction')
+        # a.set_
+        return f,a 
 
 class Climatology(object):
     def __init__(self, parent_stats = None, reference = 'index', frequency = 'M', bins = None):

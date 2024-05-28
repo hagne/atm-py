@@ -406,6 +406,9 @@ class SolarIrradiation(object):
             altshort = altvar.split('_')[0]
             match = [var for var in ds.variables if altshort in var]
             assert(len(match) < 2), f'There are multiple variables with {altvar} in it ({match}).'
+            if len(match) == 0:
+                # e.g. MFR has no direct
+                continue
             ds = ds.rename({match[0]: altvar})
         return ds
         
