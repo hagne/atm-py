@@ -5,7 +5,10 @@ import numpy as _np
 # from matplotlib.dates import DateFormatter as _DateFormatter
 from matplotlib.ticker import FuncFormatter as _FuncFormatter
 from matplotlib.ticker import MultipleLocator as _MultipleLocator
+import matplotlib.patches as mpatches
+from matplotlib.legend_handler import HandlerTuple
 import matplotlib.colors as _mcolors
+colors = _plt.rcParams['axes.prop_cycle'].by_key()['color']
 #import plt_tools as _plt_tools
 from atmPy.tools import array_tools as _array_tools
 import atmPy.tools.plt_tool_kit.colors as _atmcols
@@ -18,6 +21,7 @@ import  matplotlib.lines as _mpllines
 import matplotlib.dates as _mpldates
 
 from statsmodels.graphics.tsaplots import plot_acf as statsmod_plot_acf
+import statsmodels.api as sm
 
 import scipy.stats as scistats
 
@@ -67,7 +71,7 @@ class GamClimatology(object):
         self._trend_nsplines = None
         self._prediction_grid_size = None
         self._prediction_confidence = None
-        
+        self._autocorrelation = None
         self._rerun()
         
     def _rerun(self):
@@ -388,13 +392,111 @@ class GamClimatology(object):
     @prediction.setter 
     def prediction(self, value):
         self._prediction = value
+
+    @property
+    def autocorrelation(self):
+        if isinstance(self._autocorrelation, type(None)):
+            self.autocorrelation_create_custom()
+        return self._autocorrelation
+        
+    def autocorrelation_create_custom(self, lagmax = None, z_score = 1.96):
+        """
+        Two confidence intervals are given:
+            Simple: based on number of datapoints in each correlation. Note, numbers are getting less with increasing lag.
+            Bartlett’s formula: Brockwell and Davis, 1987. Time Series Theory and Methods. This takes varibiltiy of acf into account.
+        """
+        autocorr = [1]
+        residuals = self.prediction.residual 
+        acfconf = [_np.sqrt(1/ residuals.shape[0]) * z_score]
+        lags = [0,]
+        ci_bartlett = [_np.sqrt(1/ residuals.shape[0]) * z_score]
+        # ci_lower_bartlett = []
+        
+        lag = 0
+        # lagmax = None
+        while 1:
+            lag += 1
+            lags.append(lag)
+            dt = _np.array([residuals[:-lag], residuals[lag:]])
+            ac = _np.corrcoef(dt)[0, 1]
+            autocorr.append(ac)
+            
+            ci = _np.sqrt(1/ (dt.shape[1])) * z_score
+            acfconf.append(ci)
+        
+        
+            # for k in range(len(acf_values)):
+            n = residuals.shape[0]
+            # n = dt.shape[1]
+            bartlett_se = _np.sqrt((1 + 2 * _np.sum(_np.array(autocorr)[1:]**2)) / n)
+            ci_b = 1.96 * bartlett_se
+            ci_bartlett.append(ci_b)
+        
+            # max lag test parameter
+            # if len(autocorr) >= 3:
+            maxlagparam =  max(autocorr[-3:])
+            # else:
+                # maxlagparam = ac
+            # print(acfconf[-3:])
+            # print(maxlagparam)
+            if not isinstance(lagmax, type(None)):
+              if lag >= lagmax:
+                  break
+                  
+            elif ci_b > maxlagparam:
+                lagmax_above_ci = lag - 1
+                lagmax = int(lag * 1.5)
     
+        acfdf = _pd.DataFrame({'acf': autocorr, 'ci': acfconf, 'ci_bartlett': ci_bartlett}, index = lags)
+        acfdf.index.name = 'lag'
+        acfdf.columns.name = 'acf_params'
+        self.prediction['autocorrelation'] = acfdf
+        self.prediction.autocorrelation.attrs['lagmax'] = lagmax
+        self.prediction.autocorrelation.attrs['lagmax_above_ci'] = lagmax_above_ci
+        self._autocorrelation = self.prediction.autocorrelation
+        return self.prediction.autocorrelation
+
+    @property
+    def standard_error_adjustment_autocorr(self):
+        self.autocorrelation #make sure it is generated
+        autocorrs = self.prediction.autocorrelation.sel(acf_params = 'acf')[:self.prediction.autocorrelation.lagmax_above_ci]
+        rho_sum = autocorrs.sum()
+        n = self.gam_inst.statistics_['n_samples']
+        n_eff = n / (1 + 2 * rho_sum)
+        adjustment = float(_np.sqrt(n/n_eff))
+        self.prediction.autocorrelation.attrs['sandard_error_adjustment_autocorr'] = adjustment
+        return adjustment
+
+    @property
+    def standard_error_adjustment_newey_west(self):
+        """I think this only works for linear term, because of the self.gam_inst.statistics_['se'][0] below"""
+        self.autocorrelation #make sure it is generated
+        data = _pd.DataFrame({'residuals': self.prediction.residual.values, 'x':self.data['x_dsincestart'].values})
+        data['const'] = 1
+        
+        model = sm.OLS(data['residuals'], data[['const', 'x']])
+        maxlags = self.prediction.autocorrelation.lagmax_above_ci
+        result = model.fit(cov_type='HAC', cov_kwds={'maxlags': maxlags})
+    
+        sandard_error_adjustment_newey_west = result.bse.x/self.gam_inst.statistics_['se'][0]
+        self.prediction.autocorrelation.attrs['sandard_error_adjustment_newey_west'] = sandard_error_adjustment_newey_west
+        return sandard_error_adjustment_newey_west
+
+    @property
+    def confidence_interval_adjusted_newey_wet(self):
+        bla   = (self.prediction.partial_datetime_confidence - self.prediction.partial_datetime)
+        bla  *=  self.standard_error_adjustment_newey_west
+        bla  +=  self.prediction.partial_datetime
+        self.prediction['partial_datetime_confidence_adjusted_nw'] = bla
+        return bla
+        
     def plot_seasonality(self, ax = None,
                          offset = 0,
                          xticklablesmonth = True,
                          show_confidence = True,
                          orientation='horizontal',
                          transform = None,
+                         obs_gridsize = 50,
                          # vcenter = True,
                          **plot_kwargs):
         """"
@@ -430,16 +532,22 @@ class GamClimatology(object):
         if transform == 'log2lin':
             da = 10**da
             
-        # else: 
-        #     da = self.prediction.partial_doy
-        da.plot(ax = a, y = y,**plot_kwargs)   
-        
+        ##################################
+        #### plot prediction
+        ##############
+        da.plot(ax = a, y = y, zorder = 10, **plot_kwargs)   
+        g = a.get_lines()[-1]
+        col_major = g.get_color()
         # if transform == 'percent':
         #     da = (10**self.prediction.partial_doy - 1) * 100
         # else: 
         #     da = self.prediction.partial_doy
         # (da + offset).plot(ax = a, y = y,**plot_kwargs)   
-        
+
+
+        ###################################
+        #### conficence intervals
+        #############
         if show_confidence:
             bot,up = self.prediction.partial_doy_confidence.values.transpose()
             bot = bot + offset
@@ -448,11 +556,41 @@ class GamClimatology(object):
                 bot = (10**bot - 1) * 100
                 up = (10**up - 1) * 100
             if orientation == 'vertical':
-                fill = a.fill_betweenx(self.prediction.doy,bot,up, color = [0,0,0,0.3])
+                fill = a.fill_betweenx(self.prediction.doy,bot,up, 
+                                       # color = [0,0,0,0.3],
+                                       color = col_major, alpha = 0.4,
+                                       zorder = 5 )
             else: 
-                fill = a.fill_between(self.prediction.doy,bot,up, color = [0,0,0,0.3])
+                fill = a.fill_between(self.prediction.doy,bot,up, 
+                                      color = col_major, 
+                                      alpha = 0.4,
+                                      zorder = 5 )
         else:
             fill = None
+
+        ######################################
+        #### observations
+        ################
+        show_observations = True
+        hbin = None
+        if show_observations:
+            pdts = self.prediction.partial_datetime.to_pandas()
+            data = self.data.copy()
+            data['partial_dt'] = pdts
+            data = data.interpolate()
+            data['y_aod_tc'] = data.y_aod - data.partial_dt
+            cm = _plt.cm.Oranges_r
+            cm.set_under([0,0,0,0])
+            y = data.y_aod_tc + offset - self.prediction.intercept
+            hbin = a.hexbin(data.x_doy, y, linewidths=0.2, gridsize = obs_gridsize, vmin = 0.1, cmap = cm, zorder = 1)
+            hbin.set_clim(vmax = hbin.get_clim()[1] * 0.5)
+            colors = plt.cm.Oranges_r(np.linspace(0, 1, 100))
+            patch = [mpatches.Patch(facecolor=c, label=categories) for c in colors]
+            a.legend(handles=[patch], labels=['data density',], ncol=len(categories), fontsize='small',
+                       handler_map = {list: HandlerTuple(None)})
+        #######################################
+        #### Settings
+        #############
         
         if xticklablesmonth:
             if orientation == 'vertical':
@@ -466,7 +604,7 @@ class GamClimatology(object):
             axis.set_label_text('')
         # a.set_xlabel('')
         # a.set_xlabel('Day of year')
-        return f,a,fill
+        return f,a,fill, hbin
     
     def plot_prediction(self, ax = None, show_confidence=True, show_original_data=True, **plot_kwargs):
         if isinstance(ax, type(None)):
@@ -481,14 +619,20 @@ class GamClimatology(object):
         
 
         self.prediction.prediction.plot(ax = a, zorder = 3, label = 'prediction')
+        g = a.get_lines()[-1]
+        col_major = g.get_color()
         if show_confidence:
             a.fill_between(self.prediction.datetime_full, 
                            self.prediction.prediction_confidence.sel(boundary='top'), 
                            self.prediction.prediction_confidence.sel(boundary='bottom'), 
-                           alpha=0.5, zorder = 2, color = '0.5', label = 'confidence')
+                           alpha = 0.3, 
+                           zorder = 2, 
+                           # color = '0.5', 
+                           color = col_major,
+                           label = 'confidence')
         if show_original_data:
             data = self._parent_stats._parent_ts.data
-            a.plot(data.index, data.iloc[:,0], ls = '', marker = '.', markersize = 1, zorder = 1, label = 'observation', color = '0.7')
+            a.plot(data.index, data.iloc[:,0], ls = '', marker = '.', markersize = 1, zorder = 1, label = 'observation', color = '0.4')
         return f,a
 
     def plot_interactions(self, ax = None, xticklablesmonth = True, transform = None, cbkwargs = {}, offset = 'intercept'): 
@@ -539,7 +683,8 @@ class GamClimatology(object):
         return f,a, pc, cbar
         
     def plot_overview(self, axis = None, show_confidence = True, show_original_data = True, 
-                      shade_seasons = True, transform = None, offset_season = 0):
+                      shade_seasons = True, transform = None, offset_season = 0,
+                      season_obs_gridsize = (80, 25)):
         """
         Parameters
         ===========
@@ -604,7 +749,11 @@ class GamClimatology(object):
         self.plot_trend(ax=a_trend, shade_seasons=shade_seasons, show_confidence=show_confidence, transform = transform)
 
 
-        self.plot_seasonality(ax=a_season, show_confidence = show_confidence, orientation=orientation, transform = transform, offset = offset_season)
+        self.plot_seasonality(ax=a_season, 
+                              show_confidence = show_confidence, 
+                              orientation=orientation, transform = transform, 
+                              offset = offset_season,
+                              obs_gridsize = season_obs_gridsize)
         
         if self.interactions:
             # a = aa[2,0]
@@ -618,11 +767,6 @@ class GamClimatology(object):
             out.append(pc)
             out.append(cb)
             
-            
-        # a = aa[0]
-        # fillb = a.get_children()[2]
-        # fillb.set_color('0.3')
-        # fillb.set_zorder(10)
         if self.interactions:
             for a in (aa[0,0], aa[1,0]):
                 a.set_xlim(aa[2,0].get_xlim())
@@ -656,7 +800,9 @@ class GamClimatology(object):
     
     def plot_trend(self, ax = None, 
                    shade_seasons = False, 
+                   show_obs = True, 
                    show_confidence = True,
+                   show_confidence_adjusted = True,
                    offset= 0,
                    transform = None,
                    **plot_kwargs):
@@ -698,7 +844,7 @@ class GamClimatology(object):
             plot_kwargs['label'] = 'seasonal'
             
         if 'zorder' not in plot_kwargs:
-            plot_kwargs['zorder'] = 3
+            plot_kwargs['zorder'] = 5
         
         if isinstance(ax, type(None)):
             f, a = _plt.subplots()
@@ -711,20 +857,72 @@ class GamClimatology(object):
             da = (10**self.prediction.partial_datetime -1) * 100
         else:
             da = self.prediction.partial_datetime 
-        (da + offset).plot(ax = a, **plot_kwargs)   
 
+          
         
+        ###################
+        #### Plot trend
+        (da + offset).plot(ax = a, **plot_kwargs)   
+        g = a.get_lines()[-1]
+        col_major = g.get_color()
+        
+        ##################
+        #### Seasonal corrected data
+        if show_obs:
+            residual = self.prediction.residual
+            dat = (da + offset)
+            residual_plustrend = dat.interp(datetime = self.prediction.datetime_full) + residual
+            if 1:
+                g, = residual_plustrend.plot(ax = a, ls = '', marker = '.', markersize = 0.8, zorder = 1)
+                g.set_color('0.4')
+            else:
+                scale = 1
+                qm = a.hexbin(mdates.date2num(residual_plustrend.datetime), residual_plustrend, 
+                               # gridsize = (scale*50,scale*100), 
+                              
+                               linewidth = 0.2)
+                cm = plt.cm.inferno_r
+                cm = plt.cm.gnuplot2
+                cm.set_under([1,1,1,0])
+                qm.set_cmap(cm)
+                qm.set_clim(vmin = 0.1)
+        
+        ###################
+        ### confidence inervals
         if show_confidence:
             if transform == 'percent':
                 top = (10**self.prediction.partial_datetime_confidence.sel(boundary='top') -1) * 100
                 bottom = (10**self.prediction.partial_datetime_confidence.sel(boundary='bottom') -1) * 100
             else:                
                 top = self.prediction.partial_datetime_confidence.sel(boundary='top') + offset
-                bottom = self.prediction.partial_datetime_confidence.sel(boundary='bottom') + offset
+                bottom = self.prediction.partial_datetime_confidence.sel(boundary='bottom') + offset                
+            
             a.fill_between(self.prediction.datetime, 
-                   top, 
-                   bottom, 
-                   alpha=0.5, zorder = 2, color = '0.5', label = 'confidence')
+                           top, 
+                           bottom, 
+                           alpha=0.3, 
+                           zorder = 3, 
+                           # color = '0.5',
+                           color = col_major,
+                           label = 'ci')
+
+        if show_confidence_adjusted:
+            # if transform == 'percent':
+            #     top = (10**self.prediction.partial_datetime_confidence.sel(boundary='top') -1) * 100
+            #     bottom = (10**self.prediction.partial_datetime_confidence.sel(boundary='bottom') -1) * 100
+            # else:         
+            cia = self.confidence_interval_adjusted_newey_wet
+            top = cia.sel(boundary='top') + offset
+            bottom = cia.sel(boundary='bottom') + offset                
+            
+            a.fill_between(self.prediction.datetime, 
+                           top, 
+                           bottom, 
+                           alpha=0.3, 
+                           zorder = 2, 
+                           # color = '0.7', 
+                           color = '#ff7f0e',
+                           label = 'ci adjusted')
             
             
         if shade_seasons:
@@ -789,7 +987,8 @@ class GamClimatology(object):
     def plot_test_residual_vs_obs(self, 
                                   ul=0.999,
                                   ll=0.001, 
-                                  ax=None):
+                                  ax=None,
+                                  gridsize = 100):
         if not isinstance(ax, type(None)):
             a = ax
             f = a.get_figure()
@@ -814,6 +1013,7 @@ class GamClimatology(object):
                       vmin = 0.000000001, 
                       linewidths=0.2, 
                       extent=extent,
+                      gridsize = gridsize,
                      )
         f.colorbar(pc)
         
@@ -840,10 +1040,10 @@ class GamClimatology(object):
         
         a.set_title('Distribution of residual')
         a.set_xlabel('Residual')
-        
+        a.axvline(0, color = [0,0,0,0.5], ls = '--')
         return f,a 
     
-    def plot_test_qq(self, ax = None, textpos = (0.1, 0.9), sig_fig = 2):
+    def plot_test_qq(self, ax = None, textpos = (0.1, 0.9), sig_fig = 2, gridsize = 50):
         def format_significant(x, sig_digits=2):
             if x == 0:
                 return f"{0:.{sig_digits-1}f}"  # handle zero specially
@@ -878,15 +1078,46 @@ class GamClimatology(object):
         gs = a.get_lines()
         gs[0].remove()
         ((osm, osr),(slope, intercept, r)) = out
-        cmap = _plt.cm.gnuplot2
+        self.prediction.residual.attrs['qq_intercept'] = intercept
+        self.prediction.residual.attrs['qq_correlation'] = r
+        # cmap = _plt.cm.gnuplot2
+        cmap = _plt.cm.plasma
         cmap.set_under(color='none')
-        a.hexbin(osm, osr, cmap = cmap, vmin = 0.000000001, linewidths=0.2
+        pc = a.hexbin(osm, osr, cmap = cmap, vmin = 0.000000001, linewidths=0.2, gridsize = gridsize,
                  # zorder = 10
                 )
-        a.grid()
-        a.text(*textpos, f'm = {format_significant(slope, sig_fig)}\nc = {format_significant(intercept, sig_fig)}\nr={format_significant(r, sig_fig)}',  transform = a.transAxes, 
-               ha = 'left', va= 'top')
-        return f,a 
+        # a.grid()
+        # if 0:
+        #     a.text(*textpos, 
+        #            (#f'm = {format_significant(slope, sig_fig)}\n'
+        #             f'intercept $c$ = {format_significant(intercept, sig_fig)}\n'
+        #             f'correlation $r$={format_significant(r, sig_fig)}'),
+        #             transform = a.transAxes, 
+        #             ha = 'left', va= 'top')
+        
+        g = a.get_lines()[-1]
+        # g.set_label(('linear reg., '
+        #              f'$c$ = {format_significant(intercept, sig_fig)}, '
+        #              f'$r$={format_significant(r, sig_fig)}'),
+        #            )
+        pcolors = pc.get_cmap()(_np.linspace(0, 1, 100))
+        patch = [mpatches.Patch(facecolor=c) for c in pcolors]
+        
+        handles=[patch,g]
+        glabel = ('linear reg.\n'
+                 f'$c$ = {format_significant(intercept, sig_fig)}\n'
+                 f'$r$ = {format_significant(r, sig_fig)}')
+        labels=[r'$\rho$(data)', glabel]
+        
+        leg = a.legend(handles, labels, 
+                       # ncol=len(handles), 
+                         fontsize='small',
+                       handler_map = {list: HandlerTuple(None)},
+                       loc = 4)
+        col = [0,0,0,.5]
+        a.axvline(0, ls = '--', color = col)
+        a.axhline(0, ls = '--', color = col)
+        return f,a,pc, leg
     
     def plot_test_residual(self, window = 2*365, ax = None, show_std = True, gridsize = 80):
         if not isinstance(ax, type(None)):
@@ -910,14 +1141,16 @@ class GamClimatology(object):
                 aa = [a,]
                 
         # residual = self.data.iloc[:,0] - self.prediction.prediction
-        residual = self.prediction.residual
-        residualdf = _pd.DataFrame(residual)
-        roll = residualdf.rolling(window, center = True, win_type='gaussian')
+        residual = self.prediction.residual.to_dataframe()
+        # residualdf = _pd.DataFrame(residual)
+        # residualdf = residual.to_dataframe()
+        
+        roll = residual.rolling(window, center = True, win_type='gaussian')
 
        
         
         a = aa[0]
-        out = a.hexbin(mdates.date2num(residual.datetime_full), residual, linewidths=0.2,
+        out = a.hexbin(mdates.date2num(residual.index), residual.residual, linewidths=0.2,
                        gridsize = gridsize
                       )
         qm = out
@@ -952,27 +1185,49 @@ class GamClimatology(object):
         
         return f,a 
     
-    def plot_test_autocorr(self, acf_kwargs = {'lags':60}, ax = None):
+    def plot_test_autocorr(self, 
+                           lag = None,
+                           # acf_kwargs = {'lags':60}, 
+                           ax = None):
         """
         Parameters
         -----------
-        acf_kwargs: see https://www.statsmodels.org/stable/generated/statsmodels.graphics.tsaplots.plot_acf.html
+        lag: int
+            Maximum lag. Note this is limited what has been created with autocorrelation_create_custom. Rerun
+            autocorrelation_create_custom with adjusted parameters if neede.
         """
         if not isinstance(ax, type(None)):
             a = ax
             f = a.get_figure()
         else:
             f,a = _plt.subplots()
-        # residual = self.data.iloc[:,0] - self.prediction.prediction
-        residual = self.prediction.residual
-        # _plt.figure(figsize=(10, 5))  # Set the figure size for better readability
-        statsmod_plot_acf(residual, ax = a, **acf_kwargs,
-                 # lags=160, 
-                 # use_vlines=True,
-                 # alpha=0.05
-                )  # Adjust 'lags' as necessary
-        a.set_title('Autocorrelation Function')
-        a.set_ylim(auto = True)
+            
+        acf = self.autocorrelation
+
+        sel = acf.sel(acf_params = 'acf')
+        sel.plot(ax = a, ls = '', marker = '.')
+        g = a.get_lines()[-1]
+        g.set_label('Autocorrelation function')
+
+        a.vlines(acf.lag, 0, sel, alpha = 0.7)
+        
+        sel = acf.sel(acf_params = 'ci_bartlett')
+        out = a.fill_between(acf.lag, sel, -sel, alpha = 0.5)
+        out.set_label('Confidence interval')       
+        
+        a.axhline(0, ls = '--', color = '0.5')
+        a.set_title('Autocorrelation function')
+        a.set_ylabel('Autocorrelation $r$')
+        a.set_xlabel('Lag')
+        a.legend()
+
+        
+        # acf_kwargs: see https://www.statsmodels.org/stable/generated/statsmodels.graphics.tsaplots.plot_acf.html
+        # residual = self.prediction.residual
+        # statsmod_plot_acf(residual, ax = a, **acf_kwargs,
+        #         )  # Adjust 'lags' as necessary
+        # a.set_title('Autocorrelation Function')
+        # a.set_ylim(auto = True)
         return f,a 
     
     def plot_test_obs_vs_pred(self, ll = 0.05, ul = 0.95, ax = None):
