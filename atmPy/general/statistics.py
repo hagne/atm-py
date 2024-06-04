@@ -5,6 +5,7 @@ import numpy as _np
 # from matplotlib.dates import DateFormatter as _DateFormatter
 from matplotlib.ticker import FuncFormatter as _FuncFormatter
 from matplotlib.ticker import MultipleLocator as _MultipleLocator
+import matplotlib.gridspec as mplgrid
 import matplotlib.patches as mpatches
 from matplotlib.legend_handler import HandlerTuple
 import matplotlib.colors as _mcolors
@@ -414,6 +415,7 @@ class GamClimatology(object):
         
         lag = 0
         # lagmax = None
+        lagmax_above_ci = None
         while 1:
             lag += 1
             lags.append(lag)
@@ -439,13 +441,19 @@ class GamClimatology(object):
                 # maxlagparam = ac
             # print(acfconf[-3:])
             # print(maxlagparam)
+            if isinstance(lagmax_above_ci, type(None)):
+                if ci_b > maxlagparam:
+                    lagmax_above_ci = lag - 1
+                    if isinstance(lagmax, type(None)):
+                        lagmax = int(lag * 1.5)
+            
             if not isinstance(lagmax, type(None)):
               if lag >= lagmax:
                   break
                   
-            elif ci_b > maxlagparam:
-                lagmax_above_ci = lag - 1
-                lagmax = int(lag * 1.5)
+            # elif ci_b > maxlagparam:
+            #     lagmax_above_ci = lag - 1
+            #     lagmax = int(lag * 1.5)
     
         acfdf = _pd.DataFrame({'acf': autocorr, 'ci': acfconf, 'ci_bartlett': ci_bartlett}, index = lags)
         acfdf.index.name = 'lag'
@@ -584,9 +592,11 @@ class GamClimatology(object):
             y = data.y_aod_tc + offset - self.prediction.intercept
             hbin = a.hexbin(data.x_doy, y, linewidths=0.2, gridsize = obs_gridsize, vmin = 0.1, cmap = cm, zorder = 1)
             hbin.set_clim(vmax = hbin.get_clim()[1] * 0.5)
-            colors = plt.cm.Oranges_r(np.linspace(0, 1, 100))
-            patch = [mpatches.Patch(facecolor=c, label=categories) for c in colors]
-            a.legend(handles=[patch], labels=['data density',], ncol=len(categories), fontsize='small',
+            pcolors = _plt.cm.Oranges_r(_np.linspace(0, 1, 100))
+            patch = [mpatches.Patch(facecolor=c,) for c in pcolors]
+            handles=[patch]
+            labels=['data density',]
+            a.legend(handles, labels, ncol=len(labels), fontsize='small',
                        handler_map = {list: HandlerTuple(None)})
         #######################################
         #### Settings
@@ -963,7 +973,7 @@ class GamClimatology(object):
             
             # custom_lines = [_mpllines.Line2D([0], [0], color=f'{colorlam(seasons[0])}', lw=4),
             #                 _mpllines.Line2D([0], [0], color=f'{colorlam(seasons[1])}', lw=4),
-            #                 _mpllines.Line2D([0], [0], color=f'{colorlam(seasons[2])}', lw=4),
+            #                 _mpllines.Line2D([0], [0], color=f'{pltcolorlam(seasons[2])}', lw=4),
             #                 _mpllines.Line2D([0], [0], color=f'{colorlam(seasons[3])}', lw=4),
             #                ]
             custom_lines = [_mpllines.Line2D([0], [0], color=coll[0], lw=4, **shade_kwargs),
@@ -984,6 +994,125 @@ class GamClimatology(object):
             a.set_xlabel('')
         return f,a
 
+    def plot_test_overview(self):
+        f = _plt.figure()
+        # f.set_figheight(f.get_figheight() * 1.5)
+        f.set_figheight(7.4)
+        
+        #### Settyo
+        if 1:
+            gs = mplgrid.GridSpec(3,2, figure = f, 
+                                  height_ratios= [1,1,1.5],
+                                  hspace=0.35,  wspace = 0.3)
+            # gs.update(
+            #     #left=0.05, right=0.48, 
+            #             # wspace = 0.3,
+            #             # hspace = 0.5,
+            # )
+            a_residual = _plt.subplot(gs[0,:])
+            a_acf = _plt.subplot(gs[1,:])
+            a_rdist = _plt.subplot(gs[2,0])
+            a_rprob = _plt.subplot(gs[2,1])
+        
+        aa = [a_residual, a_acf, a_rdist, a_rprob]
+        
+        #### Residual
+        if 1:
+            a = a_residual
+            out_r = self.plot_test_residual(ax = a, show_std=False, gridsize=(180, 30))
+        
+            pc = a.get_children()[0]
+            cm = _plt.cm.Oranges_r
+            pc.set_cmap(cm)
+        
+            g = a.get_children()[1]
+            g.set_color('black')
+            
+            a.set_ylabel('$\\log(AOD)$', labelpad=-3)
+            # a.set_ylabel('Model residual', labelpad=-3)
+            lim = 1.1
+            a.set_ylim(-lim, lim)
+        
+        
+            colors = _plt.cm.Oranges_r(_np.linspace(0, 1, 100))
+            patch = [mpatches.Patch(facecolor=c) for c in colors]
+            dummy = _plt.Line2D([0], [0], color=[1,0,0,1],
+                               # marker='o', markersize=0, lw=0, ls = '',
+                              )
+            handles = [#dummy,
+                        g,
+                       patch,
+                      ]
+            labels =  [#'Residual represenations:',
+                        'mean$_{rolling}$(residuals)',
+                       r'$\rho$(residuals)',
+                      ]
+            
+            legr = a.legend(handles, labels, ncol=len(handles), fontsize='small',
+                     # title = 'Residual represenations',
+                    handler_map = {list: HandlerTuple(None)},
+                    # handletextpad = -5,
+                    )
+            
+        
+        ############
+        #### Autocorrelation function
+        if 1:
+            a = a_acf
+            
+            self.plot_test_autocorr(ax = a, 
+                                                           # acf_kwargs={'lags': 400, 'use_vlines': False},
+                                                          )
+            g = a.get_lines()[0]
+            g.set_markersize(4)
+            # g.set_marker('')
+            # g.set_linestyle('-')
+        
+            a.set_ylim(-0.2, 1)
+            a.set_title('')
+            a.set_ylabel('r')
+            a.set_xlabel('Time lag (days)', labelpad=0)
+            a.legend(fontsize = 'small')
+        
+        ########
+        ### distribution of residuals
+        if 1:
+            a= a_rdist
+            outd = self.plot_test_dist_of_res(ax = a)
+            
+            p = a.get_children()[0]
+            p.set_label('residuals')
+            
+            g = a.get_lines()[-1]
+            g.set_linewidth(1.5)
+            g.set_linestyle('--')
+            g.set_label('fit')
+            
+            a.set_xlim(-lim, lim)
+            a.set_yticklabels([])
+            a.set_ylabel('Probability density')
+            a.set_title('')
+            a.set_xlabel('$\\log(AOD)$')
+        
+            a.legend(fontsize = 'small', handlelength = 1)
+            
+        ##############################
+        #### Q-Q plot
+        ##############
+        if 1:
+            a = a_rprob
+            out = self.plot_test_qq(ax = a, gridsize=40)
+            a.set_ylabel('Ordered $\\log(AOD)$ res.', labelpad=-3)
+            # a.grid(False)
+            a.set_title('')
+        
+            # leg = out[3]
+        
+        out = [f,aa,]
+        return out
+        
+
+    
     def plot_test_residual_vs_obs(self, 
                                   ul=0.999,
                                   ll=0.001, 
