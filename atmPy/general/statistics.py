@@ -21,8 +21,9 @@ import matplotlib.dates as mdates
 import  matplotlib.lines as _mpllines
 import matplotlib.dates as _mpldates
 
-from statsmodels.graphics.tsaplots import plot_acf as statsmod_plot_acf
-import statsmodels.api as sm
+# from statsmodels.graphics.tsaplots import plot_acf as statsmod_plot_acf
+from atmPy.opt_imports import statsmodels as sm
+from atmPy.opt_imports import pygam
 
 import scipy.stats as scistats
 
@@ -201,7 +202,8 @@ class GamClimatology(object):
             else:
                 y  = data.loc[:, data_column]
                 
-            y.name = f'y_{y.name}'
+            # y.name = f'y_{y.name}'
+            y.name = 'y'
             Xdf.columns = [f'x_{c}' for c in Xdf.columns]
             data_pretty = _pd.concat([y,Xdf], axis = 1)
             # data_pretty = 
@@ -229,7 +231,6 @@ class GamClimatology(object):
     @property
     def gam_inst(self):
         if isinstance(self._gam, type(None)):
-            import pygam
             if self.trend_model == 'linear':
                 year = pygam.l(0)#, lam = resolution, n_splines=int(n_splines))
             elif self.trend_model == 'spline':
@@ -446,7 +447,6 @@ class GamClimatology(object):
                     lagmax_above_ci = lag - 1
                     if isinstance(lagmax, type(None)):
                         lagmax = int(lag * 1.5)
-            
             if not isinstance(lagmax, type(None)):
               if lag >= lagmax:
                   break
@@ -458,6 +458,9 @@ class GamClimatology(object):
         acfdf = _pd.DataFrame({'acf': autocorr, 'ci': acfconf, 'ci_bartlett': ci_bartlett}, index = lags)
         acfdf.index.name = 'lag'
         acfdf.columns.name = 'acf_params'
+        if 'autocorrelation' in self.prediction.variables:
+            self.prediction = self.prediction.drop_vars(['autocorrelation', 'lag'])
+            
         self.prediction['autocorrelation'] = acfdf
         self.prediction.autocorrelation.attrs['lagmax'] = lagmax
         self.prediction.autocorrelation.attrs['lagmax_above_ci'] = lagmax_above_ci
@@ -482,7 +485,7 @@ class GamClimatology(object):
         data = _pd.DataFrame({'residuals': self.prediction.residual.values, 'x':self.data['x_dsincestart'].values})
         data['const'] = 1
         
-        model = sm.OLS(data['residuals'], data[['const', 'x']])
+        model = sm.api.OLS(data['residuals'], data[['const', 'x']])
         maxlags = self.prediction.autocorrelation.lagmax_above_ci
         result = model.fit(cov_type='HAC', cov_kwds={'maxlags': maxlags})
     
@@ -502,6 +505,7 @@ class GamClimatology(object):
                          offset = 0,
                          xticklablesmonth = True,
                          show_confidence = True,
+                         show_observations = True,
                          orientation='horizontal',
                          transform = None,
                          obs_gridsize = 50,
@@ -579,17 +583,17 @@ class GamClimatology(object):
         ######################################
         #### observations
         ################
-        show_observations = True
+        
         hbin = None
         if show_observations:
             pdts = self.prediction.partial_datetime.to_pandas()
             data = self.data.copy()
             data['partial_dt'] = pdts
             data = data.interpolate()
-            data['y_aod_tc'] = data.y_aod - data.partial_dt
+            data['y_tc'] = data.y - data.partial_dt
             cm = _plt.cm.Oranges_r
             cm.set_under([0,0,0,0])
-            y = data.y_aod_tc + offset - self.prediction.intercept
+            y = data.y_tc + offset - self.prediction.intercept
             hbin = a.hexbin(data.x_doy, y, linewidths=0.2, gridsize = obs_gridsize, vmin = 0.1, cmap = cm, zorder = 1)
             hbin.set_clim(vmax = hbin.get_clim()[1] * 0.5)
             pcolors = _plt.cm.Oranges_r(_np.linspace(0, 1, 100))
@@ -1163,7 +1167,9 @@ class GamClimatology(object):
         a.hist(residual, bins = bins, density=True, alpha = 0.6)
 
         mu, sigma = scistats.norm.fit(residual)
-        x = _np.linspace(residual.min(), residual.max(), bins*3)
+        self.tp_residual = residual
+        self.tp_bins = bins
+        x = _np.linspace(float(residual.min()), float(residual.max()), bins*3)
         p = scistats.norm.pdf(x, mu, sigma)
         a.plot(x, p, 'k', linewidth=2)
         

@@ -30,6 +30,7 @@ import pandas as _pd
 
 
 ###########################
+
 def makeMie_diameter(diameterRangeInMikroMeter = [0.1,3.],
             noOfdiameters = 200,
             noOfAngles = 100, # number of scatternig angles
@@ -420,7 +421,7 @@ class Mie():
 #         print "ss"
 #         raw_input(ss.astype(int))
         
-        ArcLengthMatrix[ArcLengthMatrix > ss/2.] = np.NAN
+        ArcLengthMatrix[ArcLengthMatrix > ss/2.] = np.nan
 #         print "ArcLengthMatrix"
 #         raw_input(ArcLengthMatrix.astype(int))
         

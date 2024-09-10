@@ -1,11 +1,14 @@
 import pandas as _pd
 import numpy as _np
 import warnings as _warnings
-try:
-    from statsmodels import robust as _robust
-except ModuleNotFoundError:
-    _warnings.warn('statsmodels not installed. You might encounter some functionality limitations.')
+# try:
+#     from statsmodels import robust as _robust
+# except ModuleNotFoundError:
+#     _warnings.warn('statsmodels not installed. You might encounter some functionality limitations.')
 from functools import wraps as _wraps
+
+# from atmPy.opt_imports import statsmodels as 
+    
 
 def close_gaps(ts, verbose = False):
     """This is an older version to deal with gaps ... rather consider using the ones below"""
@@ -49,7 +52,8 @@ def detect_gaps(ts, toleranz=1.95, return_all=False):
     dt = (idx[1:] - idx[:-1]) / _np.timedelta64(1, 's')
 
     med = _np.median(dt)
-    mad = _robust.mad(dt)
+    # mad = _robust.mad(dt) # mad was deprecated
+    mad = _np.std(dt) * 0.8 # this is of course only valid for normal distributed data
 
     if mad == 0:
         noofgaps = 0

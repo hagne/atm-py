@@ -2,8 +2,9 @@ from atmPy.general import timeseries as _timeseries
 from atmPy.general import flightpath as _flightpath
 import xarray as xr
 import pandas as pd
-import metpy
-import metpy.calc
+# import metpy
+# import metpy.calc
+from atmPy.opt_imports import metpy
 
 class BalloonSounding(object):
     def __init__(self, data, column_lat='Lat', column_lon='Lon', column_altitude='Altitude'):

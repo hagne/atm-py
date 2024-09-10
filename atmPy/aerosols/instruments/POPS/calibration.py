@@ -29,10 +29,12 @@ def generate_calibration(single_pnt_cali_d=508,
                          no_cal_pts=50,
                          plot=True,
                          raise_error=True,
-                         test=False
+                         test=False,
+                         makeMie_diameter = mie.makeMie_diameter,
+                         geometry = 'perpendicular',
                          ):
     """
-    This function generates a calibration function for the POPS instrument based on its theoretical responds.
+    This function generates a calibration function for the POPS instrument based on its theoretical responds. It furthermore allows for a single point calibration. Here in an additional step the scaling factor will be determined which is nesesarry to account for instrument effects, like laser power and detector sensitivity.
 
     Args:
         single_pnt_cali_d: float [508]
@@ -67,9 +69,10 @@ def generate_calibration(single_pnt_cali_d=508,
         if test: Series instance
     """
     drum = np.array(dr)/1e3
-    d, amp = mie.makeMie_diameter(diameterRangeInMikroMeter=drum,
-                                 noOfdiameters=no_pts,
-                                 IOR=ior)
+    d, amp = makeMie_diameter(diameterRangeInMikroMeter=drum,
+                                noOfdiameters=no_pts,
+                                IOR=ior,
+                                geometry=geometry,)
 
     df = pd.DataFrame({'d': d, 'amp': amp})
     # a calibration function is created with no_cal_pts of calibration points. no_cal_pts is steadyly decreased until
@@ -82,7 +85,7 @@ def generate_calibration(single_pnt_cali_d=508,
             0]) * 0.01  # this is to ensure the first point is not onthe edge ... for cut function used later
 
         mie_cal = df.groupby(pd.cut(df.amp, binedgs)).median()
-        dfstd = df.groupby(pd.cut(df.amp, binedgs)).mad()
+        dfstd = df.groupby(pd.cut(df.amp, binedgs)).std() #202408 std used to be mad which was deprecated in 1.5. I hope this does not change too much
 
         mie_cal.index = mie_cal.d
         dfstd.index = mie_cal.d
@@ -103,37 +106,40 @@ def generate_calibration(single_pnt_cali_d=508,
     cali_inst_pre = Calibration(mie_cal)
 
     # single point calibration
-    ## solve calibration function ot get amp at calibration diameter
+    ## solve calibration function to get amp at calibration diameter
     ### first guess
     dt = mie_cal.index[abs(mie_cal.index - single_pnt_cali_d).argmin()]
     at = mie_cal.loc[dt, 'amp']
-
     # cali_inst_at_single_pnt_calid_d = cali_inst_pre.calibrationFunction(single_pnt_cali_d)
 
-    ### solve
+    ### solve, gives the aplitude at the calibration diameter ... not sure why this is not done by iterpolation?!?
     cali_inst_at_single_pnt_calid_d = optimize.fsolve(lambda x: cali_inst_pre.calibrationFunction(x) - single_pnt_cali_d, at)
-
     ## scale for ior mismatch
     if ior == single_pnt_cali_ior:
-        scale_ioradj = 1
+        # scale_ioradj = 1
         single_pnt_cali_int_pre = cali_inst_at_single_pnt_calid_d
     else:
         # single_pnt_cali_d = 500
         single_pnt_cali_d *= 1e-3
-        dt, mt = mie.makeMie_diameter(diameterRangeInMikroMeter=[single_pnt_cali_d, single_pnt_cali_d + 1e-3],
+        dt, mt = makeMie_diameter(diameterRangeInMikroMeter=[single_pnt_cali_d, 
+                                                             single_pnt_cali_d + 1e-3],
                                       IOR=single_pnt_cali_ior,
-                                      noOfdiameters=2)
+                                      noOfdiameters=2,
+                                geometry=geometry,)
+
         single_pnt_cali_int_pre = mt[0]
 
-        scale_ioradj = cali_inst_at_single_pnt_calid_d / single_pnt_cali_int_pre
-
-    ## scale for instrument calibration
+        
+        # scale_ioradj = cali_inst_at_single_pnt_calid_d / single_pnt_cali_int_pre #amp at desired ior divided by amp at cal ior; this is not needed, using it would be double dipping
+        
+        single_pnt_cali_d *= 1e3
+    
+    ## scale for instrument calibration, this is puly to adjust the intenisty of the mie calculation to the laser intensity and detector efficiency
     scale_instrument = single_pnt_cali_int / single_pnt_cali_int_pre
-
-    ## total scale
-    scale = scale_ioradj * scale_instrument
-
-    mie_cal.loc[:,'amp'] *= scale
+    ## total scale, this makes no sence, applying this would be applying the ior effect twice!!! the effect from ior is already in the mie calculations!
+    # scale = scale_ioradj * scale_instrument
+    
+    mie_cal.loc[:,'amp'] *= scale_instrument
 
     if not isinstance(noise_level, type(None)):
         mie_cal.loc[:, 'amp'] += noise_level
@@ -142,7 +148,7 @@ def generate_calibration(single_pnt_cali_d=508,
 
     if plot:
         f, a = plt.subplots()
-        a.plot(df.d * 1e3, df.amp * scale, label='POPS resp.')
+        a.plot(df.d * 1e3, df.amp * scale_instrument, label='POPS resp.')
         cali_inst.plot(ax = a)
         # a.plot(ampm.index * 1e3, ampm.values * scale, label='POPS resp. smooth')
         # g, = a.plot(cali.index, cali.values, label='cali')
@@ -150,14 +156,14 @@ def generate_calibration(single_pnt_cali_d=508,
         # g.set_marker('x')
         # g.set_markersize(10)
         # g.set_markeredgewidth(2)
-        g, = a.plot(single_pnt_cali_d * 1e3, single_pnt_cali_int, label='single ptn cal')
+        g, = a.plot(single_pnt_cali_d, single_pnt_cali_int, label='single ptn cal')
         g.set_linestyle('')
         g.set_marker('x')
         g.set_markersize(10)
         g.set_markeredgewidth(2)
         g.set_label('single pt. cali.')
         # # st.plot(ax = a)
-        # a.loglog()
+        a.loglog()
         a.legend()
         # return dft
         # return cali_inst, a
@@ -507,7 +513,7 @@ class Calibration:
 
         d = cal_function(amp)
 
-        if type(ax).__name__ == 'AxesSubplot':
+        if type(ax).__name__ in ['Axes','AxesSubplot']:
             a = ax
             f = a.get_figure()
         else:

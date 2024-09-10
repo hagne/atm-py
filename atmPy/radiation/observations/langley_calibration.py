@@ -15,15 +15,19 @@ import pathlib
 import xarray as xr
 import datetime
 import matplotlib.pyplot as plt
-import pptx
+# import pptx
 import io
-import statsmodels.api as sm
+# import statsmodels.api as sm
 # import sp02.products.raw_nc
 import copy
 import pathlib as pl
 # from pygam import f as pgf
 import scipy.interpolate as scint
 import matplotlib.dates as pltdates
+
+from atmPy.opt_imports import pptx
+from atmPy.opt_imports import statsmodels_api as sm
+
 
 colors = plt.rcParams['axes.prop_cycle'].by_key()['color']
 

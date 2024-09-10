@@ -1,21 +1,21 @@
-
 from mpl_toolkits.mplot3d import Axes3D
 import numpy as np
 import warnings
-try:
-    from mpl_toolkits.basemap import Basemap
-except KeyError:
-    warnings.warn("An error accured while trying to import mpl_toolkits.basemap.Basemap. Plotting of maps will not work!")
-try:
-    # from geopy.distance import vincenty
-    import geopy
-except ModuleNotFoundError:
-    warnings.warn('geopy not installed. You might encounter some functionality limitations.')
-import matplotlib.pylab as plt
+# try:
+#     from mpl_toolkits.basemap import Basemap
+# except KeyError:
+#     warnings.warn("An error accured while trying to import mpl_toolkits.basemap.Basemap. Plotting of maps will not work!")
+# try:
+#     # from geopy.distance import vincenty
+#     import geopy
+# except ModuleNotFoundError:
+#     warnings.warn('geopy not installed. You might encounter some functionality limitations.')
+# import matplotlib.pylab as plt
 # import pandas as pd
 # import atmPy.general.timeseries as timeseries
 # from functools import wraps as _wraps
-
+from atmPy.opt_imports import mpl_toolkits_basemap as Basemap
+from atmPy.opt_imports import geopy
 
 
 

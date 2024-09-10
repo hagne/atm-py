@@ -11,7 +11,8 @@ import matplotlib.pyplot as _plt
 import scipy as _sp
 #import pathlib as _pl
 import xarray as xr
-import statsmodels.nonparametric.smoothers_lowess as smlowess
+# import statsmodels.nonparametric.smoothers_lowess as smlowess
+from atmPy.opt_imports import statsmodels_nonparametric_smoothers_lowess as smlowess
 
 _colors = _plt.rcParams['axes.prop_cycle'].by_key()['color']
 

@@ -1,15 +1,15 @@
 import warnings
-try:
-    from mpl_toolkits.basemap import Basemap as _Basemap
-except:
-    warnings.warn('There seams to be an issue with importing mpl_toolkits.basemap. Make sure it is installed and working (try: "from mpl_toolkits.basemap import Basemap as _Basemap"). For now plotting on map will not be possible')
+# try:
+#     from mpl_toolkits.basemap import Basemap as _Basemap
+# except:
+#     warnings.warn('There seams to be an issue with importing mpl_toolkits.basemap. Make sure it is installed and working (try: "from mpl_toolkits.basemap import Basemap as _Basemap"). For now plotting on map will not be possible')
 import matplotlib.pylab as _plt
 import os as _os
 import numpy as _np
 import pandas as _pd
 from atmPy.radiation import solar as _solar
 # import datetime as _datetime
-import timezonefinder as _tzf
+# import timezonefinder as _tzf
 import pytz as _pytz
 # The following is to ensure that one can use as large of an image as one desires
 try:
@@ -18,14 +18,20 @@ try:
 except ModuleNotFoundError:
     warnings.warn('PIL not installed. This is needed to plot images of arbitrary resolution, e.g. when plotting satellite images.')
 from matplotlib import path as _path
-try:
-    import geopy as _geopy
-    # import geopy.distance as _gd #otherwise distance will not be available
-except ModuleNotFoundError:
-    warnings.warn('geopy not installed. You might encounter some functionality limitations.')
-import plt_tools as _plt_tools
-
+# try:
+#     import geopy as _geopy
+#     # import geopy.distance as _gd #otherwise distance will not be available
+# except ModuleNotFoundError:
+#     warnings.warn('geopy not installed. You might encounter some functionality limitations.')
+# import plt_tools as _plt_tools
+import atmPy.tools.plt_tool_kit as _plt_tools
 default_colors = _plt.rcParams['axes.prop_cycle'].by_key()['color']
+
+
+from atmPy.opt_imports import timezonefinder as _tzf
+from atmPy.opt_imports import mpl_toolkits_basemap as _basemap
+from atmPy.opt_imports import geopy as _geopy
+from atmPy.opt_imports import cartopy
 
 class NetworkStations(object):
     def __init__(self):
@@ -373,24 +379,191 @@ class Station(object):
         out = _solar.get_sun_position(self.lat, self.lon, datetime, elevation = self.alt)
         return out
         
-
     def plot(self,
-             projection='lcc',
-             center = 'auto',
-             width=400000 * 7,
-             height=500000 * 3,
-             station_label_format ='{abbr}',
-             station_label_kwargs = None,
-             resolution='c',
-             background='blue_marble',
-             station_symbol_kwargs = None,
-             # site_label_marker_size = 8,
-             # site_label_font_size = 18,
-             # site_label_color='auto',
-             bmap = None,
-             plot_only_if_on_map = False,
-             ax = None,
-             verbose = False):
+             backend = 'cartopy',
+             **kwargs,
+             # ax = None,,
+             # projection='lcc',
+             # center = 'auto',
+             # width=400000 * 7,
+             # height=500000 * 3,
+             # station_label_format ='{abbr}',
+             # station_label_kwargs = None,
+             # resolution='c',
+             # background='blue_marble',
+             # station_symbol_kwargs = None,
+             # # site_label_marker_size = 8,
+             # # site_label_font_size = 18,
+             # # site_label_color='auto',
+             # bmap = None,
+             # plot_only_if_on_map = False,
+             # verbose = False
+            ):
+        """
+        Parameters
+        ----------
+        projection
+        center: 'auto' or (lat, lon)
+        width
+        height
+        station_label_format: format str ('abbr', 'name', 'state')
+            This takes a fromat string with the given optional arguments. E.g. '{name}, {state}'.
+        station_label_kwargs: dict or bool
+            This defines the position, size ... of the label. If False no label will
+            be shown. See doc of plt.annotate() for details.
+            defaults = dict(xytext = (10, -10),
+                            size = 18,
+                            ha = "left",
+                            va = 'top',
+                            textcoords = 'offset points',
+                            bbox = dict(boxstyle="round", fc=[1, 1, 1, 0.5], ec='black'),
+                             )
+        resolution: str ('c','i','h'....
+        background: str
+            blue_marble: use the blue_marble provided by basemap
+            "path_to_file_name": This will use the warpimage function to use the image in the filename ... works with the blue marble stuff (https://visibleearth.nasa.gov/view_cat.php?categoryID=1484)
+        plot_only_if_on_map: bool
+            as the name says
+
+        backend: str, ([cartopy], basemap)
+        ax
+
+        Returns
+        -------
+
+        """
+        if backend == 'cartopy':
+            out = self._plot_cartopy(**kwargs)
+
+        elif backend == 'basemap':
+            out = self._plot_basemap(             
+                # projection='lcc',
+             # center = 'auto',
+             # width=400000 * 7,
+             # height=500000 * 3,
+             # station_label_format ='{abbr}',
+             # station_label_kwargs = None,
+             # resolution='c',
+             # background='blue_marble',
+             # station_symbol_kwargs = None,
+             # # site_label_marker_size = 8,
+             # # site_label_font_size = 18,
+             # # site_label_color='auto',
+             # bmap = None,
+             # plot_only_if_on_map = False,
+             # ax = None,
+             # verbose = False
+            )
+        
+        return out
+    
+    def _plot_cartopy(self,ax = None, 
+                      projection = None, 
+                      station_symbol_kwargs = None, 
+                      station_label_kwargs = None,
+                      station_label_format = '{abbr}',
+                      background = None,
+                      zoom_level = None,
+                      extent = None,
+                      **kwargs):
+        
+        projection = 'AlbersEqualArea'
+        projection = getattr(cartopy.crs, projection)(central_longitude=self.lon, central_latitude=self.lat)
+        transform = cartopy.crs.PlateCarree()
+    
+        if not isinstance(extent, (list, tuple)):    
+            if isinstance(extent, type(None)):
+                extent = 2
+            extent = [self.lon - extent, self.lon + extent, self.lat - extent, self.lat + extent]
+
+        if isinstance(station_symbol_kwargs, type(None)):
+            station_symbol_kwargs = {}
+        if 'marker' not in station_symbol_kwargs:
+            station_symbol_kwargs['marker'] = 'o'
+        if 'markersize' not in station_symbol_kwargs:
+            station_symbol_kwargs['markersize'] = 4
+        if 'color' not in station_symbol_kwargs:
+            station_symbol_kwargs['color'] = default_colors[1]
+        if 'zorder' not in station_symbol_kwargs:
+            station_symbol_kwargs['zorder'] = 100
+
+        if isinstance(ax, type(None)):
+            f,a = _plt.subplots(subplot_kw={'projection': projection})
+            background = False
+            from_scratch = True
+        else:
+            a = ax
+            f = a.get_figure()
+            from_scratch = False
+        
+        a.plot(self.lon, self.lat,linestyle = '', transform = transform, **station_symbol_kwargs)
+        if station_label_kwargs != False:
+            annodefaults = dict(xytext = (10, -10),
+                                size = 10,
+                                ha = "left",
+                                va = 'top',
+                                textcoords = 'offset points',
+                                bbox = dict(boxstyle="round", fc=[1, 1, 1, 0.5], ec='black'),
+                                zorder = 100,
+                                transform = transform,
+                                 )
+            if isinstance(station_label_kwargs, type(None)):
+                station_label_kwargs = {}
+
+            for ak in annodefaults:
+                if ak not in station_label_kwargs:
+                    station_label_kwargs[ak] = annodefaults[ak]
+
+            label = station_label_format.format(abbr=self.abb, name=self.name, state=self.state, country=self.country)
+
+
+            a.annotate(label, 
+                       xy=(self.lon, self.lat), 
+                       # transform = transform,
+                       **station_label_kwargs
+                               #                 xycoords='data',
+                               # xytext=(10 ,-10),
+                               # size = station_annotation_kwargs['size'],
+                               # ha="left",
+                               # va = 'top',
+                               # textcoords='offset points',
+                               # bbox=dict(boxstyle="round", fc=[1 ,1 ,1 ,0.5], ec='black'),
+                               )
+        #### properties which are only changed when no ax whas passed
+        if from_scratch:
+            if isinstance(zoom_level, type(None)):
+                zoom_level = 8
+            
+            if isinstance(background, type(None)):
+                tiles = cartopy.io.img_tiles.GoogleTiles(style = 'satellite')
+                a.add_image(tiles, zoom_level, 
+                             # alpha = 0.5
+                            )
+            
+    
+            a.set_extent(extent, crs=transform)
+            a.add_feature(cartopy.feature.STATES, linewidth=0.5)
+            a.gridlines(draw_labels=True, color='gray', alpha=0.5, linestyle='--')
+        return f,a 
+        
+    def _plot_basemap(self, **kwargs):
+             # projection='lcc',
+             # center = 'auto',
+             # width=400000 * 7,
+             # height=500000 * 3,
+             # station_label_format ='{abbr}',
+             # station_label_kwargs = None,
+             # resolution='c',
+             # background='blue_marble',
+             # station_symbol_kwargs = None,
+             # # site_label_marker_size = 8,
+             # # site_label_font_size = 18,
+             # # site_label_color='auto',
+             # bmap = None,
+             # plot_only_if_on_map = False,
+             # ax = None,
+             # verbose = False
+                     # ):
         """
 
         Parameters
@@ -417,6 +590,8 @@ class Station(object):
             "path_to_file_name": This will use the warpimage function to use the image in the filename ... works with the blue marble stuff (https://visibleearth.nasa.gov/view_cat.php?categoryID=1484)
         plot_only_if_on_map: bool
             as the name says
+
+        backend: str, ([cartopy], basemap)
         ax
 
         Returns
@@ -460,7 +635,7 @@ class Station(object):
             else:
                 lat, lon = center
 
-            bmap = _Basemap  (  # projection='laea',
+            bmap = _basemap.Basemap  (  # projection='laea',
                 projection=projection,
                 lat_0=lat,
                 lon_0=lon,

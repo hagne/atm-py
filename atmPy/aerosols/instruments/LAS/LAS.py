@@ -11,10 +11,66 @@ import warnings
 import numpy as np
 import pandas as pd
 import pylab as plt
-from StringIO import StringIO as io
+from io import StringIO as io
 from scipy.interpolate import UnivariateSpline
 
 from atmPy.aerosols.size_distribution import sizedistribution
+import atmPy.aerosols.instruments.POPS.mie as atmmie
+import atmPy.aerosols.instruments.POPS.calibration as atmpc
+from functools import partial
+
+
+def makeMie(IOR = 1.5,
+              noOfdiameters = 200,
+              diameterRangeInMikroMeter = [0.1, 5],
+              geometry = 'perpendicular'):
+
+    '''
+    def collectionangle(d = 2.5, #mirror diameter
+                    h = 1.0 # mirror scattering center distance
+                   ):
+    sa = np.rad2deg(np.arctan(d/(2*h)))#, np.rad2deg(np.arctan2(d/(2*h)))
+    return float(90-sa), float(90 + sa)
+    collectionangle()
+    '''
+    
+    mirrorJetDist=8.106 # (32.962602120353196, 147.0373978796468)
+    mirrorJetDist_hole = 44 #(74.14063373339431, 105.85936626660569)
+    noOfAngles=101 #there was a sampling issue
+    WavelengthInUm=0.633
+    # diameterRange = [LAS_bincenters.LAS_Bin_Centers.min(), LAS_bincenters.LAS_Bin_Centers.max()]
+
+    #scattering of the entire collection mirrow including the part that is lost through the whole
+    d,scatt_woh = atmmie.makeMie_diameter(mirrorJetDist=mirrorJetDist,
+                                        diameterRangeInMikroMeter=diameterRangeInMikroMeter,
+                                        noOfdiameters=noOfdiameters,
+                                        noOfAngles=noOfAngles,
+                                        # POPSdesign='POPS 2',
+                                        IOR=IOR,
+                                        WavelengthInUm=WavelengthInUm,
+                                        geometry=geometry,
+                                        # scale='log',
+                                        # broadened=False,
+                                        # doreturn='tuple',
+                                    )
+    # scattering that is lost through the hole
+    d,scatt_hole = atmmie.makeMie_diameter(mirrorJetDist=mirrorJetDist_hole,
+                                        diameterRangeInMikroMeter=diameterRangeInMikroMeter,
+                                        noOfdiameters=noOfdiameters,
+                                        noOfAngles=noOfAngles,
+                                        # POPSdesign='POPS 2',
+                                        IOR=IOR,
+                                        WavelengthInUm=WavelengthInUm,
+                                        geometry=geometry,
+                                        # scale='log',
+                                        # broadened=False,
+                                        # doreturn='tuple',
+                                    )
+    
+    scatt = scatt_woh - scatt_hole
+    return [d, scatt]
+
+simulate_calibration =  partial(atmpc.generate_calibration, makeMie_diameter = makeMie)
 
 
 def read_csv(fname):
@@ -171,7 +227,6 @@ data = """140 88
     dataFrame = _string2Dataframe(data)
     calibrationInstance = calibration(dataFrame)
     return calibrationInstance
-
 
 def save_Calibration(calibrationInstance, fname):
     """should be saved hier cd ~/data/POPS_calibrations/"""

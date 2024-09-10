@@ -1,17 +1,20 @@
 import warnings
-try:
-    import ephem as _ephem
-except ModuleNotFoundError:
-    warnings.warn('ephem is not installed. You might encounter some functionality limitations.')
+# try:
+#     import ephem as _ephem
+# except ModuleNotFoundError:
+#     warnings.warn('ephem is not installed. You might encounter some functionality limitations.')
 import numpy as _np
 import pandas as _pd
 import pytz
 import atmPy.general.timeseries as _ts
-try:
-    from pysolar import solar as _solar
-    from pysolar import stime
-except:
-    warnings.warn('There seams to be an issue with importing the pysolar library. Make sure it is installed and running correctly (try: "from Pysolar import solar as _solar"). For now conversion of the Atmospheric mass factor will not work.')
+# try:
+#     from pysolar import solar as _solar
+#     from pysolar import stime
+# except:
+#     warnings.warn('There seams to be an issue with importing the pysolar library. Make sure it is installed and running correctly (try: "from Pysolar import solar as _solar"). For now conversion of the Atmospheric mass factor will not work.')
+
+from atmPy.opt_imports import ephem as _ephem
+from atmPy.opt_imports import pysolar as _pysolar
 # from atmPy.general.constants import a2r, r2a
 
 __julian = {"day": 0., "cent": 0.}
@@ -94,10 +97,10 @@ __julian = {"day": 0., "cent": 0.}
 
 def get_sun_earth_distance(x):
 #     print(type(x))
-    jde = stime.get_julian_ephemeris_day(x)
-    jce = stime.get_julian_ephemeris_century(jde)
-    jme = stime.get_julian_ephemeris_millennium(jce)
-    au = _solar.get_sun_earth_distance(jme)
+    jde = _pysolar.stime.get_julian_ephemeris_day(x)
+    jce = _pysolar.stime.get_julian_ephemeris_century(jde)
+    jme = _pysolar.stime.get_julian_ephemeris_millennium(jce)
+    au = _pysolar.solar.get_sun_earth_distance(jme)
     return au
 
 def get_sun_position(lat, lon, date, elevation=0):
@@ -130,9 +133,9 @@ def get_sun_position(lat, lon, date, elevation=0):
             date = pytz.utc.localize(date)
         # print(lat, lon, date)
         # print(_solar.get_azimuth(lat, lon, date, elevation=elevation))
-        alt = _np.deg2rad(_solar.get_altitude(lat, lon, date, elevation=elevation))
+        alt = _np.deg2rad(_pysolar.solar.get_altitude(lat, lon, date, elevation=elevation))
         #azi = _np.deg2rad(_np.mod(abs(_solar.get_azimuth(lat, lon, date, elevation=elevation)) - 180, 360)) # this is from a time when pysolar defined the azimuth differently (angle from south)
-        azi = _np.deg2rad(_solar.get_azimuth(lat, lon, date, elevation=elevation))
+        azi = _np.deg2rad(_pysolar.solar.get_azimuth(lat, lon, date, elevation=elevation))
         airmass = 1 / _np.sin(alt)
         au = get_sun_earth_distance(date)
         ampm = 'am' if azi <= _np.pi else "pm"
