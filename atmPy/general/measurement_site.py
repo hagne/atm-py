@@ -196,7 +196,11 @@ class Network(object):
         setattr(self.subnetworks, network_instance.name, network_instance)
         self.subnetworks._network_list.append(network_instance)
 
-    def plot(self, zoom = 1.1, network_label_format = '{abbr}', network_label_kwargs = False,  **kwargs):
+    def plot(self, #ax = None, 
+             zoom = 1.1, 
+             network_label_format = '{abbr}', 
+             network_label_kwargs = False,  
+             **kwargs):
         """Plots all station in network on map
 
         Parameters
@@ -213,72 +217,90 @@ class Network(object):
         kwargs: dictionary with arguments that are passed to station.plot
 
             """
-        stl = self.stations._stations_list
-        # a, bmap = stl[0].plot(plot_only_if_on_map = True, **kwargs)
-        # kwargs['bmap'] = bmap
+        stl = self.stations.list
+        rescale = True
+        if 'ax' in kwargs:        
+            rescale = False
+            
+        for site in stl:
+            f,a = site.plot(#ax = a, 
+                      **kwargs)
+            kwargs['ax'] = a
 
-        if 'center' not in kwargs.keys():
-            kwargs['center'] = 'auto'
-        if kwargs['center'] == 'auto':
-            # st = self.stations._stations_list[0]
-            # lat_max, lat_min = max([st.lat for st in self.stations._stations_list]), min(
-            #     [st.lat for st in self.stations._stations_list])
-            # lon_max, lon_min = max([st.lon for st in self.stations._stations_list]), min(
-            #     [st.lon for st in self.stations._stations_list])
-            # kwargs['center'] = ((lat_max+lat_min)/2, (lon_max+lon_min)/2)
-            kwargs['center'] = self.extend['center']
+        if rescale:
+            latmin = _np.min([s.lat for s in stl])
+            latmax = _np.max([s.lat for s in stl])
+            lonmin = _np.min([s.lon for s in stl])
+            lonmax = _np.max([s.lon for s in stl])
+            a.set_extent([lonmin-zoom, lonmax+zoom, latmin-zoom, latmax+zoom])
+        
+        if 0:
+            
+            # a, bmap = stl[0].plot(plot_only_if_on_map = True, **kwargs)
+            # kwargs['bmap'] = bmap
+    
+            if 'center' not in kwargs.keys():
+                kwargs['center'] = 'auto'
+            if kwargs['center'] == 'auto':
+                # st = self.stations._stations_list[0]
+                # lat_max, lat_min = max([st.lat for st in self.stations._stations_list]), min(
+                #     [st.lat for st in self.stations._stations_list])
+                # lon_max, lon_min = max([st.lon for st in self.stations._stations_list]), min(
+                #     [st.lon for st in self.stations._stations_list])
+                # kwargs['center'] = ((lat_max+lat_min)/2, (lon_max+lon_min)/2)
+                kwargs['center'] = self.extend['center']
+    
+            if 'width' not in kwargs.keys():
+                kwargs['width'] = 'auto'
+            if kwargs['width'] == 'auto':
+                kwargs['width'] = self.extend['width_m'] * zoom
+    
+            if 'height' not in kwargs.keys():
+                kwargs['height'] = 'auto'
+            if kwargs['height'] == 'auto':
+                kwargs['height'] = self.extend['height_m'] * zoom
+    
+            if 'station_symbol_kwargs' not in kwargs.keys():
+                kwargs['station_symbol_kwargs'] = {}
+    
+            for e, station in enumerate(stl):
+                if 'color' not in kwargs['station_symbol_kwargs']:
+                    kwargs['station_symbol_kwargs']['color'] = default_colors[1]
+                a, bmap = station.plot(plot_only_if_on_map = True, **kwargs)
+                kwargs['bmap'] = bmap
+    
+            if network_label_kwargs != False:
+                annodefaults = dict(xytext=(0, 0),
+                                    size=12,
+                                    ha="center",
+                                    va='center',
+                                    textcoords='offset points',
+                                    bbox=dict(boxstyle="round", fc=[1, 1, 1, 0.5], ec='black'),
+                                    )
+                if isinstance(network_label_kwargs, type(None)):
+                    network_label_kwargs = {}
+    
+                for ak in annodefaults:
+                    if ak not in network_label_kwargs:
+                        network_label_kwargs[ak] = annodefaults[ak]
+    
+                label = network_label_format.format(abbr=self.abbr, name=self.name)
+                center_lat = sum([station.lat for station in stl]) / len(stl)
+                center_lon = sum([station.lon for station in stl]) / len(stl)
+                xpt, ypt = bmap(center_lon, center_lat)
+                a.annotate(label, xy=(xpt, ypt), **network_label_kwargs
+                           #                 xycoords='data',
+                           # xytext=(10 ,-10),
+                           # size = station_annotation_kwargs['size'],
+                           # ha="left",
+                           # va = 'top',
+                           # textcoords='offset points',
+                           # bbox=dict(boxstyle="round", fc=[1 ,1 ,1 ,0.5], ec='black'),
+                           )
+    
+    
 
-        if 'width' not in kwargs.keys():
-            kwargs['width'] = 'auto'
-        if kwargs['width'] == 'auto':
-            kwargs['width'] = self.extend['width_m'] * zoom
-
-        if 'height' not in kwargs.keys():
-            kwargs['height'] = 'auto'
-        if kwargs['height'] == 'auto':
-            kwargs['height'] = self.extend['height_m'] * zoom
-
-        if 'station_symbol_kwargs' not in kwargs.keys():
-            kwargs['station_symbol_kwargs'] = {}
-
-        for e, station in enumerate(stl):
-            if 'color' not in kwargs['station_symbol_kwargs']:
-                kwargs['station_symbol_kwargs']['color'] = default_colors[1]
-            a, bmap = station.plot(plot_only_if_on_map = True, **kwargs)
-            kwargs['bmap'] = bmap
-
-        if network_label_kwargs != False:
-            annodefaults = dict(xytext=(0, 0),
-                                size=12,
-                                ha="center",
-                                va='center',
-                                textcoords='offset points',
-                                bbox=dict(boxstyle="round", fc=[1, 1, 1, 0.5], ec='black'),
-                                )
-            if isinstance(network_label_kwargs, type(None)):
-                network_label_kwargs = {}
-
-            for ak in annodefaults:
-                if ak not in network_label_kwargs:
-                    network_label_kwargs[ak] = annodefaults[ak]
-
-            label = network_label_format.format(abbr=self.abbr, name=self.name)
-            center_lat = sum([station.lat for station in stl]) / len(stl)
-            center_lon = sum([station.lon for station in stl]) / len(stl)
-            xpt, ypt = bmap(center_lon, center_lat)
-            a.annotate(label, xy=(xpt, ypt), **network_label_kwargs
-                       #                 xycoords='data',
-                       # xytext=(10 ,-10),
-                       # size = station_annotation_kwargs['size'],
-                       # ha="left",
-                       # va = 'top',
-                       # textcoords='offset points',
-                       # bbox=dict(boxstyle="round", fc=[1 ,1 ,1 ,0.5], ec='black'),
-                       )
-
-
-
-        return a,bmap
+        return f,a
 
     def _operation_period2sub_network_active(self):
         has_operation_period = _np.array([hasattr(sta, 'operation_period') for sta in self.stations._stations_list])
