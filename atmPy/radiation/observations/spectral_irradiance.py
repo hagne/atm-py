@@ -511,7 +511,7 @@ class DirectNormalIrradiation(SolarIrradiation):
         site = self.site.abb
         fns = []
         for dt in [start_dt, end_dt]:
-            fns.append(f'/export/htelg/data/grad/surfrad/radiation/{site}/srf_rad_full_{site}_{dt.year:04d}{dt.month:02d}{dt.day:02d}.nc')
+            fns.append(f'/nfs/grad/surfrad/products_level1/radiation_netcdf/{site}/srf_rad_full_{site}_{dt.year:04d}{dt.month:02d}{dt.day:02d}.nc')
         
         ds = xr.open_mfdataset(np.unique(fns)) # unique in case start and end is the same
         
@@ -568,11 +568,12 @@ class DirectNormalIrradiation(SolarIrradiation):
                                     ns_season=6,
                                     lands = None):
         if isinstance(lands, type(None)):
-            print('load lands')
+            print('langleys.load.', end = '', flush = True)
             lands = atmlangcalib.open_langley_dailys(#end = '20211001',
                                                   p2fld=p2fld,)
+
+            print('gampredict.', end = '')
             lands.predict_until = pd.Timestamp.now()
-            
             lands._get_v0_gam(th=th,
                       order_stderr=order_stderr,
                       lam_overtime=lam_overtime,
@@ -588,6 +589,7 @@ class DirectNormalIrradiation(SolarIrradiation):
             istderr = lands.dataset.sel(fit_results = 'intercept_stderr', wavelength = wl).langley_fitres
             date_predict = pd.to_datetime(lands.dataset.sel(fit_results = 'intercept', wavelength = wl).langley_fitres.where(istderr < th_predict).dropna('datetime').datetime[-req_no_good_langleys].values)
             lands.date_predict = date_predict
+            print('done')
         else:
             pass
         
@@ -802,7 +804,9 @@ class DirectNormalIrradiation(SolarIrradiation):
         if isinstance(self._od_co2ch4h2o, type(None)):
             # get the 1625 filter info based on the MFRSR instrument serial no
             if 1625 in self.raw_data.channel:
-                fn = '/export/htelg/projects/AOD_redesign/MFRSR_History.xlsx'
+                #### TODO: this file should be stored somewhere more meaning full
+                fn = '/home/grad/htelg/projects/AOD_redesign/MFRSR_History.xlsx'
+                
                 mfrsr_info = pd.read_excel(fn, sheet_name='Overview')
                 inst_info = mfrsr_info[mfrsr_info.Instrument == self.raw_data.serial_no]
                 
@@ -811,7 +815,9 @@ class DirectNormalIrradiation(SolarIrradiation):
                 filter_batch = ''.join([i for i in fab if not i.isnumeric()]).lower()
                 
                 # open the lookup dabel for the Optical depth correction
-                correction_info = xr.open_dataset(self.path2absorption_correction_ceoff_1625)
+                # correction_info = xr.open_dataset(self.path2absorption_correction_ceoff_1625)
+                with xr.open_dataset(self.path2absorption_correction_ceoff_1625) as correction_info:
+                    correction_info.load()
                 
                 ds = xr.Dataset()
                 params_dict = {}

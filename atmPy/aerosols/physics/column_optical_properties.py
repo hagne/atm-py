@@ -12,7 +12,7 @@ import scipy as _sp
 #import pathlib as _pl
 import xarray as xr
 # import statsmodels.nonparametric.smoothers_lowess as smlowess
-from atmPy.opt_imports import statsmodels_nonparametric_smoothers_lowess as smlowess
+from atmPy.opt_imports import statsmodels
 
 _colors = _plt.rcParams['axes.prop_cycle'].by_key()['color']
 
@@ -1118,7 +1118,7 @@ def cloud_screening_michalsky(dataset, testdev = 0.05,rollwindow = 15, channel =
 
     # generate the smooth aod only function
     daaod5_t1 = daaod5.where(test1.values).dropna('datetime')
-    out = smlowess.lowess(daaod5_t1.values, daaod5_t1.datetime.values,
+    out = statsmodels.nonparametric.smoothers_lowess.lowess(daaod5_t1.values, daaod5_t1.datetime.values,
                  frac = 2/3)
     lowess = _xr.DataArray(out[:,1], coords={'datetime':daaod5_t1.datetime})
     
@@ -1223,7 +1223,7 @@ def cloud_screening_michalsky_smoker(dataset, testdev = 0.05,rollwindow = 15, ch
 
     # generate the smooth aod only function
     daaod5_t1 = daaod5.where(test1.values).dropna('datetime')
-    out = smlowess.lowess(daaod5_t1.values, daaod5_t1.datetime.values,
+    out = statsmodels.nonparametric.smoothers_lowess.lowess.lowess(daaod5_t1.values, daaod5_t1.datetime.values,
                  frac = 2/3)
     lowess = _xr.DataArray(out[:,1], coords={'datetime':daaod5_t1.datetime})
     

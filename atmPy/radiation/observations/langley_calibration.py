@@ -26,7 +26,7 @@ import scipy.interpolate as scint
 import matplotlib.dates as pltdates
 
 from atmPy.opt_imports import pptx
-from atmPy.opt_imports import statsmodels_api as sm
+from atmPy.opt_imports import statsmodels
 
 
 colors = plt.rcParams['axes.prop_cycle'].by_key()['color']
@@ -182,7 +182,7 @@ def read_langley_params(p2f = '/home/grad/surfrad/aod/tbl_mfrhead', verbose = Fa
 
 def open_langley_dailys(start = None, #'20160101',  
                         end = None, #'20220101',
-                        p2fld = '/mnt/telg/data/grad/surfrad/mfrsr/langleys_concat/tbl/',
+                        p2fld = '/home/grad/htelg/data/grad/surfrad/mfrsr/langleys_concat/tbl/',
                         drop_variables = ['langley_residual_correlation_prop', 'valid_points', 'residual_stats', 'cleaning_iterations', 'status'], # they are not needed under normal conditions
                        ):
     p2fld = pl.Path(p2fld)
@@ -190,11 +190,14 @@ def open_langley_dailys(start = None, #'20160101',
     df.index = df.apply(lambda row: pd.to_datetime(row.p2f.name.split('_')[4] + '01'), axis =1)
     df.sort_index(inplace=True)
     df = df.truncate(start, end)
-    
+    assert(df.shape[0] != 0), f'no files found in {p2fld}.'
     df['serial_no'] = df.apply(lambda row: row.p2f.name.split('_')[3], axis = 1)
+    assert(df.serial_no.unique().shape[0] != 0), f'No serial_no found in {df.p2f}.'
     assert(df.serial_no.unique().shape[0] == 1), f'Files indicate more then one serial number (found {df.serial_no.unique()}), which should not be the case unless you updated the langley processing ... did you? ... programmin grequired.'   
     # return df
-    ds_langs = xr.open_mfdataset(df.p2f, drop_variables = drop_variables)
+    # ds_langs = xr.open_mfdataset(df.p2f, drop_variables = drop_variables)
+    with xr.open_mfdataset(df.p2f, drop_variables = drop_variables) as ds_langs:
+        ds_langs.load()
     return Langley_Timeseries(ds_langs)
 
 class CalibrationPrediction(object):
@@ -491,17 +494,17 @@ def fit_langley(langley,
     # langley = langley.truncate(*airmasslimits)
     y = langley
     x = langley.index
-    x = sm.add_constant(x)
+    x = statsmodels.api.add_constant(x)
     
     if not weighted:
-        mod = sm.OLS(y,x)
+        mod = statsmodels.api.OLS(y,x)
     else:
         idx = langley.index
         wt = idx[:-1] - idx[1:]
         wx = np.arange(wt.shape[0])
         f = sp.interpolate.interp1d(wx, wt, bounds_error=False, fill_value='extrapolate')
         w = np.append(wt, f(wx[-1] + 1))
-        mod = sm.WLS(y, x, weights = w)
+        mod = statsmodels.api.WLS(y, x, weights = w)
 
     try:
         res = mod.fit()

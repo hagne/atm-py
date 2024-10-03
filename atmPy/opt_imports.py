@@ -34,11 +34,11 @@ class OptionalImport:
         return getattr(self.module, item)
 
 # Creating the pandas facade
-statsmodels = OptionalImport('statsmodels', submodules = ['api',])
+statsmodels = OptionalImport('statsmodels', submodules = ['api','nonparametric.smoothers_lowess'])
 
 #Todo: remove those and replace with the submodule kwarg
-statsmodels_api = OptionalImport('statsmodels.api')
-statsmodels_nonparametric_smoothers_lowess = OptionalImport('statsmodels.nonparametric.smoothers_lowess')
+# statsmodels_api = OptionalImport('statsmodels.api')
+# statsmodels_nonparametric_smoothers_lowess = OptionalImport('statsmodels.nonparametric.smoothers_lowess')
 # statsmodels_robust =  OptionalImport('statsmodels.robust')
 
 timezonefinder = OptionalImport('timezonefinder')
