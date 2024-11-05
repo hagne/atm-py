@@ -104,7 +104,7 @@ class FilterFunctionError(Exception):
     
 _locations = [{'name': 'Bondville',
               'state' :'IL',
-              'abbreviation': ['bnd', 'bon'],
+              'abbreviation': ['bnd', 'bon', 'BND', 'BON'],
               'lon': -88.37309,
               'lat': 40.05192,
               'alt' :230,

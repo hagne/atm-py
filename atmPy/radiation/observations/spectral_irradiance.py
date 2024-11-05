@@ -607,6 +607,8 @@ class DirectNormalIrradiation(SolarIrradiation):
         transmission = self.raw_data.direct_normal_irradiation / v0_interp_secorr
         self.calibration = 'atm_gam'
         self._transmission =transmission
+
+        return
         
             
     def _apply_calibration_johns(self):
