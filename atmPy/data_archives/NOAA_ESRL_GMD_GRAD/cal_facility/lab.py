@@ -9,7 +9,7 @@ import xarray as xr
 import pandas as pd
 import numpy as np
 
-def read_mfrsr_cal(path2file):
+def read_mfrsr_cal(path2file, verbose = False):
     ds = xr.Dataset()
     
     #### read the header
@@ -67,12 +67,18 @@ def read_mfrsr_cal(path2file):
     ds['statistics'] = df
     
     #### read the data
+    if verbose:
+        print(f'skiprows before data: {skiprows}')
     df = pd.read_csv(path2file, 
                 skiprows=skiprows,
                 # encoding='unicode_escape', 
                 encoding = 'ISO-8859-1',
-                sep = '\t')
-    
+                # sep = '\t',
+                    sep=r"\s+")
+    # return None, df
+    if verbose:
+        print('responds data ... inital reading')
+        print(df)
     df = df[1:].copy()
     
     df.index = df.WAVEL
@@ -82,8 +88,8 @@ def read_mfrsr_cal(path2file):
     
     df.index.name = 'wavelength'
     df.index = df.index.astype(np.float32)
-    
-    
+    # return df
+    # return None, df
     # if 'responds_open' in df.columns:
     #     # open responds, not sure what exactly this is?
     #     ds['responds_open'] = df['0']
@@ -93,12 +99,24 @@ def read_mfrsr_cal(path2file):
     
     # else:
     #     assert(False), 'what else?'
-    if '0' in df.columns:
-        df.drop(['0','0ERR'], axis = 1, inplace = True)
-    elif 'Thermop' in df.columns:
-        df.drop(['Thermop','ThermopERR'], axis = 1, inplace = True)
+
+    # These are the thermopile columns which are always have a different name!
+    df.drop([df.columns[0], df.columns[7]], axis = 1, inplace = True)
+    df.columns = [c.replace('.1', '') for c in df.columns]
+    
+    if 0:
+        for c in df.columns:
+            if c in ['0', '0ERR', 'Therm', 'ThermERR', 'Thermop', 'ThermopERR', '2000', '2000ERR', 'Thermopile', 'ThermopileERR']:
+                df.drop([c], axis = 1, inplace = True)
+    # if '0' in df.columns:
+    #     df.drop(['0','0ERR'], axis = 1, inplace = True)
+    # elif 'Thermop' in df.columns:
+    #     df.drop(['Thermop','ThermopERR'], axis = 1, inplace = True)
+    # elif '2000' in df.columns:
+    #     df.drop(['2000','2000ERR'], axis = 1, inplace = True)  
     
     df.drop([col for col in df.columns if 'Unnamed' in col], axis = 1, inplace = True)
+    
     # return ds
     #### rename the channel wavelength to the nominal wavelength by finding the closest
     df.rename({col: f"{wl_nominal[abs(wl_nominal - int(col.strip('ERR'))).argmin()]}ERR" for col in df.columns if 'ERR' in col}, axis = 1, inplace = True)
@@ -110,6 +128,10 @@ def read_mfrsr_cal(path2file):
     df_res.columns.name = 'channel'
     # when a scan section ends with a non-zero value convolution with e.g. a RTM irradiance spectum will lead to problems! Therefore -> 
     df_res[df_res == 0] = np.nan # this can potenoally lead to nans where we don't want them .... consider interpolating afterwards ... as there is no extrapolating this should not lead to a reemergance of the above problem.
+    # return ds, df_res
+    if verbose:
+        print('df_res')
+        print(df_res)
     ds['responds'] = df_res
     
     #### respnds error

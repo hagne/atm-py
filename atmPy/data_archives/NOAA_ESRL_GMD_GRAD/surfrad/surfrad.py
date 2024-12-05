@@ -465,7 +465,7 @@ class Surfrad_AOD(_column_optical_properties.AOD_AOT_20221216):
 #     def AOD(self,value):
 #         self._aod = value
 
-def read_albedo(path2file, path2readme = '/nfs/grad/Inst/MFR/README.alb', verbose = True):
+def read_albedo(path2file, path2readme = '/nfs/grad/Inst/MFR/README.alb', format_data = True, verbose = True):
     """
     Read a path or list of paths to albedo files
 
@@ -489,7 +489,9 @@ def read_albedo(path2file, path2readme = '/nfs/grad/Inst/MFR/README.alb', verbos
         filetype = 'preliminary'
     elif p2r.name.split('.')[-1] == 'alb':
         filetype = 'albedo'
-
+    else:
+        assert(False), 'unknown file extension'
+    
     def read_readme(p2r):
         with open(p2r, 'r') as rein:
             lines = rein.readlines()
@@ -565,10 +567,60 @@ def read_albedo(path2file, path2readme = '/nfs/grad/Inst/MFR/README.alb', verbos
     # return ds
     ds = _xr.concat([read_data(fn, colnames) for fn in path2file], dim = 'datetime')
     ds['Wavelength_nominal'] = ds.Wavelength_nominal[0].drop('datetime')
+
+    if format_data:
+        # alb = atmsrf.read_albedo(p2f, verbose = True)
+        ds = ds.swap_dims(channel = 'Wavelength_nominal')
+        
+        ds = ds.reset_coords('channel')
+        
+        vars2accumulate = ['Reflected_MFR10_Irradiance', 'Total_(aka_Global)_MFRSR_Irradiance', 'Diffuse_MFRSR_Irradiance', 'Direct_MFRSR_Irradiance']
+        
+        for varbase in vars2accumulate:
+            # print(varbase)
+            dal = []
+            varl = []
+            # varbase = 'Reflected_MFR10_Irradiance'
+            
+            for c in ds.Wavelength_nominal:
+                # print(int(c))
+                # var = f'Reflected_MFR10_Irradiance:_{int(c)}nm'  
+                var = [var for var in ds.variables if (varbase in var) and (str(int(c)) in var)]
+                # if len(var) == 0:
+                #     continue
+                var = var[0]
+                varl.append(var)
+                da = ds[var]
+                da = da.where(da != -9999.)
+                da = da.where(da != -9998.)
+                dal.append(da.expand_dims({'Wavelength_nominal':[int(c)]}))
+            
+            ds[varbase] = _xr.concat(dal, 'Wavelength_nominal')
+            ds = ds.drop_vars(varl)
+        
+        vars2rename = {'Reflected_MFR10_Irradiance': 'MFR_global_horizontal', 
+                           'Total_(aka_Global)_MFRSR_Irradiance': 'MFRSR_global_horizontal', 
+                           'Diffuse_MFRSR_Irradiance': 'MFRSR_diffuse_horizontal', 
+                           'Direct_MFRSR_Irradiance': 'MFRSR_direct_normal'}
+        
+        ds = ds.rename_vars(vars2rename)
+        
+        ds = ds.rename_dims({'Wavelength_nominal': 'wavelength'})
+        
+        ds = ds.rename_vars({'Wavelength_nominal': 'wavelength'})
+        
+        for var in ds.variables:
+            ds = ds.rename_vars({var: var.lower()})
+        
+        ds = ds.sortby('wavelength')
     return ds
 
         
 def get_mfrsr_filter_responds(serial_no, path2folder = '/nfs/grad/Calibration_facilities/cucf/Surfrad/working', verbose = False):
+    """
+    Parameters
+    -----------
+    """
     p2fld_filter = _pl.Path(path2folder)
     p2f_filter_resp = list(p2fld_filter.glob(f'*{serial_no:04d}*SPR.txt'))
     if verbose:
@@ -581,7 +633,7 @@ def get_mfrsr_filter_responds(serial_no, path2folder = '/nfs/grad/Calibration_fa
         raise FilterFunctionError(f'no responds function found for serial no {serial_no:04d} in dir: {p2fld_filter}')
     # assert(len(p2f_filter_resp) == 1), f'there should only be one responds function!! {len(p2f_filter_resp)} found'
     if len(p2f_filter_resp) > 1:
-        raise FilterFunctionError(f'there should only be one responds function!! {len(p2f_filter_resp)} found')
+        raise FilterFunctionError(f'there should only be one responds function!! {len(p2f_filter_resp)} found:\n{p2f_filter_resp}')
         
     p2f_filter_resp = p2f_filter_resp[0]
 
@@ -688,7 +740,7 @@ def read_sounding(p2f):
     
     return atmsound.BalloonSounding(ds_sonde)
 
-def read_ccc(p2f, verbose = False, raisefilterfunctionerror = True):
+def read_ccc(p2f, site = None, path2cal_file = None, verbose = False, raisefilterfunctionerror = True):
     """
     Reads surfrads ccc (cosine corrected) files typically located somewhere 
     around here:
@@ -729,8 +781,15 @@ def read_ccc(p2f, verbose = False, raisefilterfunctionerror = True):
     #### parse name
     site_abb = p2f.name[:3]
     serial_no = int(p2f.name.split('_')[-1].split('.')[0])
-
-    site = [s for s in network.stations._stations_list if site_abb.upper() in s.abb_alternative][0]
+    if verbose:
+        print(f'serial no: {serial_no}')
+        
+    if isinstance(site, type(None)):
+        site = [s for s in network.stations._stations_list if site_abb.upper() in s.abb_alternative][0]
+    elif isinstance(site, dict):
+        site = _measurement_site.Station(**site)
+    else:
+        assert(False), f'site time is not excepted ... is {type(site)}'
     
     cols = list(range(fieldno))
     cols[0] = 'datetime'
@@ -841,18 +900,26 @@ def read_ccc(p2f, verbose = False, raisefilterfunctionerror = True):
     # name channels and clean up
     
     ds = ds.drop_sel({'channel':1}) #this is the broadband channel
-
-    try:
-        fresp = get_mfrsr_filter_responds(serial_no)
-        ds = ds.assign_coords(channel = fresp.channel) 
+    ds = ds.assign_coords(channel = [415,500, 1625, 670, 870, 940]) #these are the nominal wavelengths
+    if isinstance(path2cal_file, type(None)):
+        
+        try:
+            fresp = get_mfrsr_filter_responds(serial_no, verbose = verbose)
+            ds = ds.assign_coords(channel = fresp.channel) 
+            ds['channel_center'] = fresp.statistics.sel(stats = 'CENT').to_pandas()
+            # return ds
+        except FilterFunctionError:
+            if not raisefilterfunctionerror:
+                # ds = ds.assign_coords(channel = [415,500, 1625, 670, 870, 940])
+                fresp = None
+            else:
+                raise
+    else:
+        fresp = atmcucf.read_mfrsr_cal(path2cal_file)
+        s = ds.assign_coords(channel = fresp.channel) 
         ds['channel_center'] = fresp.statistics.sel(stats = 'CENT').to_pandas()
-        # return ds
-    except FilterFunctionError:
-        if not raisefilterfunctionerror:
-            ds = ds.assign_coords(channel = [415,500, 1625, 670, 870, 940])
-            fresp = None
-        else:
-            raise
+
+    ds.attrs['calfile_path'] = str(path2cal_file)
     out = atmradobs.CombinedGlobalDiffuseDirect(ds)
     out.filter_functions = fresp
     out.path2file = p2f

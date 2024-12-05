@@ -409,6 +409,8 @@ class GamClimatology(object):
         """
         autocorr = [1]
         residuals = self.prediction.residual 
+        # if isinstance(lagmax, type(None)):
+        #     lagmax = residuals.shape[0]-1
         acfconf = [_np.sqrt(1/ residuals.shape[0]) * z_score]
         lags = [0,]
         ci_bartlett = [_np.sqrt(1/ residuals.shape[0]) * z_score]
@@ -438,18 +440,26 @@ class GamClimatology(object):
             # max lag test parameter
             # if len(autocorr) >= 3:
             maxlagparam =  max(autocorr[-3:])
+            
             # else:
                 # maxlagparam = ac
             # print(acfconf[-3:])
             # print(maxlagparam)
             if isinstance(lagmax_above_ci, type(None)):
+                # print(f'maxlagparam: {maxlagparam}, {ci_b}')
+                # print(f'maxlagparam: {maxlagparam - ci_b}')
                 if ci_b > maxlagparam:
+                    # print('daugh')
                     lagmax_above_ci = lag - 1
                     if isinstance(lagmax, type(None)):
+                        # print(f'awa: {lag}')
                         lagmax = int(lag * 1.5)
+                        print(f'newlagmax: {lagmax}')
+                    else:
+                        print(f'lagmax not None, is {lagmax}')
             if not isinstance(lagmax, type(None)):
-              if lag >= lagmax:
-                  break
+                if lag >= lagmax:
+                    break
                   
             # elif ci_b > maxlagparam:
             #     lagmax_above_ci = lag - 1
@@ -998,7 +1008,7 @@ class GamClimatology(object):
             a.set_xlabel('')
         return f,a
 
-    def plot_test_overview(self):
+    def plot_test_overview(self, acf_kwarts = {}):
         f = _plt.figure()
         # f.set_figheight(f.get_figheight() * 1.5)
         f.set_figheight(7.4)
