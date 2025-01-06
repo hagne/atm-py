@@ -24,7 +24,7 @@ defaultBins = np.logspace(np.log10(140), np.log10(3000), 30)
 def _read_PeakFile_Binary(fname, version = 'current', time_shift=0, skip_bites = 20, verbose = False):
     """returns a peak instance
     test_data_folder: ..."""
-    assert(type(fname).__name__ == 'PosixPath')
+    assert isinstance(fname, pathlib.Path), f"Expected a pathlib.Path object, got {type(fname).__name__}"
     if version == 'current':
         version = 'BBB'
 
@@ -61,20 +61,19 @@ def _read_PeakFile_Binary(fname, version = 'current', time_shift=0, skip_bites =
     return peakInstance
 
 
-def read_binary(fname, pattern='Peak', time_shift = False ,version = 'current', ignore_error = False, skip_bites= 20, verbose = False):
+def read_binary(fname, version, pattern='Peak', time_shift = False , ignore_error = False, skip_bites= 20, verbose = False):
     """Generates a single Peak instance from a file or list of files
 
     Arguments
     ---------
     fname: string or list of strings
+    version: str
+        '01': before summer-fall 2015
+        'BBB': files produced by POPS_BBB.c Beaglebone version
+        'BBB_dt': files produced by POPS_BBB_dt.c version
     time_shift: iterable
         e.g. (1,'h)
         see http://docs.scipy.org/doc/numpy/reference/arrays.datetime.html#datetime-units
-    version: str
-        'current' - current :-)
-        '01': before summer-fall 2015
-        'BBB': added by Gavin McMeeking to conver files produced by POPS_BBB.c Beaglebone version
-        'BBB_dt': added by Gavin McMeeking to convert files produced by POPS_BBB_dt.c version 
     """
 
     m = None
@@ -88,7 +87,6 @@ def read_binary(fname, pattern='Peak', time_shift = False ,version = 'current', 
         if fname.is_file():
             if verbose:
                 print('fname is file')
-            pass
         elif fname.is_dir():
             if verbose:
                 print('fname is folder', end = ' ... ')
@@ -291,20 +289,25 @@ def _bbb_binary2array(fname, bbbtype, verbose = False):
         lengtht = unpack(entry_format, record)[0]
         return lengtht
 
-    def read_array(file, length, time, type):
-        if type == 1:
+    def read_array(file, length, time, ptype):
+        if ptype == 1:
             entry_format = '<IIII'
             ncol = 5
-        elif type == 2:
+        elif ptype == 2:
             entry_format = '<III'
             ncol = 4
-
+    
         entry_size = calcsize(entry_format)
         thearray = np.zeros((length, ncol))  # change based on BBB version
 
         for i in range(length):
             record = rein.read(entry_size)
             entry = unpack(entry_format, record)
+            ### added 2025-01-03 so the time is adjusted to represent the individual particle timestamp.
+            if ptype == 2:
+                dt = entry[2] * 1e-6 # time inbetween particles in micro seconds converted to seconds
+                time += dt
+            
             thearray[i, 0] = time
             thearray[i, 1:] = entry
         return thearray
@@ -315,9 +318,13 @@ def _bbb_binary2array(fname, bbbtype, verbose = False):
         try:
             length = read_array_length(rein)
             time = read_time(rein)
+            if verbose:
+                print(time, end = ' ')
             array = read_array(rein, length, time, bbbtype)
             array_list.append(array)
         except:
+            if verbose:
+                print("end detected based on error, this is bad practice!!! Do a realiable test for exiting!!")
             break
 
     full_array = np.concatenate(array_list)
@@ -403,7 +410,8 @@ def _binary2array_labview_clusters(fname, skip = 20):
 def _PeakFileArray2dataFrame(data,fname,time_shift, BBBtype = 0, log = True, since_midnight = True, verbose = False):
     if verbose:
         print(fname)
-    assert(type(fname).__name__ == 'PosixPath')
+    # assert(type(fname).__name__ == 'PosixPath')
+    assert isinstance(fname, pathlib.Path), f"Expected a pathlib.Path object, got {type(fname).__name__}"
     if verbose:
         print('_PeakFileArray2dataFrame', end = ' ... ')
     data = data.copy()
@@ -560,6 +568,8 @@ class Peaks(object):
         except ValueError as err: 
             if err.__str__() == 'A value in x_new is below the interpolation range.':
                 raise ValueError(f'{err.__str__()} {self.data.Amplitude.min()} < {calibrationInstance.data.amp.min()}')
+            else:
+                raise
         except:
             raise
         
@@ -633,10 +643,69 @@ class Peaks(object):
         return countRate
         
 
+    def peak2sizedistribution(self, 
+                              bins, 
+                              time_resolution = '1s',
+                              calibration = False
+                             ):
+        """Bins the data into time and diameter intervals
+        Parameters
+        -----------
+        bins: numpy array
+            Diamter bins, e.g. np.logspace(np.log10(140), np.log10(2500), 30)
+        time_resolution: str
+            What time resolution to use, defaul is '1s' which provides sizeditribution data 
+            with 1 second time resolution. See docsring of pandas.date_range function for details.
+        calibration: bool
+            If True an amplidute distribution will be generated rather than a sizedistribution. 
+            Usefull for calibration perposes.
+            
+        Retuns
+        ------
+        atmPy.aerosols.sizedistribution.Sizedistribution_TS instance
+        
+        """
+        
+        if calibration:
+            column2process = "Amplitude"
+            distributionType = 'calibration'
+        else:
+            distributionType = 'numberConcentration'
+            column2process = "Diameter"
+
+        #### create the time bins 
+        dts =  self.data.index.min().floor(time_resolution)
+        dte =  self.data.index.max().ceil(time_resolution)
+        timebins = pd.date_range(dts, dte, freq=time_resolution)
+
+        self.data['t_interval'] = pd.cut(self.data.index, bins=timebins, right=True)
+        
+        ##### bin the data
+        df_sizedist = pd.DataFrame(index = [itv.right for itv in self.data.t_interval.unique()], columns=range(len(bins) - 1), dtype=float)
+        df_outside = pd.DataFrame(index = [itv.right for itv in self.data.t_interval.unique()], columns = ['small', 'large'], dtype=float)
+
+        for itv, grpitv in self.data.groupby('t_interval',
+                                                    observed = True, # this is only to suppress a future warning, can probably be deleted when you see this
+                                                   ):
+            sel = grpitv.where(grpitv.Masked == 0)
+            n,eg = np.histogram(sel[column2process], bins=bins)
+            df_sizedist.loc[itv.right] = n
+            
+            sel = grpitv.where(grpitv.Masked == 1)
+            df_outside.loc[itv.right,'small'] = sel.dropna(how = 'all').shape[0]
+            
+            sel = grpitv.where(grpitv.Masked == 2)
+            df_outside.loc[itv.right,'large'] = sel.dropna(how = 'all').shape[0]
+        # return grpitv, sel
+        dist = sizedistribution.SizeDist_TS(df_sizedist, bins, 'numberConcentration')
+        dist = dist.convert2dNdlogDp()
+        dist.particle_number_concentration_outside_range =  df_outside                    
+        return dist
+        
     
     
-    def _peak2Distribution(self, bins=defaultBins, distributionType = 'number', differentialStyle = False, fill_data_gaps_with = None, ignore_data_gap_error = False):
-        """Action required: clean up!
+    def _peak2Distribution_pre2025(self, bins=defaultBins, frequency = '1s', distributionType = 'number', differentialStyle = False, fill_data_gaps_with = None, ignore_data_gap_error = False):
+        """This is only for legacy processing
         Returns the particle size distribution normalized in various ways
         distributionType
         dNdDp, should be fixed to that, change to other types later once the distribution is created!
@@ -667,8 +736,8 @@ class Peaks(object):
             N[e] = n
             too_big[e] = np.logical_and(self.data.Masked == 2, self.data.index.values == i).sum()
     
-        N = N.astype(np.float)
-        too_big = too_big.astype(np.float)
+        N = N.astype(float)
+        too_big = too_big.astype(float)
 
         deltaT = (unique[1:]-unique[:-1]) / np.timedelta64(1,'s')
 
@@ -706,7 +775,20 @@ class Peaks(object):
 #        
 #    def peak2numberconcentration(self, bins = defaultBins):
 #        return self._peak2Distribution(bins = bins)
-    def peak2peakHeightDistribution(self, bins = 'default', fill_data_gaps_with = None, ignore_data_gap_error = False):
+            
+    def peak2sizedistribution_pre2025(self, 
+                              bins = 'default', 
+                              fill_data_gaps_with = None, ignore_data_gap_error = False,
+                             ):
+        """see doc-string of _peak2Distribution"""
+        if type(bins) == str:
+            if bins == 'default':
+                bins = defaultBins
+        dist = self._peak2Distribution_pre2025(bins=bins, differentialStyle='dNdDp', fill_data_gaps_with = fill_data_gaps_with, ignore_data_gap_error = ignore_data_gap_error)
+        return dist
+
+
+    def peak2ampdistribution_pre2025(self, bins = 'default', fill_data_gaps_with = None, ignore_data_gap_error = False):
         """
 
         Parameters
@@ -723,15 +805,8 @@ class Peaks(object):
         if type(bins) == str:
             if bins == 'default':
                 bins = np.logspace(np.log10(35),np.log10(65000), 200)
-        return self._peak2Distribution(bins = bins,distributionType = 'calibration',differentialStyle = 'dNdDp', fill_data_gaps_with = fill_data_gaps_with, ignore_data_gap_error = ignore_data_gap_error)
-        
-    def peak2sizedistribution(self, bins = 'default', fill_data_gaps_with = None, ignore_data_gap_error = False):
-        """see doc-string of _peak2Distribution"""
-        if type(bins) == str:
-            if bins == 'default':
-                bins = defaultBins
-        dist = self._peak2Distribution(bins=bins, differentialStyle='dNdDp', fill_data_gaps_with = fill_data_gaps_with, ignore_data_gap_error = ignore_data_gap_error)
-        return dist
+        return self._peak2Distribution_pre2025(bins = bins,distributionType = 'calibration',differentialStyle = 'dNdDp', fill_data_gaps_with = fill_data_gaps_with, ignore_data_gap_error = ignore_data_gap_error)
+
         
 #    def peak2calibration(self, bins = 200, ampMin = 20):
 #        bins = np.logspace(np.log10(20), np.log10(self.data.Amplitude.values.max()),bins)

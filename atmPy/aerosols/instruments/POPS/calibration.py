@@ -486,7 +486,9 @@ class Calibration:
         # simply interpolate (quadratic)
         cal_function = interpolate.interp1d(self.data.amp, self.data.d,
                                             # kind='quadratic',
-                                            kind='cubic'
+                                            kind='cubic',
+                                            bounds_error = False, # this ensures that out of bound values are not causing an error, but are replaced by fill_value
+                                            fill_value = np.nan,
                                             )
         return cal_function
         
