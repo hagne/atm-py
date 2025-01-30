@@ -342,22 +342,31 @@ class Station(object):
         info
         kwargs
         """
-        self.lat = lat
-        self.lon = lon
-        self.alt = alt
-        self.name = name
+ 
+        # self.lat = lat
+        # self.lon = lon
+        # self.alt = alt
+        # self.name = name
+        # if isinstance(abbreviation, list):
+        #     self.abb = abbreviation[0]
+        #     self.abb_alternative = abbreviation
+        # else:
+        #     self.abb = abbreviation
+        #     self.abb_alternative = [abbreviation]
+        
         if isinstance(abbreviation, list):
-            self.abb = abbreviation[0]
-            self.abb_alternative = abbreviation
+            abb = abbreviation[0]
+            abb_alternative = abbreviation
         else:
-            self.abb = abbreviation
-            self.abb_alternative = [abbreviation]
+            abb = abbreviation
+            abb_alternative = [abbreviation]
             
-        self.state = state
-        self.country = country
-
+        # self.state = state
+        # self.country = country
+        
         self.parent_network = parent_network
-
+        
+        
         if info:
             self.info = info
         if active:
@@ -367,9 +376,41 @@ class Station(object):
         for key in kwargs:
             setattr(self, key, kwargs[key])
 
-        self.name = self.name.strip().replace(',','_').replace('(','_').replace(')','_').strip('_')
+        name = name.strip().replace(',','_').replace('(','_').replace(')','_').strip('_')
+        
+        
+        attributes = dict(lat = lat,
+                                lon = lon,
+                                alt = alt,
+                                name = name,
+                                state = state,
+                                country = country,
+                                abb = abb,
+                                abb_alternative = abb_alternative,
+                                )
+        self.tp_attributes = attributes
+        self.tp_kwargs = kwargs
+        self._attributes = {**attributes, **kwargs}
         
         self._time_zone = None
+        
+    def __getitem__(self, key):
+        # Allow dictionary-style access
+        return self._attributes[key]
+    
+    def __setitem__(self, key, value):
+        # Allow dictionary-style assignment
+        self._attributes[key] = value
+    
+    def __repr__(self):
+        return f"MyClass({self._attributes})"
+
+    # Optional: Add a way to access attributes using dot notation as well
+    def __getattr__(self, name):
+        # Fall back to _attributes for undefined attributes
+        if name in self._attributes:
+            return self._attributes[name]
+        raise AttributeError(f"'MyClass' object has no attribute '{name}'")
         
     def __repr__(self):
         txt = (f'name: {self.name} ({self.abb})\n'
