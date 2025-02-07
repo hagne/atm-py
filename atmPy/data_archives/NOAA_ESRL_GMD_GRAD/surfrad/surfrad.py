@@ -11,6 +11,9 @@ import xarray as _xr
 import atmPy.radiation.observations.spectral_irradiance as atmradobs
 import atmPy.data_archives.NOAA_ESRL_GMD_GRAD.cal_facility.lab as atmcucf
 
+import subprocess
+import io
+
 # from atmPy.general import measurement_site as _measurement_site
 # from atmPy.radiation import solar as _solar
 
@@ -253,6 +256,102 @@ _deprecated_col_label_trans_dict = {'OD413': 415,
                          }
 
 
+
+class FileCorruptError(Exception):
+    """Custom exception raised when a file is detected as corrupt."""
+    def __init__(self, filename, message="File is corrupt or unreadable."):
+        self.filename = filename
+        self.message = f"{message} ({filename})"
+        super().__init__(self.message)
+
+def read_raw(path2file, read_header_only = False):
+    """
+    Opens a MFRSR or MFR raw file. Those are the files that have an extension 
+    like .mtm, .xmd, .rsr. Surfrad files are stored here:
+    /nfs/grad/Inst/MFR/SURFRAD/{site}/mfrsr/raw/
+
+    Parameters
+    ----------
+    path2file : TYPE
+        DESCRIPTION.
+    read_header_only : TYPE, optional
+        DESCRIPTION. The default is False.
+
+    Returns
+    -------
+    TYPE
+        DESCRIPTION.
+
+    """
+    command = f"tu -d joe -H {path2file.absolute()}"
+    # print(command)
+    # out = subprocess.check_output(command, shell=True).decode()
+    
+    
+    process = subprocess.Popen(command, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+
+    out, err = process.communicate()
+    
+    out = out.decode()
+    err = err.decode()
+    
+    if err.split()[0] == 'Error':
+        raise FileCorruptError(filename = path2file.as_posix(), message = err)
+        
+    
+    #### the header
+    header = out.split('\n')[0]    
+    if read_header_only:
+        return header
+    
+    #### format the data
+    df = _pd.read_csv(io.StringIO(out), sep = r'\s+', header = None, skiprows=1)
+    df.index = df.apply(lambda row: _pd.to_datetime('19000101') + _pd.to_timedelta(row[0] - 1, 'd'), axis = 1)
+    df.index.name = 'datetime'
+    df = df.where(df!=-9999)
+
+
+    #### assign collumns
+    attrs = dict(site_longitude = - float(header.split()[4]),
+                 site_latitude = float(header.split()[3]),
+                 site_elevation = 0,
+                 site = 'TMP',
+                 site_name = 'unknown',
+                 calibrated_irradiance = False,
+                 calibrated_cosine = False,
+                 info = 'This is the raw file',
+                 file_type = int(header.split()[0]),
+                 serial_no = header.split()[1],
+                 
+                )
+    
+    di = 7
+    si = 2
+    alltime = df.iloc[:,si: si+di]
+    si = 11
+    global_horizontal = df.iloc[:,si: si+di]
+    si =  18
+    diffuse_horizontal = df.iloc[:,si: si+di]
+    si =  25
+    direct = df.iloc[:,si: si+di]
+    
+    for dft in [alltime, global_horizontal, diffuse_horizontal, direct]:
+        dft.columns = range(7)
+        dft.columns.name = 'channel'
+    
+    ds = _xr.Dataset()
+    # ds['sun_position'] = sun_position
+    ds['alltime'] = alltime
+    ds['global_horizontal'] = global_horizontal
+    ds['diffuse_horizontal'] = diffuse_horizontal
+    ds['direct_normal'] = direct
+    ds.attrs = attrs
+    
+    obs = atmradobs.CombinedGlobalDiffuseDirect(ds)
+    return obs
+
+
+
 def _path2files(path2base_folder = '/nfs/grad/surfrad/aod/', site = 'bon', window = ('2020-07-31 00:00:00', '2020-10-30 23:00:00'), product = 'aod'):
     path2base_folder = _pl.Path(path2base_folder)
 
@@ -298,7 +397,7 @@ def _read_data(fname, UTC = False, header=None):
 
     # dateparse = lambda x: _pd.datetime.strptime(x, "%d:%m:%Y %H:%M:%S")
     df = _pd.read_csv(fname, skiprows=header['header_size'],
-                      sep ='\s+',
+                      sep =r'\s+',
                      # delim_whitespace=True,
                      #                      na_values=['N/A'],
                      #                   parse_dates={'times': [0, 1]},
@@ -513,7 +612,7 @@ def read_albedo(path2file, path2readme = '/nfs/grad/Inst/MFR/README.alb', format
     def read_data(p2f, colnames):
         df = _pd.read_csv(p2f, 
                           # delim_whitespace=True,
-                      sep ='\s+',
+                      sep =r'\s+',
                     names = colnames,
                    )
 
@@ -809,7 +908,7 @@ def read_ccc(p2f, site = None, path2cal_file = None, verbose = False, raisefilte
         timezoneadjust = 0
     df = _pd.read_csv(p2f,
                 names =cols,
-                      sep ='\s+',
+                      sep =r'\s+',
                 # delim_whitespace = True,
                 skiprows = skiprows)
     # return df

@@ -15,7 +15,7 @@ import pathlib as pl
 import atmPy.data_archives.NOAA_ESRL_GMD_GRAD.surfrad.surfrad as atmsrf
 import atmPy.data_archives.NOAA_ESRL_GMD_GRAD.baseline.baseline as atmbl
 import sqlite3
-
+import matplotlib.pyplot as _plt
 import copy
 
 class RadiationDatabase(object):
@@ -392,9 +392,23 @@ class ClearSky(object):
                 
     
 class SolarIrradiation(object):
-    def __init__(self, dataset):
+    def __init__(self, dataset, site = None):
         self.dataset = self.unify_variables(dataset)
         self.clearsky = ClearSky(self)
+        
+        if isinstance(site, type(None)):
+            assert('site' in dataset.attrs.keys()), 'If site is None, then the dataset has to have lat,lon,site, site_name, attributes'
+            self.site = atmms.Station(lat= dataset.attrs['site_latitude'], 
+                                      lon = dataset.attrs['site_longitude'], 
+                                      alt = dataset.attrs['site_elevation'], 
+                                      name = dataset.attrs['site_name'], 
+                                      abbreviation = dataset.attrs['site'],)
+        else:
+            self.site = site
+        
+        
+        self._sun_position = None
+        
 
     def unify_variables(self, dataset):
         """Seach for variable names containing global, diffuse and direct and 
@@ -427,6 +441,11 @@ class SolarIrradiation(object):
                              product_name = ds.product_name, 
                              product_version = ds.product_version, 
                              overwrite = overwrite)
+    @property
+    def sun_position(self):
+        if isinstance(self._sun_position, type(None)):
+            self._sun_position = self.site.get_sun_position(self.dataset.datetime)
+        return self._sun_position
 
 class GlobalHorizontalIrradiation(SolarIrradiation):
     def __init__(self, dataset):
@@ -442,21 +461,21 @@ class DirectNormalIrradiation(SolarIrradiation):
                  langley_fit_settings = None,
                  calibration_strategy = 'johns',
                  metdata = 'surfrad'):
-        super().__init__(dataset)
+        super().__init__(dataset, site = site)
         self.raw_data = dataset #this is not exactly raw, it is cosine corrected voltag readings, thus, un-calibrated irradiances
-        if isinstance(site, type(None)):
-            assert('site' in dataset.attrs.keys()), 'If site is None, then the dataset has to have lat,lon,site, site_name, attributes'
-            self.site = atmms.Station(lat= dataset.attrs['site_latitude'], 
-                                      lon = dataset.attrs['site_longitude'], 
-                                      alt = dataset.attrs['site_elevation'], 
-                                      name = dataset.attrs['site_name'], 
-                                      abbreviation = dataset.attrs['site'],)
-        else:
-            self.site = site
+        # if isinstance(site, type(None)):
+        #     assert('site' in dataset.attrs.keys()), 'If site is None, then the dataset has to have lat,lon,site, site_name, attributes'
+        #     self.site = atmms.Station(lat= dataset.attrs['site_latitude'], 
+        #                               lon = dataset.attrs['site_longitude'], 
+        #                               alt = dataset.attrs['site_elevation'], 
+        #                               name = dataset.attrs['site_name'], 
+        #                               abbreviation = dataset.attrs['site'],)
+        # else:
+        #     self.site = site
         self.langley_fit_settings = langley_fit_settings
         self.settings_calibration = calibration_strategy #
         self.settings_metdata = metdata
-        self._sun_position = None
+        # self._sun_position = None
         self._am = None
         self._pm = None
         self._transmission = None
@@ -928,11 +947,11 @@ class DirectNormalIrradiation(SolarIrradiation):
                 self._transmission = raw_data/calib_interp_secorr
         return self._transmission
     
-    @property
-    def sun_position(self):
-        if isinstance(self._sun_position, type(None)):
-            self._sun_position = self.site.get_sun_position(self.raw_data.datetime)
-        return self._sun_position
+    # @property
+    # def sun_position(self):
+    #     if isinstance(self._sun_position, type(None)):
+    #         self._sun_position = self.site.get_sun_position(self.raw_data.datetime)
+    #     return self._sun_position
     
     @property
     def langley_am(self):
@@ -1057,6 +1076,30 @@ class CombinedGlobalDiffuseDirect(SolarIrradiation):
         self.global_horizontal_irradiation = GlobalHorizontalIrradiation(dataset)
         self.diffuse_horizontal_irradiation = DiffuseHorizontalIrradiation(dataset)
         self.direct_normal_irradiation = DirectNormalIrradiation(dataset)
+        
+    def plot_overview(self, channel = 0, ax = None):
+        
+        if isinstance(ax, type(None)):
+            f, a= _plt.subplots()    
+        else:
+            a = ax
+            f = a.get_figure()
+            
+        dssel = self.dataset.sel(channel = 0)
+        dssel.alltime.plot(ax = a, label = 'alltime')
+        
+        dssel.global_horizontal.plot(ax = a, label = 'global_horizontal')
+        dssel.diffuse_horizontal.plot(ax = a, label = 'diffuse_horizontal')
+        dssel.direct_normal.plot(ax = a, label = 'direct')
+        
+        at = a.twinx()
+        self.sun_position.elevation.plot(ax = at, color = 'black', ls = '--')
+        at.set_ylim(top = 0.9, bottom = 0)
+        
+        # a.set_xlim(left = pd.to_datetime('20220103 14:00:00'))
+        a.grid()
+        a.legend()
+        return f,a
     
     
     
