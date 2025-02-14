@@ -322,7 +322,7 @@ def read_raw(path2file, read_header_only = False):
                  info = 'This is the raw file',
                  file_type = int(header.split()[0]),
                  serial_no = header.split()[1],
-                 
+                 path2file = path2file,                 
                 )
     
     di = 7
