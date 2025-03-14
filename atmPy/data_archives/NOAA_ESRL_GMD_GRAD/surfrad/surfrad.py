@@ -8,7 +8,7 @@ import atmPy.atmosphere.sounding as atmsound
 import pathlib as _pl
 # import warnings as _warnings
 import xarray as _xr
-import atmPy.radiation.observations.spectral_irradiance as atmradobs
+import atmPy.radiation.retrievals.spectral_irradiance as atmradobs
 import atmPy.data_archives.NOAA_ESRL_GMD_GRAD.cal_facility.lab as atmcucf
 
 import subprocess

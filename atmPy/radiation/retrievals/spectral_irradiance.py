@@ -9,7 +9,7 @@ import numpy as np
 import pandas as pd
 import xarray as xr
 import atmPy.general.measurement_site as atmms
-import atmPy.radiation.observations.langley_calibration as atmlangcalib
+import atmPy.radiation.retrievals.langley_calibration as atmlangcalib
 import atmPy.radiation.rayleigh.lab as atmraylab
 import pathlib as pl
 import atmPy.data_archives.NOAA_ESRL_GMD_GRAD.surfrad.surfrad as atmsrf
