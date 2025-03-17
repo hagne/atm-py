@@ -264,7 +264,7 @@ class FileCorruptError(Exception):
         self.message = f"{message} ({filename})"
         super().__init__(self.message)
 
-def read_raw(path2file, read_header_only = False):
+def read_raw(path2file, read_header_only = False, test = False):
     """
     Opens a MFRSR or MFR raw file. Those are the files that have an extension 
     like .mtm, .xmd, .rsr. Surfrad files are stored here:
@@ -304,13 +304,21 @@ def read_raw(path2file, read_header_only = False):
     if read_header_only:
         return header
     
+    bla = header.split()[5]
+    if bla == '0':
+        instrument = 'mfr'
+    else:
+        instrument = 'mfrsr'
+    
+    
     #### format the data
     df = _pd.read_csv(io.StringIO(out), sep = r'\s+', header = None, skiprows=1)
     df.index = df.apply(lambda row: _pd.to_datetime('19000101') + _pd.to_timedelta(row[0] - 1, 'd'), axis = 1)
     df.index.name = 'datetime'
     df = df.where(df!=-9999)
 
-
+    if test == 1:
+        return df, header
     #### assign collumns
     attrs = dict(site_longitude = - float(header.split()[4]),
                  site_latitude = float(header.split()[3]),
@@ -322,32 +330,54 @@ def read_raw(path2file, read_header_only = False):
                  info = 'This is the raw file',
                  file_type = int(header.split()[0]),
                  serial_no = header.split()[1],
-                 path2file = path2file,                 
+                 path2file = path2file,
+                 measurement_sequenc = ', '.join(header.split()[5:8]),
+                 instrument_type = instrument,
                 )
+    # non photodiod collums
+    # 0: time
+    # 1: no idea
+    # 9: no idea
+    # 10: no idea
     
+    # photodiode (channel) collumns
     di = 7
     si = 2
     alltime = df.iloc[:,si: si+di]
-    si = 11
-    global_horizontal = df.iloc[:,si: si+di]
-    si =  18
-    diffuse_horizontal = df.iloc[:,si: si+di]
-    si =  25
-    direct = df.iloc[:,si: si+di]
     
-    for dft in [alltime, global_horizontal, diffuse_horizontal, direct]:
-        dft.columns = range(7)
-        dft.columns.name = 'channel'
+    if instrument == 'mfr':
+        alltime.columns = range(7)
+        alltime.columns.name = 'channel'
+        
+        ds = _xr.Dataset()
+        # ds['sun_position'] = sun_position
+        ds['alltime'] = alltime
+        ds.attrs = attrs
+        obs = atmradobs.GlobalHorizontalIrradiation(ds)
     
-    ds = _xr.Dataset()
-    # ds['sun_position'] = sun_position
-    ds['alltime'] = alltime
-    ds['global_horizontal'] = global_horizontal
-    ds['diffuse_horizontal'] = diffuse_horizontal
-    ds['direct_normal'] = direct
-    ds.attrs = attrs
-    
-    obs = atmradobs.CombinedGlobalDiffuseDirect(ds)
+    elif instrument == 'mfrsr':
+        si = 11
+        global_horizontal = df.iloc[:,si: si+di]
+        si =  18
+        diffuse_horizontal = df.iloc[:,si: si+di]
+        si =  25
+        direct = df.iloc[:,si: si+di]
+        
+        for dft in [alltime, global_horizontal, diffuse_horizontal, direct]:
+            dft.columns = range(7)
+            dft.columns.name = 'channel'
+        
+        ds = _xr.Dataset()
+        # ds['sun_position'] = sun_position
+        ds['alltime'] = alltime
+        ds['global_horizontal'] = global_horizontal
+        ds['diffuse_horizontal'] = diffuse_horizontal
+        ds['direct_normal'] = direct
+        ds.attrs = attrs
+        
+        obs = atmradobs.CombinedGlobalDiffuseDirect(ds)
+    else:
+        assert(False), 'nop, not possible!'
     return obs
 
 
