@@ -258,3 +258,75 @@ def read_mfrsr_cal_cos(p2f):
     
     ds.attrs['header'] = '\n'.join(header)
     return ds
+
+def read_mfrsr_cal_responsivity(p2f):
+    xls = pd.ExcelFile(p2f)
+    
+    df = xls.parse(sheet_name='D.ABS', 
+                   # header = 37,
+                  )
+    dfhead = df.iloc[:32, :2]
+    df = df.iloc[39:, :2]
+    df.columns = ['channel', 'responsivity']
+    df.index = df.channel
+    df.drop('channel', inplace = True, axis = 1)
+    assert(df.index[0] == 'Thermopile'), 'Format is inconsistant!!! Kick Charles in the ...!'
+    
+    ds = xr.Dataset(df)
+    
+    header = {row[dfhead.columns[0]]: row[dfhead.columns[1]] for _,row in dfhead.iterrows()}
+    header['Serial_number'] = header.pop('Instrument')
+    ds.attrs = header
+    
+    # lamp calibration
+    df = xls.parse(sheet_name='licor_1030L_cal_data', header = 7)
+    assert(df.columns[0] == 'nm'), 'arrrg, files are inconsistant'
+    df_cal_lamp = df.drop('mw/m^2-nm', axis = 1)
+    df_cal_lamp.rename({'nm': 'wavelength', 'W/m^2-nm': 'intensity'}, axis=1, inplace=True)
+    df_cal_lamp.index = df_cal_lamp.wavelength
+    df_cal_lamp.drop('wavelength', axis = 1, inplace=True)
+    
+    ds['lamp_data'] = df_cal_lamp.intensity
+    
+    # read the spectral intensity
+    # just in case I want to put it back in at some point. This is the same data as in the SPR files
+    if 0:
+        df = xls.parse(sheet_name='SPR_Data', 
+                       header = 47, 
+                      )
+        df = df.iloc[1:] #in my case there was a line with useless text
+        
+        assert(df.iloc[0,0] == 395), 'This should be the topleft corner of the data section, showing the lowest wavelength. Unless does not keep this the same this is expected to be 395)'
+        
+        df.columns = df.columns.astype(str)
+        
+        # for some reason charles often does not name the first collumn correctly, arrrrrrg
+        if df.columns[1] == '940':
+            df.rename({'940': 'broadband'}, axis = 1, inplace=True)
+            df.rename({'940.1': '940'}, axis = 1, inplace=True)
+        
+        df.rename({'WAVEL': 'wavelength'}, axis = 1, inplace = True)
+        
+        df.drop([c for c in df.columns if 'ERR' in c], axis = 1, inplace = True)
+        
+        df.index = df.wavelength
+        
+        df_spc = df.drop('wavelength', axis = 1)
+
+    # change the channel wavelength to nominal wavelent and add the channel wavelenth as a variable
+    wl_nominal = [415, 500, 1625,670,870,940]
+    wl_nominal = np.array(wl_nominal)
+    ch_nominal = []
+    channels_orig = ds.channel.values
+    for c in channels_orig:
+        if isinstance(c, str):
+            ch_nominal.append(c)
+        else:
+            nc = wl_nominal[abs(c - wl_nominal).argmin()]
+            ch_nominal.append(nc)
+    
+    ds = ds.assign_coords(channel = ch_nominal)
+    
+    ds['channel_wavelength'] = xr.DataArray(channels_orig, dims=('channel',))
+
+    return ds
