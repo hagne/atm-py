@@ -8,8 +8,25 @@ Created on Thu May 26 14:00:39 2022
 import xarray as xr
 import pandas as pd
 import numpy as np
+import io
 
 def read_mfrsr_cal(path2file, verbose = False):
+    """
+    This reads the Spectral Responds tests, which are files that usually end on .SPR, e.g. V0648_09721Cd.SPR
+
+    Parameters
+    ----------
+    path2file : TYPE
+        DESCRIPTION.
+    verbose : TYPE, optional
+        DESCRIPTION. The default is False.
+
+    Returns
+    -------
+    ds : TYPE
+        DESCRIPTION.
+
+    """
     ds = xr.Dataset()
     
     #### read the header
@@ -141,4 +158,103 @@ def read_mfrsr_cal(path2file, verbose = False):
     df_err.columns.name = 'channel'
     ds['responds_error'] = df_res
     
+    return ds
+
+def read_mfrsr_cal_cos(p2f):
+    """
+    Reads cosine corrections commonly used in GRAD.
+
+    Parameters
+    ----------
+    p2f : TYPE
+        DESCRIPTION.
+
+    Returns
+    -------
+    TYPE
+        DESCRIPTION.
+
+    """
+    with open(p2f,'r') as rein:
+        # pass
+        lines = rein.readlines()
+    
+    verbose = True
+    header = []
+    header_done = False
+    data1 = []
+    data1_done = False
+    data2 = []
+    for e,l in enumerate(lines):
+        if l.strip() == 'Tabulated_Response_Data_Lables:':
+            if verbose:
+                print('Done reading header')
+            header_done = True
+            continue
+        elif l.strip() == 'Labels:':
+            if verbose:
+                print('Done reading data1')
+            data1_done = True
+            continue
+    
+        lc = l.strip()
+        if len(lc) == 0:
+            if verbose:
+                print(f'Line {e} is empty')
+            continue
+        if not header_done:
+            header.append(lc)
+        elif not data1_done:
+            data1.append(lc)
+        else:
+            data2.append(lc)
+    
+    def parse_data(data, verbose = True):
+        data.pop(1) #remove the units
+        data.pop(1) #remove some text
+    
+        data = '\n'.join(data)
+        df = pd.read_csv(io.StringIO(data),sep = '\t' )
+        df.index = df.Angle
+        # test if NS (north-south) or EW (...)
+        if 'NS' in df.columns[2]:
+            scan_direction = 'NS'
+        elif 'EW' in df.columns[2]:
+            scan_direction = 'EW'
+        else:
+            ValueError('Charlse probably parsed this file differently ... get in there and fix it')
+        
+        
+    
+        # get & format only relevant colums, consider getting the other ones at some point too?
+        cols = [col for col in df.columns if f'{scan_direction}_Corr' in col]
+        df_cc = df.loc[:, cols]
+        df_cc = df_cc.dropna(axis = 1) #there are placeholder collums for the UV MFRSRs, this gets rid of them ... or the other way aroudn
+        cols = [col.strip(f'{scan_direction}_Corr_') for col in df_cc.columns]
+        cols = [col.strip('nm') for col in cols]
+        df_cc.columns = cols
+    
+        # 90 and -90 degrees are singularities ==> remove
+        for i in [-90, 90]:
+            if (idx:= i) in df.index:
+                df_cc.drop(idx, inplace=True)
+    
+        # other stuff
+        df_cc.columns.name = 'channel'
+        return dict(data = df_cc, scan_direction = scan_direction)
+    
+    data1dict = parse_data(data1)
+    data2dict = parse_data(data2)
+    
+    ds = xr.Dataset()
+    
+    scand = data1dict['scan_direction']
+    ds[f'broadband_{scand}'] = data1dict['data'].Thermopile
+    ds[f'spectral_{scand}'] = data1dict['data'].drop('Thermopile', axis = 1)
+    
+    scand = data2dict['scan_direction']
+    ds[f'broadband_{scand}'] = data2dict['data'].Thermopile
+    ds[f'spectral_{scand}'] = data2dict['data'].drop('Thermopile', axis = 1)
+    
+    ds.attrs['header'] = '\n'.join(header)
     return ds
