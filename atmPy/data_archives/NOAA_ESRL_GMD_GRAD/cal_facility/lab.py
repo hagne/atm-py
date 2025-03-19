@@ -241,6 +241,12 @@ def read_mfrsr_cal_cos(p2f):
     
         # other stuff
         df_cc.columns.name = 'channel'
+        
+        # arrrg Charles!!!
+        variations = ['Termopile']
+        for var in variations:
+            if var in df_cc.columns:
+                df_cc.rename({var: 'Thermopile'}, axis = 1, inplace = True)
         return dict(data = df_cc, scan_direction = scan_direction)
     
     data1dict = parse_data(data1)
@@ -249,6 +255,7 @@ def read_mfrsr_cal_cos(p2f):
     ds = xr.Dataset()
     
     scand = data1dict['scan_direction']
+    # return data1dict['data']
     ds[f'broadband_{scand}'] = data1dict['data'].Thermopile
     ds[f'spectral_{scand}'] = data1dict['data'].drop('Thermopile', axis = 1)
     
@@ -262,6 +269,7 @@ def read_mfrsr_cal_cos(p2f):
 def read_mfrsr_cal_responsivity(p2f):
     xls = pd.ExcelFile(p2f)
     
+    #### responsivity
     df = xls.parse(sheet_name='D.ABS', 
                    # header = 37,
                   )
@@ -271,14 +279,33 @@ def read_mfrsr_cal_responsivity(p2f):
     df.index = df.channel
     df.drop('channel', inplace = True, axis = 1)
     assert(df.index[0] == 'Thermopile'), 'Format is inconsistant!!! Kick Charles in the ...!'
+    ds = xr.Dataset()
+    ds['responsivity_broadband'] = df.loc['Thermopile', 'responsivity']
+    ds['responsivity_spectral'] = df.drop('Thermopile').loc[:, 'responsivity']
     
-    ds = xr.Dataset(df)
+    #### dark current (voltage)
+    df = xls.parse(sheet_name='.DRK', 
+                   # header = 37,
+                  )
+    # dfhead = df.iloc[:32, :2]
+    df = df.iloc[32:, :2]
+    df.columns = ['channel', 'dark_signal']
+    df.index = df.channel
+    df.drop('channel', inplace = True, axis = 1)
+    assert(df.index[0] == 'Thermopile'), 'Format is inconsistant!!! Kick Charles in the ...!'
+    # ds = xr.Dataset(df)
+    dfds = df.dark_signal.astype(float)
+    ds['dark_signal_broadband'] = dfds.loc['Thermopile']
+    ds['dark_signal_spectral'] = dfds.drop('Thermopile')
+    ds.dark_signal_broadband.attrs['unit'] = 'mV'
+    ds.dark_signal_spectral.attrs['unit'] = 'mV'
     
+    #### header
     header = {row[dfhead.columns[0]]: row[dfhead.columns[1]] for _,row in dfhead.iterrows()}
     header['Serial_number'] = header.pop('Instrument')
     ds.attrs = header
     
-    # lamp calibration
+    #### lamp calibration
     df = xls.parse(sheet_name='licor_1030L_cal_data', header = 7)
     assert(df.columns[0] == 'nm'), 'arrrg, files are inconsistant'
     df_cal_lamp = df.drop('mw/m^2-nm', axis = 1)
