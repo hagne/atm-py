@@ -1105,8 +1105,12 @@ class SizeDist(object):
 
     @bins.setter
     def bins(self,array):
-        # bins_st = array.astype(int).astype(str)
-        # col_names = []
+        if isinstance(array, pd.Series):
+            array = array.values
+        elif isinstance(array, _np.ndarray):
+            pass
+        else:
+            raise TypeError(f'bins (bin-edges that is) have to be of type pandas.Series or numpy.ndarray, is {type(array)}')
         self.__bins = array
         self.__bincenters = (array[1:] + array[:-1]) / 2.
         self.__binwidth = (array[1:] - array[:-1])
@@ -2093,7 +2097,7 @@ class SizeDist_TS(SizeDist):
          volume: 'dVdlogDp','dVdDp'
        """
     def __init__(self,  *args, fill_data_gaps_with = None, ignore_data_gap_error = True, **kwargs):
-        super(SizeDist_TS,self).__init__(*args,**kwargs)
+        super().__init__(*args,**kwargs)
 
         self._data_period = None
         # ignore_data_gap_error = False

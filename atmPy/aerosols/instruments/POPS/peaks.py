@@ -646,7 +646,8 @@ class Peaks(object):
     def peak2sizedistribution(self, 
                               bins, 
                               time_resolution = '1s',
-                              calibration = False
+                              calibration = False,
+                              test = False,
                              ):
         """Bins the data into time and diameter intervals
         Parameters
@@ -657,8 +658,8 @@ class Peaks(object):
             What time resolution to use, defaul is '1s' which provides sizeditribution data 
             with 1 second time resolution. See docsring of pandas.date_range function for details.
         calibration: bool
-            If True an amplidute distribution will be generated rather than a sizedistribution. 
-            Usefull for calibration perposes.
+            Used for calibration effords. If True not a sizedistribution but an digitiser bin 
+            (peak amplidute) distribution will be generated rather than a sizedistribution.
             
         Retuns
         ------
@@ -687,16 +688,25 @@ class Peaks(object):
         for itv, grpitv in self.data.groupby('t_interval',
                                                     observed = True, # this is only to suppress a future warning, can probably be deleted when you see this
                                                    ):
+            # particles in diameter range
             sel = grpitv.where(grpitv.Masked == 0)
             n,eg = np.histogram(sel[column2process], bins=bins)
             df_sizedist.loc[itv.right] = n
             
+            # particles outside diameter range -- smaller
             sel = grpitv.where(grpitv.Masked == 1)
             df_outside.loc[itv.right,'small'] = sel.dropna(how = 'all').shape[0]
             
+            # particles outside diameter range -- larger
             sel = grpitv.where(grpitv.Masked == 2)
             df_outside.loc[itv.right,'large'] = sel.dropna(how = 'all').shape[0]
         # return grpitv, sel
+        print(f'df_sizedist.shape: {df_sizedist.shape}')
+        print(f'bins.shape: {bins.shape}')
+        # print(f'')
+        if test:
+            return df_sizedist
+        
         dist = sizedistribution.SizeDist_TS(df_sizedist, bins, 'numberConcentration')
         dist = dist.convert2dNdlogDp()
         dist.particle_number_concentration_outside_range =  df_outside                    
