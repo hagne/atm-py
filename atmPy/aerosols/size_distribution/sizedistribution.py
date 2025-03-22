@@ -313,19 +313,19 @@ def get_label(distType):
     """ Return the appropriate label for a particular distribution type
     """
     if distType == 'dNdDp':
-        label = '$\mathrm{d}N\,/\,\mathrm{d}D_{P}$ (nm$^{-1}\,$cm$^{-3}$)'
+        label = r'$\mathrm{d}N\,/\,\mathrm{d}D_{P}$ (nm$^{-1}\,$cm$^{-3}$)'
     elif distType == 'dNdlogDp':
-        label = '$\mathrm{d}N\,/\,\mathrm{d}log(D_{P})$ (cm$^{-3}$)'
+        label = r'$\mathrm{d}N\,/\,\mathrm{d}log(D_{P})$ (cm$^{-3}$)'
     elif distType == 'dSdDp':
-        label = '$\mathrm{d}S\,/\,\mathrm{d}D_{P}$ (nm$\,$cm$^{-3}$)'
+        label = r'$\mathrm{d}S\,/\,\mathrm{d}D_{P}$ (nm$\,$cm$^{-3}$)'
     elif distType == 'dSdlogDp':
-        label = '$\mathrm{d}S\,/\,\mathrm{d}log(D_{P})$ (nm$^2\,$cm$^{-3}$)'
+        label = r'$\mathrm{d}S\,/\,\mathrm{d}log(D_{P})$ (nm$^2\,$cm$^{-3}$)'
     elif distType == 'dVdDp':
-        label = '$\mathrm{d}V\,/\,\mathrm{d}D_{P}$ (nm$^2\,$cm$^{-3}$)'
+        label = r'$\mathrm{d}V\,/\,\mathrm{d}D_{P}$ (nm$^2\,$cm$^{-3}$)'
     elif distType == 'dVdlogDp':
-        label = '$\mathrm{d}V\,/\,\mathrm{d}log(D_{P})$ (nm$^3\,$cm$^{-3}$)'
+        label = r'$\mathrm{d}V\,/\,\mathrm{d}log(D_{P})$ (nm$^3\,$cm$^{-3}$)'
     elif distType == 'calibration':
-        label = '$\mathrm{d}N\,/\,\mathrm{d}Amp$ (bin$^{-1}\,$cm$^{-3}$)'
+        label = r'$\mathrm{d}N\,/\,\mathrm{d}Amp$ (bin$^{-1}\,$cm$^{-3}$)'
     elif distType == 'numberConcentration':
         label = 'Particle number in bin'
     else:
@@ -1837,7 +1837,7 @@ class SizeDist(object):
         return moments.convert(self, distType, verbose = verbose)
 
     def _get_mass_concentration(self):
-        """'Mass concentration ($\mu g/m^{3}$)'"""
+        r"""'Mass concentration ($\mu g/m^{3}$)'"""
         dist = self.convert2dVdDp()
         volume_conc = dist.data * dist.binwidth
 
@@ -1938,7 +1938,7 @@ class SizeDist(object):
 
         sfc_all = surface_conc.sum(axis = 1) # nm^2/cm^3
         sfc_all = sfc_all * 1e-6 # um^2/cm^3
-        label = 'Surface concentration $\mu m^2 / cm^{-3}$'
+        label = r'Surface concentration $\mu m^2 / cm^{-3}$'
         sfc_df = pd.DataFrame(sfc_all, columns = [label])
         if type(self).__name__ == 'SizeDist':
             return sfc_df
@@ -1963,7 +1963,7 @@ class SizeDist(object):
 
         vlc_all = volume_conc.sum(axis = 1) # nm^3/cm^3
         vlc_all = vlc_all * 1e-9 # um^3/cm^3
-        vlc_df = pd.DataFrame(vlc_all, columns = ['volume concentration $\mu m^3 / cm^{3}$'])
+        vlc_df = pd.DataFrame(vlc_all, columns = [r'volume concentration $\mu m^3 / cm^{3}$'])
         if type(self).__name__ == 'SizeDist':
             return  vlc_df
         elif type(self).__name__ == 'SizeDist_TS':
@@ -1973,7 +1973,7 @@ class SizeDist(object):
             out = _vertical_profile.VerticalProfile(vlc_df)
         else:
             raise ValueError("Can't be! %s is not an option here"%(type(self).__name__))
-        out._y_label = 'volume concentration $\mu m^3 / cm^{-3}$'
+        out._y_label = r'volume concentration $\mu m^3 / cm^{-3}$'
         return out
 
 
@@ -2673,9 +2673,9 @@ class SizeDist_TS(SizeDist):
     def particle_mass_concentration(self):
         if not _np.any(self.__particle_mass_concentration) or not self._uptodate_particle_mass_concentration:
             mass_conc = self._get_mass_concentration()
-            mass_conc = pd.DataFrame(mass_conc, columns = ['Mass concentration ($\mu g/m^{3}$)'])
+            mass_conc = pd.DataFrame(mass_conc, columns = [r'Mass concentration ($\mu g/m^{3}$)'])
             self.__particle_mass_concentration = _timeseries.TimeSeries(mass_conc)
-            self.__particle_mass_concentration._y_label = 'Mass concentration ($\mu g/m^{3}$)'
+            self.__particle_mass_concentration._y_label = r'Mass concentration ($\mu g/m^{3}$)'
             self.__particle_mass_concentration._x_label =  'Time'
             self.__particle_mass_concentration._data_period = self._data_period
             self._uptodate_particle_mass_concentration = True
@@ -2828,9 +2828,9 @@ class SizeDist_LS(SizeDist):
     def particle_mass_concentration(self):
         if not _np.any(self.__particle_mass_concentration) or not self._uptodate_particle_mass_concentration:
             mass_conc = self._get_mass_concentration()
-            mass_conc = pd.DataFrame(mass_conc, columns = ['Mass concentration ($\mu g/m^{3}$)'])
+            mass_conc = pd.DataFrame(mass_conc, columns = [r'Mass concentration ($\mu g/m^{3}$)'])
             self.__particle_mass_concentration = _vertical_profile.VerticalProfile(mass_conc)
-            self.__particle_mass_concentration._x_label = 'Mass concentration ($\mu g/m^{3}$)'
+            self.__particle_mass_concentration._x_label = r'Mass concentration ($\mu g/m^{3}$)'
             self.__particle_mass_concentration._y_label =  'Altitde'
 
             self._uptodate_particle_mass_concentration = True
