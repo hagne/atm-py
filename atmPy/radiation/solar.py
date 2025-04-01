@@ -5,6 +5,7 @@ import warnings
 #     warnings.warn('ephem is not installed. You might encounter some functionality limitations.')
 import numpy as _np
 import pandas as _pd
+import matplotlib.pyplot as _plt
 import pytz
 import atmPy.general.timeseries as _ts
 # try:
@@ -207,6 +208,232 @@ def get_sun_position_deprecated(lat, lon, datetime_UTC, elevation=0):
     sun = _ephem.Sun()
     sun.compute(obs)
     return sun.alt, sun.az
+
+
+class SolarPosition:
+    def __init__(self, azimuth, zenith, radiance = 1, unit = 'deg'):
+        """
+        This was designed particularly for cosine corrections. It takes the 
+        azimuth and zenith angle, projects it on the NS and EW planes and 
+        provieds the norm of those vectors. 
+        
+        Also provides a convenient plotting funcion for illustration.
+
+        Parameters
+        ----------
+        azimuth : float
+            Azimuth angle from North over East, South, West.
+        zenith : float
+            Zenith angle, 
+        radiance : float, optional
+            If you want to put the direct normal irradiance of the sun here, not really needed. The default is 1.
+        unit : 'str', optional
+            If angles are in degree or radian. The default is 'deg'.
+            Returned angles are always radian.
+
+        Returns
+        -------
+        None.
+
+        """
+        self.radiance = radiance
+        if unit == 'deg':
+            self.azimuth = _np.deg2rad(azimuth)
+            self.zenith = _np.deg2rad(zenith)
+        elif unit == 'rad':
+            self.azimuth = azimuth
+            self.zenith = zenith
+        else:
+            assert(False)
+
+    @property
+    def projectionNS_angle(self):
+        psi_NS = _np.arctan2(_np.cos(self.zenith), 
+                            _np.cos(self.azimuth) * _np.sin(self.zenith))
+        return psi_NS
+
+    @property
+    def projectionEW_angle(self):
+        psi_EW = _np.arctan2(_np.cos(self.zenith), 
+                            _np.sin(self.azimuth) * _np.sin(self.zenith))
+        return psi_EW
+
+    @property
+    def projectionEW_norm(self):
+        int_EW = _np.sqrt(self.radiance**2 * (_np.sin(self.azimuth)**2 * _np.sin(self.zenith)**2 + _np.cos(self.zenith)**2))
+        return int_EW
+
+    @property
+    def projectionNS_norm(self):
+        int_NS = _np.sqrt(self.radiance**2 * (_np.cos(self.azimuth)**2 * _np.sin(self.zenith)**2 + _np.cos(self.zenith)**2))
+        return int_NS
+        
+    def plot(self,# theta = 180 + 55,  # Azimuth angle
+             # phi = 35, # zenith angle
+             ax = None, ew = True, ns = True):
+        
+        colors = _plt.rcParams['axes.prop_cycle'].by_key()['color']
+        # Parameters for the vector in spherical coordinates
+        # r = 1.0
+        r = self.radiance
+        theta = self.azimuth  # Azimuth angle
+        phi = self.zenith    # Zenith angle
+        
+        # Convert to Cartesian coordinates
+        x = r * _np.sin(phi) * _np.cos(theta)
+        y = -r * _np.sin(phi) * _np.sin(theta)
+        z = r * _np.cos(phi)
+        
+        # Start figure
+        if ax is None:
+            fig = _plt.figure(figsize=(8, 8))
+            ax = fig.add_subplot(111, projection='3d')
+            ax.view_init(elev=10, azim=180 - 15)
+            ax.set_axis_off()
+        else:
+            fig = ax.get_figure()
+        
+        # --- Draw coordinate axes ---
+        fs = 12
+        ext = 1
+        extd = ext + 0.1
+        col = 'black'
+        ax.quiver(0, 0, 0, ext, 0, 0, color=col, arrow_length_ratio=0.05)
+        ax.quiver(0, 0, 0, 0, -ext, 0, color=col, arrow_length_ratio=0.05)
+        ax.quiver(0, 0, 0, 0, 0, ext, color=col, arrow_length_ratio=0.05)
+        ax.text(extd, 0, 0, 'N', fontsize=fs)
+        ax.text(0, -extd, 0, 'E', fontsize=fs)
+        ax.text(0, 0, extd, 'z', fontsize=fs)
+        
+        col = '0.3'
+        ax.quiver(0, 0, 0, -ext, 0, 0, color=col, arrow_length_ratio=0.05)
+        ax.quiver(0, 0, 0, 0, ext, 0, color=col, arrow_length_ratio=0.05)
+        ax.text(-extd, 0, 0, 'S', fontsize=fs)
+        ax.text(0, extd, 0, 'W', fontsize=fs)
+        
+        
+        ######################################################################
+        # --- Main vector r ---
+        ####################################################
+        col = colors[0]
+        alr = 0.08
+        ax.quiver(0, 0, 0, x, y, z, color=col, linewidth=2, arrow_length_ratio=alr)
+        ax.text(x*1.05, y*1.05, z*1.05, r'$\vec{r}$', color=col, fontsize=14)
+        
+        # --- Vertical drop from r_xy to r ---
+        ax.plot([x, x], [y, y], [0, z], color=col, linestyle='--', linewidth=1)
+        
+        # --- Projection on xy-plane ---
+        ax.plot([0, x], [0, y], [0, 0], color=col, linestyle='--', linewidth=1)
+        ax.text(x*0.6, y*0.6, -0.05, r'$r_{xy}$', color=col, fontsize=12)
+        
+        # --- Angle arcs ---
+        # theta arc (azimuthal, in xy-plane)
+        theta_arc = _np.linspace(0, -theta, 100)
+        arc_radius = 0.4
+        ax.plot(arc_radius * _np.cos(theta_arc),
+                arc_radius * _np.sin(theta_arc),
+                0,
+                color=col)
+        art = arc_radius / 3
+        ax.text(art * _np.cos(-theta/2), 
+                art * _np.sin(-theta/2), 
+                0.00,
+                r'$\theta$', fontsize=12,
+                va = 'center', 
+                color = col,
+                zorder = 100)
+        
+        # phi arc (polar, from z-axis)
+        arc_radius = 0.8
+        phi_arc = _np.linspace(0, phi, 100)
+        ax.plot(arc_radius * _np.sin(phi_arc) * _np.cos(-theta),
+                arc_radius * _np.sin(phi_arc) * _np.sin(-theta),
+                arc_radius * _np.cos(phi_arc),
+                color=col)
+        art = arc_radius / 1.5
+        ax.text(art * _np.sin(phi/2) * _np.cos(-theta),
+                art * _np.sin(phi/2) * _np.sin(-theta),
+                art * _np.cos(phi/2),
+                r'$\phi$', fontsize=12, ha = 'center', color = col)
+    
+        ################################################################
+        # NS pane projection
+        ##############
+        if ns:
+            # --- NS plane patch (semi-transparent) ---
+            ext = 0.9
+            extz = ext + 0.05
+            exto = ext - 0.1
+            col = colors[1]
+            x_plane = _np.array([[-ext, ext], [-ext, ext]])
+            y_plane = _np.array([[0, 0], [0, 0]])
+            z_plane = _np.array([[0, 0], [ext, ext]])
+            ax.plot_surface(x_plane, y_plane, z_plane, alpha=0.1, color=col)
+            ax.text(exto, 0, extz, 'NS', fontsize=14, color=col)
+            
+            # --- Projection on NS plane ---
+            ax.plot([0, x], [0, 0], [0, z], color=col, linestyle='--', linewidth=1.5)
+            ax.text(x*0.6, -0.05, z*0.6, r'$r_{NS}$', color=col, fontsize=12)
+            
+            # --- arc
+            arc_radius = 0.5
+            # psi_NS = _np.arctan2(_np.cos(phi), _np.cos(theta) * _np.sin(phi))
+            psi_NS = self.projectionNS_angle
+            psi_a = _np.linspace(0,psi_NS, 100)
+            
+            ax.plot(arc_radius * _np.cos(psi_a), 0, arc_radius * _np.sin(psi_a),
+                    color = col,
+                    ls = '--')
+            
+            art = arc_radius / 1.5
+            ax.text(art * _np.cos(psi_NS/2), 0,art * _np.sin(psi_NS/2),
+                    r'$\psi_{NS}$', 
+                    fontsize=12, ha = 'center', color = col)
+        ################################################################
+        # EW pane projection
+        if ew:
+            ext = 0.9
+            extz = ext + 0.05
+            exto = ext - 0.1
+            # --- EW plane patch (semi-transparent) ---
+            col = colors[2]
+            
+            y_plane = _np.array([[-ext, ext], [-ext, ext]])
+            x_plane = _np.array([[0, 0], [0, 0]])
+            z_plane = _np.array([[0, 0], [ext, ext]])
+            ax.plot_surface(x_plane, y_plane, z_plane, alpha=0.1, color=col)
+            ax.text(0, exto, extz, 'EW', fontsize=14, color=col)
+            
+            # --- Projection on EW plane ---
+            ax.plot([0, 0], [0, y], [0, z], color=col, linestyle='--', linewidth=1.5)
+            ax.text(-0.0, y*0.6, z*0.6, r'$r_{EW}$', color=col, fontsize=12, ha = 'right')
+            
+            ####
+            # --- arc
+            arc_radius = 0.5
+            
+            # psi_EW = _np.arctan2(_np.cos(phi), _np.sin(theta) * _np.sin(phi))
+            psi_EW = self.projectionEW_angle
+            psi_a = _np.linspace(0,psi_EW, 100)
+            
+            ax.plot(0, - arc_radius * _np.cos(psi_a), arc_radius * _np.sin(psi_a),
+                    color = col,
+                    ls = '--')
+            
+            art = arc_radius / 1.5
+            ax.text(0, - art * _np.cos(psi_EW/2),art * _np.sin(psi_EW/2),
+                    r'$\psi_{EW}$', 
+                    fontsize=12, ha = 'center', color = col)
+    
+        # ax.set_xlim([0, 1.2])
+        # ax.set_ylim([-0.2, 1.2])  # include some negative y-space for the EW label
+        # ax.set_zlim([0, 1.2])
+        # ax.set_box_aspect([1, 1, 1])
+        # ax.set_axis_off()
+        out = {}
+        return out
+
 
 
 

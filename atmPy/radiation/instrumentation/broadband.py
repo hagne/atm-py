@@ -186,7 +186,7 @@ class Pyrgeometer:
             DESCRIPTION.
 
         """
-        U = U * 1e3 
+        U = U * 1e3 #convert to muV
         sig = sp.constants.sigma
         cal = self.calibration
         k4 = cal['Kr']#0.0007044 #K/µV
