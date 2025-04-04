@@ -17,6 +17,7 @@ import atmPy.data_archives.NOAA_ESRL_GMD_GRAD.baseline.baseline as atmbl
 import sqlite3
 import matplotlib.pyplot as _plt
 import copy
+from .. import solar as atmsol
 
 class RadiationDatabase(object):
     def __init__(self, path2db = '/nfs/grad/surfrad/database/surfraddatabase.db', 
@@ -417,8 +418,8 @@ class SolarIrradiation(object):
         # The exact variable name is sometimes
         ds = dataset.copy()
         for altvar in ['global_horizontal', 'diffuse_horizontal', 'direct_normal']:
-            altshort = altvar.split('_')[0]
-            match = [var for var in ds.variables if altshort in var]
+            # altshort = altvar.split('_')[0] # This lead to problems when direct_horizontal and direct_normal are present
+            match = [var for var in ds.variables if altvar in var]
             assert(len(match) < 2), f'There are multiple variables with {altvar} in it ({match}).'
             if len(match) == 0:
                 # e.g. MFR has no direct
@@ -446,6 +447,144 @@ class SolarIrradiation(object):
         if isinstance(self._sun_position, type(None)):
             self._sun_position = self.site.get_sun_position(self.dataset.datetime)
         return self._sun_position
+    
+    def apply_calibration_spectral(self, calibration):
+        """
+        This will assign the nominal channel wavelength and provide the exact
+        channel central wavelengths.
+
+        Parameters
+        ----------
+        calibration : xarray.Dataset
+            Use atmPy.data_archives.NOAA_ESRL_GMD_GRAD.cal_facility.lab.read_mfrsr_cal 
+            to open calibration file and use return as input here.
+
+        Returns
+        -------
+        TYPE
+            DESCRIPTION.
+        TYPE
+            DESCRIPTION.
+
+        """
+        assert(isinstance(calibration, xr.Dataset))
+        assert('statistics' in calibration.variables), "I don't think the calibration file is a spectral calibration file for an MFR(SR). 'statistics' varible is missing"
+        
+        ds = self.dataset.copy()         
+        ds['channel'] = calibration.channel
+        ds['channel_wavelength'] = calibration.statistics.sel(stats = 'CENT', drop=True)
+        ds.attrs['calibrated_spectral'] = 'True'
+        return self.__class__(ds) #returns the same class, allows for application to all subclasses
+    
+    def apply_calibration_responsivity(self, calibration):
+        if 'calibration_dark_signal' in self.dataset.attrs:
+            assert(self.dataset.attrs['calibration_dark_signal'] != 'True'), 'Responds calibration already applied'        
+        if 'calibration_responds' in self.dataset.attrs:
+            assert(self.dataset.attrs['calibration_responds'] != 'True'), 'Responds calibration already applied'
+
+        assert(isinstance(calibration, xr.Dataset))
+        assert('dark_signal_spectral' in calibration.variables), "I don't think the calibration file is a spectral calibration file for an MFR(SR). 'dark_signal_spectral' varible is missing"
+        
+        ds = self.dataset.copy() 
+        #### global horizontal
+        
+        #### dark signal
+        da = ds.global_horizontal - abs(calibration.dark_signal_spectral) #dark signals have to be positive, no idea why Charls shows negative values
+        #### responsivity
+        da = da / abs(calibration.responsivity_spectral) # as above
+        
+        da.attrs['unit'] = 'W * m^-2 * nm'
+        da.attrs['calibration_responds'] = 'True'
+        da.attrs['calibration_dark_signal'] = 'True'
+        
+        ds['global_horizontal'] = da
+        
+        #### diffuse horizontal
+        if 'diffuse_horizontal' in ds.variables:
+            da = ds.diffuse_horizontal - abs(calibration.dark_signal_spectral)
+            da = da / abs(calibration.responsivity_spectral)
+            
+            da.attrs['unit'] = 'W * m^-2 * nm'
+            da.attrs['calibration_dark_signal'] = 'True'
+            da.attrs['calibration_responds'] = 'True'
+            
+            ds['diffuse_horizontal'] = da
+            
+        ds.attrs['calibration_dark_signal'] = 'True'
+        ds.attrs['calibration_responds'] = 'True'
+        return self.__class__(ds) #returns the same class, allows for application to all subclasses
+    
+    def apply_calibration_cosine(self, calibration):
+        
+        if 'clalibration_cosine' in self.dataset.attrs:
+            assert(self.dataset.attrs['clalibration_cosine'] != 'True'), 'Responds calibration already applied'  
+            
+        ds = self.dataset.copy()
+        
+        #### for diffuse or global in case of an MFR
+        cal_angle = 45
+        ew = calibration.spectral_EW.interp(Angle = [cal_angle, -cal_angle]).sum(dim = 'Angle') / 2 
+        ns = calibration.spectral_NS.interp(Angle = [cal_angle, -cal_angle]).sum(dim = 'Angle') / 2 
+        cal = (ew + ns) / 2
+        
+        # The following should only happen when no global and direct is measured, ideally only for upwelling
+        #### MFR
+        if not 'diffuse_horizontal' in ds.variables: 
+            ds['global_horizontal'] = ds.global_horizontal / cal
+        
+        # only if the direct component is resolved the following is relevant
+        #### MFRSR
+        else:
+            assert('diffuse_horizontal' in ds.variables)
+            
+            #### - diffuse
+            ds['diffuse_horizontal'] = ds.diffuse_horizontal / cal
+            
+            #### - direct
+            sp = atmsol.SolarPosition(self.sun_position.azimuth, np.pi/2 - self.sun_position.elevation, unit = 'rad')
+            
+            # NS
+            # interpolate the cosine respond with the particular angles resulting from the projetion
+            # This results in :
+            #     * calibration value as a function of time
+            
+            da = calibration.spectral_NS.interp(Angle = np.rad2deg(sp.projectionNS_angle) - 90)
+            cos_cal_NS = da.rename({'Angle': 'datetime'}).assign_coords(datetime = ('datetime', self.sun_position.index))
+            
+            
+            # The calibration value needs to be normalized with the relevant component of the solar radiation
+            # With other words how much light is actually comming this way?
+            cos_cal_NS_norm = cos_cal_NS * xr.DataArray(sp.projectionNS_norm)
+            
+            # Do the same for EW
+            
+            da = calibration.spectral_EW.interp(Angle = np.rad2deg(sp.projectionEW_angle) - 90)
+            cos_cal_EW = da.rename({'Angle': 'datetime'}).assign_coords(datetime = ('datetime', self.sun_position.index))
+            cos_cal_EW_norm = cos_cal_EW * xr.DataArray(sp.projectionEW_norm)
+            
+            # Sum NS and EW
+            cos_cal_sum = cos_cal_EW_norm + cos_cal_NS_norm
+            
+            # Divide by the sum of **norms** (Not the calibration value! As we are dealing with vectors the sum is not automatically num
+            sumofnorm = sp.projectionEW_norm + sp.projectionNS_norm
+            cos_cal_sum_nom = cos_cal_sum / xr.DataArray(sumofnorm)
+            
+            # apply final cosine correction to the data
+            
+            
+            ds['direct_horizontal'] = (ds.global_horizontal - ds.diffuse_horizontal)
+            ds['direct_horizontal'] = ds.direct_horizontal / cos_cal_sum_nom
+            ds['direct_normal'] = ds.direct_horizontal / xr.DataArray(np.sin(self.sun_position.elevation))
+        
+
+        
+            #### - compose global based on cosine corrected direct and diffuse
+            ds['global_horizontal'] = ds.direct_horizontal + ds.diffuse_horizontal
+        
+        ds.attrs['clalibration_cosine'] = 'True'
+        
+        return self.__class__(ds) #returns the same class, allows for application to all subclasses
+        
 
 class GlobalHorizontalIrradiation(SolarIrradiation):
     def __init__(self, dataset):
@@ -1102,7 +1241,7 @@ class CombinedGlobalDiffuseDirect(SolarIrradiation):
         return f,a
     
     
-    
+
     
     
     

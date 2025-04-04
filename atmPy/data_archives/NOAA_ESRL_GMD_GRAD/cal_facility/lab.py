@@ -10,6 +10,8 @@ import pandas as pd
 import numpy as np
 import io
 
+wl_nominal = np.array([415,500,1625, 615, 670, 870, 940])
+
 def read_mfrsr_cal(path2file, verbose = False):
     """
     This reads the Spectral Responds tests, which are files that usually end on .SPR, e.g. V0648_09721Cd.SPR
@@ -77,7 +79,7 @@ def read_mfrsr_cal(path2file, verbose = False):
         assert(False), 'what else?'
      
     #### rename stats channels to nominal channels
-    wl_nominal = np.array([415,500,1625, 615, 670, 870, 940])
+    
     df.rename({col: wl_nominal[abs(wl_nominal - int(col)).argmin()] for col in df.index}, axis = 0, inplace = True)   
     # df.index = df.index.astype(int)
     df.columns.name = 'stats'
@@ -257,11 +259,17 @@ def read_mfrsr_cal_cos(p2f):
     scand = data1dict['scan_direction']
     # return data1dict['data']
     ds[f'broadband_{scand}'] = data1dict['data'].Thermopile
-    ds[f'spectral_{scand}'] = data1dict['data'].drop('Thermopile', axis = 1)
+    
+    df = data1dict['data'].drop('Thermopile', axis = 1)
+    # return df
+    df.rename({col: wl_nominal[abs(wl_nominal - int(col)).argmin()] for col in df.columns}, axis = 1, inplace = True)
+    ds[f'spectral_{scand}'] = df
     
     scand = data2dict['scan_direction']
     ds[f'broadband_{scand}'] = data2dict['data'].Thermopile
-    ds[f'spectral_{scand}'] = data2dict['data'].drop('Thermopile', axis = 1)
+    df = data2dict['data'].drop('Thermopile', axis = 1)
+    df.rename({col: wl_nominal[abs(wl_nominal - int(col)).argmin()] for col in df.columns}, axis = 1, inplace = True)
+    ds[f'spectral_{scand}'] = df
     
     ds.attrs['header'] = '\n'.join(header)
     return ds
@@ -281,7 +289,7 @@ def read_mfrsr_cal_responsivity(p2f):
     assert(df.index[0] == 'Thermopile'), 'Format is inconsistant!!! Kick Charles in the ...!'
     ds = xr.Dataset()
     ds['responsivity_broadband'] = df.loc['Thermopile', 'responsivity']
-    ds['responsivity_spectral'] = df.drop('Thermopile').loc[:, 'responsivity']
+    ds['responsivity_spectral'] = df.drop('Thermopile').loc[:, 'responsivity'].astype(float)
     
     #### dark current (voltage)
     df = xls.parse(sheet_name='.DRK', 
@@ -354,6 +362,6 @@ def read_mfrsr_cal_responsivity(p2f):
     
     ds = ds.assign_coords(channel = ch_nominal)
     
-    ds['channel_wavelength'] = xr.DataArray(channels_orig, dims=('channel',))
+    ds['channel_wavelength'] = xr.DataArray(channels_orig.astype(float), dims=('channel',))
 
     return ds
