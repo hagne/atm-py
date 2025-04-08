@@ -580,10 +580,16 @@ class SolarIrradiation(object):
         
             #### - compose global based on cosine corrected direct and diffuse
             ds['global_horizontal'] = ds.direct_horizontal + ds.diffuse_horizontal
+            
         
         ds.attrs['clalibration_cosine'] = 'True'
-        
-        return self.__class__(ds) #returns the same class, allows for application to all subclasses
+        out = self.__class__(ds) #returns the same class, allows for application to all subclasses
+        if 'diffuse_horizontal' in ds.variables:
+            out.tp_cos_cal_sum = cos_cal_sum
+            out.tp_cos_cal_EW_norm = cos_cal_EW_norm
+            out.tp_cos_cal_NS_norm = cos_cal_NS_norm
+            out.tp_cos_cal_sum_nom = cos_cal_sum_nom
+        return out
         
 
 class GlobalHorizontalIrradiation(SolarIrradiation):
