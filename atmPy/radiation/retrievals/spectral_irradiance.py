@@ -476,11 +476,41 @@ class SolarIrradiation(object):
         ds.attrs['calibrated_spectral'] = 'True'
         return self.__class__(ds) #returns the same class, allows for application to all subclasses
     
-    def apply_calibration_responsivity(self, calibration):
-        if 'calibration_dark_signal' in self.dataset.attrs:
-            assert(self.dataset.attrs['calibration_dark_signal'] != 'True'), 'Responds calibration already applied'        
-        if 'calibration_responds' in self.dataset.attrs:
-            assert(self.dataset.attrs['calibration_responds'] != 'True'), 'Responds calibration already applied'
+    def apply_calibration_responsivity(self, calibration, 
+                                       varname_responsivity_spectral = 'responsivity_spectral',
+                                       varname_dark_signal_spectral = 'dark_signal_spectral',
+                                       ignore_has_been_applied_error = False):
+        """
+        This will calibrate for amplifier responsivity. This is sometimes
+        applied multiple times, e.g. in MFR-type instruments where we have head
+        and datalogger sensitivity. If executed multiple time the "has been 
+        applied error" will trigger. Make sure to set ignore_has_been_applied_error
+        to True
+
+        Parameters
+        ----------
+        calibration : TYPE
+            DESCRIPTION.
+         : TYPE
+            DESCRIPTION.
+
+        Returns
+        -------
+        TYPE
+            DESCRIPTION.
+        TYPE
+            DESCRIPTION.
+
+        """
+        calibration = calibration.copy()
+        calibration = calibration.rename({varname_responsivity_spectral:'responsivity_spectral',
+                                          varname_dark_signal_spectral: 'dark_signal_spectral'})
+        
+        if not ignore_has_been_applied_error:
+            if 'calibration_dark_signal' in self.dataset.attrs:
+                assert(self.dataset.attrs['calibration_dark_signal'] != 'True'), 'Responds calibration already applied'        
+            if 'calibration_responds' in self.dataset.attrs:
+                assert(self.dataset.attrs['calibration_responds'] != 'True'), 'Responds calibration already applied'
 
         assert(isinstance(calibration, xr.Dataset))
         assert('dark_signal_spectral' in calibration.variables), "I don't think the calibration file is a spectral calibration file for an MFR(SR). 'dark_signal_spectral' varible is missing"
@@ -489,9 +519,9 @@ class SolarIrradiation(object):
         #### global horizontal
         
         #### dark signal
-        da = ds.global_horizontal - abs(calibration.dark_signal_spectral) #dark signals have to be positive, no idea why Charls shows negative values
+        da = ds.global_horizontal - calibration.dark_signal_spectral 
         #### responsivity
-        da = da / abs(calibration.responsivity_spectral) # as above
+        da = da / calibration.responsivity_spectral
         
         da.attrs['unit'] = 'W * m^-2 * nm'
         da.attrs['calibration_responds'] = 'True'
@@ -501,8 +531,8 @@ class SolarIrradiation(object):
         
         #### diffuse horizontal
         if 'diffuse_horizontal' in ds.variables:
-            da = ds.diffuse_horizontal - abs(calibration.dark_signal_spectral)
-            da = da / abs(calibration.responsivity_spectral)
+            da = ds.diffuse_horizontal - calibration.dark_signal_spectral
+            da = da / calibration.responsivity_spectral
             
             da.attrs['unit'] = 'W * m^-2 * nm'
             da.attrs['calibration_dark_signal'] = 'True'
@@ -1222,7 +1252,9 @@ class CombinedGlobalDiffuseDirect(SolarIrradiation):
         self.diffuse_horizontal_irradiation = DiffuseHorizontalIrradiation(dataset)
         self.direct_normal_irradiation = DirectNormalIrradiation(dataset)
         
-    def plot_overview(self, channel = 0, ax = None):
+    def plot_overview(self, channel = 500, ax = None, 
+                      show_alltime = True,
+                      show_sunelevation = False):
         
         if isinstance(ax, type(None)):
             f, a= _plt.subplots()    
@@ -1230,16 +1262,19 @@ class CombinedGlobalDiffuseDirect(SolarIrradiation):
             a = ax
             f = a.get_figure()
             
-        dssel = self.dataset.sel(channel = 0)
-        dssel.alltime.plot(ax = a, label = 'alltime')
+        dssel = self.dataset.sel(channel = channel)
+        
+        if show_alltime:
+            dssel.alltime.plot(ax = a, label = 'alltime')
         
         dssel.global_horizontal.plot(ax = a, label = 'global_horizontal')
         dssel.diffuse_horizontal.plot(ax = a, label = 'diffuse_horizontal')
         dssel.direct_normal.plot(ax = a, label = 'direct')
         
-        at = a.twinx()
-        self.sun_position.elevation.plot(ax = at, color = 'black', ls = '--')
-        at.set_ylim(top = 0.9, bottom = 0)
+        if show_sunelevation:
+            at = a.twinx()
+            np.rad2deg(self.sun_position.elevation).plot(ax = at, color = 'black', ls = '--')
+            # at.set_ylim(top = 0.9, bottom = 0)
         
         # a.set_xlim(left = pd.to_datetime('20220103 14:00:00'))
         a.grid()
