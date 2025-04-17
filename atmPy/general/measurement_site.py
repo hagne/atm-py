@@ -32,6 +32,8 @@ from atmPy.opt_imports import timezonefinder as _tzf
 from atmPy.opt_imports import mpl_toolkits_basemap as _basemap
 from atmPy.opt_imports import geopy as _geopy
 from atmPy.opt_imports import cartopy
+import cartopy.io.img_tiles as cimgt
+
 
 class NetworkStations(object):
     def __init__(self):
@@ -465,31 +467,31 @@ class Station(object):
         """
         Parameters
         ----------
-        projection
-        center: 'auto' or (lat, lon)
-        width
-        height
-        station_label_format: format str ('abbr', 'name', 'state')
-            This takes a fromat string with the given optional arguments. E.g. '{name}, {state}'.
-        station_label_kwargs: dict or bool
-            This defines the position, size ... of the label. If False no label will
-            be shown. See doc of plt.annotate() for details.
-            defaults = dict(xytext = (10, -10),
-                            size = 18,
-                            ha = "left",
-                            va = 'top',
-                            textcoords = 'offset points',
-                            bbox = dict(boxstyle="round", fc=[1, 1, 1, 0.5], ec='black'),
-                             )
-        resolution: str ('c','i','h'....
-        background: str
-            blue_marble: use the blue_marble provided by basemap
-            "path_to_file_name": This will use the warpimage function to use the image in the filename ... works with the blue marble stuff (https://visibleearth.nasa.gov/view_cat.php?categoryID=1484)
-        plot_only_if_on_map: bool
-            as the name says
+        # projection
+        # center: 'auto' or (lat, lon)
+        # width
+        # height
+        # station_label_format: format str ('abbr', 'name', 'state')
+        #     This takes a fromat string with the given optional arguments. E.g. '{name}, {state}'.
+        # station_label_kwargs: dict or bool
+        #     This defines the position, size ... of the label. If False no label will
+        #     be shown. See doc of plt.annotate() for details.
+        #     defaults = dict(xytext = (10, -10),
+        #                     size = 18,
+        #                     ha = "left",
+        #                     va = 'top',
+        #                     textcoords = 'offset points',
+        #                     bbox = dict(boxstyle="round", fc=[1, 1, 1, 0.5], ec='black'),
+        #                      )
+        # resolution: str ('c','i','h'....
+        # background: str
+        #     blue_marble: use the blue_marble provided by basemap
+        #     "path_to_file_name": This will use the warpimage function to use the image in the filename ... works with the blue marble stuff (https://visibleearth.nasa.gov/view_cat.php?categoryID=1484)
+        # plot_only_if_on_map: bool
+        #     as the name says
 
         backend: str, ([cartopy], basemap)
-        ax
+            see, _plot... for details
 
         Returns
         -------
@@ -528,6 +530,7 @@ class Station(object):
                       background = None,
                       zoom_level = None,
                       extent = None,
+                      google = ['street',8],
                       **kwargs):
         
         projection = 'AlbersEqualArea'
@@ -605,8 +608,16 @@ class Station(object):
             
     
             a.set_extent(extent, crs=transform)
-            a.add_feature(cartopy.feature.STATES, linewidth=0.5)
+            
+            if isinstance(google, list):
+                google_terrain = cimgt.GoogleTiles(style=google[0])
+                a.add_image(google_terrain, google[1])
+            else:
+                a.add_feature(cartopy.feature.STATES, linewidth=0.5)
+            
             a.gridlines(draw_labels=True, color='gray', alpha=0.5, linestyle='--')
+            
+            
         return f,a 
         
     def _plot_basemap(self, **kwargs):
