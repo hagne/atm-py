@@ -319,7 +319,7 @@ def read_mfrsr_cal(path2file, verbose = False):
     
     return ds
 
-def read_mfrsr_cal_cos(p2f):
+def read_mfrsr_cal_cos(p2f, broadband_col_name = 'Thermopile', test = None):
     """
     Reads cosine corrections commonly used in GRAD.
 
@@ -327,6 +327,10 @@ def read_mfrsr_cal_cos(p2f):
     ----------
     p2f : TYPE
         DESCRIPTION.
+        
+    test: 'str'
+        'datadict': returns the parsed data, useful to find out if a columname
+            is unusual (typically the thermopile)
 
     Returns
     -------
@@ -402,14 +406,19 @@ def read_mfrsr_cal_cos(p2f):
         df_cc.columns.name = 'channel'
         
         # arrrg Charles!!!
-        variations = ['Termopile']
-        for var in variations:
-            if var in df_cc.columns:
-                df_cc.rename({var: 'Thermopile'}, axis = 1, inplace = True)
+        # variations = ['Termopile']
+        # for var in variations:
+        #     if var in df_cc.columns:
+        df_cc.rename({broadband_col_name: 'Thermopile'}, axis = 1, inplace = True)
         return dict(data = df_cc, scan_direction = scan_direction)
+    
+
     
     data1dict = parse_data(data1)
     data2dict = parse_data(data2)
+    
+    if test == 'datadict':
+        return data1dict, data2dict
     
     ds = xr.Dataset()
     
