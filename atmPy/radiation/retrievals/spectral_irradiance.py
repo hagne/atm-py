@@ -479,7 +479,8 @@ class SolarIrradiation(object):
     def apply_calibration_responsivity(self, calibration, 
                                        varname_responsivity_spectral = 'responsivity_spectral',
                                        varname_dark_signal_spectral = 'dark_signal_spectral',
-                                       ignore_has_been_applied_error = False):
+                                       ignore_has_been_applied_error = False,
+                                       return_calvalue = False):
         """
         This will calibrate for amplifier responsivity. This is sometimes
         applied multiple times, e.g. in MFR-type instruments where we have head
@@ -491,8 +492,8 @@ class SolarIrradiation(object):
         ----------
         calibration : TYPE
             DESCRIPTION.
-         : TYPE
-            DESCRIPTION.
+        return_calvalue : bool
+            If True only the calibration value will be returned. Otherwise the calibrated instance will be returned
 
         Returns
         -------
@@ -544,6 +545,37 @@ class SolarIrradiation(object):
         ds.attrs['calibration_responds'] = 'True'
         return self.__class__(ds) #returns the same class, allows for application to all subclasses
     
+    def _get_cosine_cal_diffuse(self,calibration):
+        cal_angle = 45
+        ew = calibration.spectral_EW.interp(Angle = [cal_angle, -cal_angle]).sum(dim = 'Angle') / 2 
+        ns = calibration.spectral_NS.interp(Angle = [cal_angle, -cal_angle]).sum(dim = 'Angle') / 2 
+        cal = (ew + ns) / 2
+        return 1/cal
+    
+    def _get_cosine_cal_direct(self, calibration):
+        sp = atmsol.SolarPosition(self.sun_position.azimuth, np.pi/2 - self.sun_position.elevation, unit = 'rad')
+        da = calibration.spectral_NS.interp(Angle = np.rad2deg(sp.projectionNS_angle) - 90)
+        cos_cal_NS = da.rename({'Angle': 'datetime'}).assign_coords(datetime = ('datetime', self.sun_position.index))
+        
+        
+        # The calibration value needs to be normalized with the relevant component of the solar radiation
+        # With other words how much light is actually comming this way?
+        cos_cal_NS_norm = cos_cal_NS * xr.DataArray(sp.projectionNS_norm)
+        
+        # Do the same for EW
+        
+        da = calibration.spectral_EW.interp(Angle = np.rad2deg(sp.projectionEW_angle) - 90)
+        cos_cal_EW = da.rename({'Angle': 'datetime'}).assign_coords(datetime = ('datetime', self.sun_position.index))
+        cos_cal_EW_norm = cos_cal_EW * xr.DataArray(sp.projectionEW_norm)
+        
+        # Sum NS and EW
+        cos_cal_sum = cos_cal_EW_norm + cos_cal_NS_norm
+        
+        # Divide by the sum of **norms** (Not the calibration value! As we are dealing with vectors the sum is not automatically num
+        sumofnorm = sp.projectionEW_norm + sp.projectionNS_norm
+        cos_cal_sum_nom = cos_cal_sum / xr.DataArray(sumofnorm)
+        return 1/cos_cal_sum_nom
+    
     def apply_calibration_cosine(self, calibration):
         
         if 'clalibration_cosine' in self.dataset.attrs:
@@ -552,60 +584,73 @@ class SolarIrradiation(object):
         ds = self.dataset.copy()
         
         #### for diffuse or global in case of an MFR
-        cal_angle = 45
-        ew = calibration.spectral_EW.interp(Angle = [cal_angle, -cal_angle]).sum(dim = 'Angle') / 2 
-        ns = calibration.spectral_NS.interp(Angle = [cal_angle, -cal_angle]).sum(dim = 'Angle') / 2 
-        cal = (ew + ns) / 2
         
-        # The following should only happen when no global and direct is measured, ideally only for upwelling
+        
+        # cal_angle = 45
+        # ew = calibration.spectral_EW.interp(Angle = [cal_angle, -cal_angle]).sum(dim = 'Angle') / 2 
+        # ns = calibration.spectral_NS.interp(Angle = [cal_angle, -cal_angle]).sum(dim = 'Angle') / 2 
+        # cal = (ew + ns) / 2
+        cal = self._get_cosine_cal_diffuse(calibration)
+
+        # The following should only happen when NO global and direct is measured, ideally only for upwelling
         #### MFR
         if not 'diffuse_horizontal' in ds.variables: 
-            ds['global_horizontal'] = ds.global_horizontal / cal
+            ds['global_horizontal'] = ds.global_horizontal * cal
         
         # only if the direct component is resolved the following is relevant
         #### MFRSR
         else:
             assert('diffuse_horizontal' in ds.variables)
             
+            # this needs to happen before the any correction took place
+            ds['direct_horizontal'] = (ds.global_horizontal - ds.diffuse_horizontal)
+            
             #### - diffuse
-            ds['diffuse_horizontal'] = ds.diffuse_horizontal / cal
+            ds['diffuse_horizontal'] = ds.diffuse_horizontal * cal
             
             #### - direct
-            sp = atmsol.SolarPosition(self.sun_position.azimuth, np.pi/2 - self.sun_position.elevation, unit = 'rad')
+            # sp = atmsol.SolarPosition(self.sun_position.azimuth, np.pi/2 - self.sun_position.elevation, unit = 'rad')
             
             # NS
             # interpolate the cosine respond with the particular angles resulting from the projetion
             # This results in :
             #     * calibration value as a function of time
             
-            da = calibration.spectral_NS.interp(Angle = np.rad2deg(sp.projectionNS_angle) - 90)
-            cos_cal_NS = da.rename({'Angle': 'datetime'}).assign_coords(datetime = ('datetime', self.sun_position.index))
             
             
-            # The calibration value needs to be normalized with the relevant component of the solar radiation
-            # With other words how much light is actually comming this way?
-            cos_cal_NS_norm = cos_cal_NS * xr.DataArray(sp.projectionNS_norm)
             
-            # Do the same for EW
             
-            da = calibration.spectral_EW.interp(Angle = np.rad2deg(sp.projectionEW_angle) - 90)
-            cos_cal_EW = da.rename({'Angle': 'datetime'}).assign_coords(datetime = ('datetime', self.sun_position.index))
-            cos_cal_EW_norm = cos_cal_EW * xr.DataArray(sp.projectionEW_norm)
             
-            # Sum NS and EW
-            cos_cal_sum = cos_cal_EW_norm + cos_cal_NS_norm
+            ########################################
+            # da = calibration.spectral_NS.interp(Angle = np.rad2deg(sp.projectionNS_angle) - 90)
+            # cos_cal_NS = da.rename({'Angle': 'datetime'}).assign_coords(datetime = ('datetime', self.sun_position.index))
             
-            # Divide by the sum of **norms** (Not the calibration value! As we are dealing with vectors the sum is not automatically num
-            sumofnorm = sp.projectionEW_norm + sp.projectionNS_norm
-            cos_cal_sum_nom = cos_cal_sum / xr.DataArray(sumofnorm)
+            
+            # # The calibration value needs to be normalized with the relevant component of the solar radiation
+            # # With other words how much light is actually comming this way?
+            # cos_cal_NS_norm = cos_cal_NS * xr.DataArray(sp.projectionNS_norm)
+            
+            # # Do the same for EW
+            
+            # da = calibration.spectral_EW.interp(Angle = np.rad2deg(sp.projectionEW_angle) - 90)
+            # cos_cal_EW = da.rename({'Angle': 'datetime'}).assign_coords(datetime = ('datetime', self.sun_position.index))
+            # cos_cal_EW_norm = cos_cal_EW * xr.DataArray(sp.projectionEW_norm)
+            
+            # # Sum NS and EW
+            # cos_cal_sum = cos_cal_EW_norm + cos_cal_NS_norm
+            
+            # # Divide by the sum of **norms** (Not the calibration value! As we are dealing with vectors the sum is not automatically num
+            # sumofnorm = sp.projectionEW_norm + sp.projectionNS_norm
+            # cos_cal_sum_nom = cos_cal_sum / xr.DataArray(sumofnorm)
+            #########################################################3
+            
+            
+            
+            cos_cal_sum_nom = self._get_cosine_cal_direct(calibration)
             
             # apply final cosine correction to the data
-            
-            
-            ds['direct_horizontal'] = (ds.global_horizontal - ds.diffuse_horizontal)
-            ds['direct_horizontal'] = ds.direct_horizontal / cos_cal_sum_nom
+            ds['direct_horizontal'] = ds.direct_horizontal * cos_cal_sum_nom
             ds['direct_normal'] = ds.direct_horizontal / xr.DataArray(np.sin(self.sun_position.elevation))
-        
 
         
             #### - compose global based on cosine corrected direct and diffuse
@@ -614,11 +659,13 @@ class SolarIrradiation(object):
         
         ds.attrs['clalibration_cosine'] = 'True'
         out = self.__class__(ds) #returns the same class, allows for application to all subclasses
-        if 'diffuse_horizontal' in ds.variables:
-            out.tp_cos_cal_sum = cos_cal_sum
-            out.tp_cos_cal_EW_norm = cos_cal_EW_norm
-            out.tp_cos_cal_NS_norm = cos_cal_NS_norm
-            out.tp_cos_cal_sum_nom = cos_cal_sum_nom
+        # if 'diffuse_horizontal' in ds.variables:
+        #     out.tp_cos_cal_sum = cos_cal_sum
+        #     out.tp_cos_cal_EW_norm = cos_cal_EW_norm
+        #     out.tp_cos_cal_NS_norm = cos_cal_NS_norm
+        #     out.tp_cos_cal_sum_nom = cos_cal_sum_nom
+        
+        
         return out
         
 
