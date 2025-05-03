@@ -166,7 +166,7 @@ def read_factory_cal(path2file):
     se = pd.Series(cna_cal, index = ds.channel)
     se.index.name = 'channel'
     ds['channel_wavelength'] = se
-    
+    ds.attrs['product_name'] = 'mfr_factory_calibration'
     return ds
 
 def read_mfrsr_cal(path2file, verbose = False):
@@ -316,7 +316,7 @@ def read_mfrsr_cal(path2file, verbose = False):
     df_err.columns = [int(c.replace('ERR','')) for c in df_err.columns]
     df_err.columns.name = 'channel'
     ds['responds_error'] = df_res
-    
+    ds.attrs['product_name'] = 'mfr_grad_spectral_calibration'
     return ds
 
 def read_mfrsr_cal_cos(p2f, broadband_col_name = 'Thermopile', test = None):
@@ -438,6 +438,7 @@ def read_mfrsr_cal_cos(p2f, broadband_col_name = 'Thermopile', test = None):
     ds[f'spectral_{scand}'] = df
     
     ds.attrs['header'] = '\n'.join(header)
+    ds.attrs['product_name'] = 'mfr_grad_cosine_responds'
     return ds
 
 def read_mfrsr_cal_responsivity(p2f):
@@ -530,5 +531,5 @@ def read_mfrsr_cal_responsivity(p2f):
     ds = ds.assign_coords(channel = ch_nominal)
     
     ds['channel_wavelength'] = xr.DataArray(channels_orig.astype(float), dims=('channel',))
-
+    ds.attrs['product_name'] = 'mfr_grad_abs_calibration'
     return ds

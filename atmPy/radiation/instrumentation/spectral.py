@@ -93,8 +93,13 @@ class Mfr():
                                                                       broadband_col_name='Termopile', 
                                            )
                 except AttributeError:
-                    raise
-                    
+                    try:
+                        self._cosine_responds = atmcal.read_mfrsr_cal_cos(value, 
+                                                                          broadband_col_name='300')
+                    except:
+                        raise
+        elif value is None:
+            self._cosine_responds = None
         else:
             raise TypeError(f'Unknown type for cosine_responds: {type(value)}')
             
@@ -253,7 +258,8 @@ class Mfr():
     def _apply_calibration_cosine(self, si):
         # if 'clalibration_cosine' in self.dataset.attrs:
         #     assert(self.dataset.attrs['clalibration_cosine'] != 'True'), 'Responds calibration already applied'  
-            
+        if self.cosine_responds is None:
+            return si
         ds = si.dataset.copy()
         ds['global_horizontal'] = ds.global_horizontal * self.cosine_calibration_diffuse
         ds['cosine_cal_coeff_diffuse'] = self.cosine_calibration_diffuse
@@ -276,6 +282,7 @@ class Mfr():
 
         """
         calibration = self.cosine_responds
+
         #### - direct
         sp = atmsol.SolarPosition(si.sun_position.azimuth, np.pi/2 - si.sun_position.elevation, unit = 'rad')
         
@@ -313,6 +320,10 @@ class Mfr():
             ds = xr.open_dataset(data)
         else:
             raise TypeError(f'Unknown type for data: {type(data)}')
+        
+        # make sure that direct obs are removed as they are produced on the fly and only result in confusion
+        ds = ds.drop_vars(['direct_normal', 'direct_horizontal'], errors = 'ignore')
+        
         si = self._data_class(ds)
         self.data_raw = si
         
@@ -328,7 +339,7 @@ class Mfr():
         si = self._apply_calibration_cosine(si)
         self.data_cal_spec_log_head_cos = si
         
-        return self.data_cal_spec_log_head_cos
+        return si
             
 class Mfrsr(Mfr):
     def __init__(self, *args, **kwargs):
@@ -338,7 +349,9 @@ class Mfrsr(Mfr):
     def _apply_calibration_cosine(self, si):
         # if 'clalibration_cosine' in self.dataset.attrs:
         #     assert(self.dataset.attrs['clalibration_cosine'] != 'True'), 'Responds calibration already applied'  
-            
+        if self.cosine_responds is None:
+            return si
+        
         ds = si.dataset.copy()
         
         ds['direct_horizontal'] = (ds.global_horizontal - ds.diffuse_horizontal)
@@ -347,7 +360,7 @@ class Mfrsr(Mfr):
         cos_cal_dir = self.get_cosine_calibration_direct(si)
         ds['direct_horizontal'] = ds.direct_horizontal * cos_cal_dir
         ds['cosine_calibraion_direct'] = cos_cal_dir
-        ds['direct_normal'] = ds.direct_horizontal / xr.DataArray(np.sin(si.sun_position.elevation))
+        # ds['direct_normal'] = ds.direct_horizontal / xr.DataArray(np.sin(si.sun_position.elevation))
         
         ds['solar_zenith_angle'] = 90 - np.rad2deg(si.sun_position.elevation) 
         ds['solar_azimuth_angle'] = np.rad2deg(si.sun_position.azimuth)
@@ -362,3 +375,11 @@ class Mfrsr(Mfr):
         #     out.tp_cos_cal_NS_norm = cos_cal_NS_norm
         #     out.tp_cos_cal_sum_nom = cos_cal_sum_nom
         return out
+    
+    def raw2calibrated(self, data):
+        si = super().raw2calibrated(data)
+        if 'direct_horizontal' not in si.dataset:
+            si.dataset['direct_horizontal'] = (si.dataset.global_horizontal - si.dataset.diffuse_horizontal)
+        sialt = self.data_cal_spec_log_head # there is a chance that this instance already has the sunposition calculated, avoids double execution
+        si.dataset['direct_normal'] = si.dataset.direct_horizontal / xr.DataArray(np.sin(sialt.sun_position.elevation))
+        return si
