@@ -16,7 +16,8 @@ class Mfr():
         
         self.spectral_calibration = spectral_calibration
         self.logger_calibration = logger_calibration
-        if logger_calibration == head_calibration:
+        if np.array_equal(logger_calibration, head_calibration):
+            print('logger equal head calibration')
             self.head_calibration = self.logger_calibration.copy()
         else:
             self.head_calibration = head_calibration
