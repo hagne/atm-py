@@ -61,7 +61,8 @@ def makeMie_diameter(diameterRangeInMikroMeter = [0.1,3.],
                  'spectrum': (wl,intens),
                  'interpolate': 100}
     doreturn: str (['tuple'], 'dict')
-
+    mirrorJetDist: float
+        Distance between the top of the mirror (the rim) and the center of the sample flow.
 
     Returns
     -------
