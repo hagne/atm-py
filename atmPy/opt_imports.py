@@ -56,3 +56,5 @@ geopy = OptionalImport('geopy', submodules = 'distance')
 
 cartopy = OptionalImport('cartopy', submodules = 'io.img_tiles')
 pygam = OptionalImport('pygam')
+
+numba = OptionalImport('numba')

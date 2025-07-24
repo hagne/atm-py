@@ -5,7 +5,7 @@ in a sizedistribution.
 
 import numpy as np
 import pandas as pd
-import numba
+from atmPy.opt_imports import numba
 
 def bincenters2binsANDnames(bincenters, round=None):
     """This creates bin edges from bincenters
