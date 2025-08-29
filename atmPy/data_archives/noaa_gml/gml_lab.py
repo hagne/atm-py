@@ -3,8 +3,28 @@ import urllib as _ul
 import pandas as _pd
 from atmPy.general import measurement_site as _ms
 
-def get_all_sites(url = "https://www.esrl.noaa.gov/gmd/dv/site/"):
+def get_all_sites(url = "https://www.esrl.noaa.gov/gmd/dv/site/", return_type = 'network'):
+    '''
+    
 
+    Parameters
+    ----------
+    url : TYPE, optional
+        DESCRIPTION. The default is "https://www.esrl.noaa.gov/gmd/dv/site/".
+    return_type : TYPE, optional
+        Choose from ['DataFrame', 'network']. The default is 'network'.
+
+    Returns
+    -------
+    TYPE
+        DESCRIPTION.
+
+    '''
+    return_type_options = ['DataFrame', 'network']
+    if return_type not in return_type_options:
+        raise ValueError(f'Unknown return_type: {return_type}. Choose from {return_type_options}')
+    
+    
     html = _ul.request.urlopen(url).read()
     
     sites = _pd.read_html(html)[0]
@@ -28,13 +48,15 @@ def get_all_sites(url = "https://www.esrl.noaa.gov/gmd/dv/site/"):
                   'Code': 'abbreviation',
                   'Country': 'country'}, axis=1, inplace = True)
     
-    sites
+    if return_type == 'DataFrame':
+        return sites
     
-    
-    
-    site_dict_list = []
-    for idx, si in sites.iterrows():
-        site_dict_list.append(si.to_dict())
-    
-    gml_sites = _ms.Network(site_dict_list)
-    return gml_sites
+    elif return_type == 'network':
+        site_dict_list = []
+        for idx, si in sites.iterrows():
+            site_dict_list.append(si.to_dict())
+        
+        gml_sites = _ms.Network(site_dict_list)
+        return gml_sites
+    else:
+        assert(False), 'not possible (35454222)'
