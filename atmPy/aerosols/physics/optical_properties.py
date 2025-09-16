@@ -166,7 +166,7 @@ def size_dist2optical_properties(op, sd, aod=False, noOfAngles=100):
             x_1p = x_2p[x_2p < _np.pi]
     
             y_phase_func = y_1p * 4 * _np.pi / scattering_cross_eff.sum()
-            asymmetry_parameter_LS[i] = .5 * _integrate.simps(_np.cos(x_1p) * y_phase_func * _np.sin(x_1p), x_1p)
+            asymmetry_parameter_LS[i] = .5 * _integrate.simpson(_np.cos(x_1p) * y_phase_func * _np.sin(x_1p), x_1p)
             angular_scatt_func_effective[
                 lc] = pfe * 1e-12 * 1e6  # equivalent to extCoeffPerLayer # similar to  _get_coefficients (converts everthing to meter)
     
