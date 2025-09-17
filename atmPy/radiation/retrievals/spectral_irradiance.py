@@ -822,6 +822,8 @@ class DirectNormalIrradiation(SolarIrradiation):
         #### open file that contains the calibration parameters (the fit parameters from john)
         site = self.site.abb
         p2f=f'/home/grad/surfrad/aod/{site}_mfrhead'
+        if not pl.Path(p2f).is_file():
+            raise FileNotFoundError(f'Calibration parameter file {p2f} not found. This might be due to the wrong value in settings_calibration. Current value is {self.settings_calibration}.')
         langley_params = atmlangcalib.read_langley_params(p2f = p2f)
         
         #### get V0 for that date
@@ -1250,6 +1252,17 @@ class DirectNormalIrradiation(SolarIrradiation):
 
 class CombinedGlobalDiffuseDirect(SolarIrradiation):
     def __init__(self, dataset):
+        """
+        A class that combines the three irradiation components into one dataset and provides some specific functions
+        Parameters
+        ----------
+        dataset : xr.Dataset
+            A dataset that contains the three components as variables named 'global_horizontal', 'diffuse_horizontal', 'direct_normal'
+            and the coordinates 'datetime' and 'channel'
+        -----------
+        2024-06-10, HTelg   
+        """
+
         super().__init__(dataset)
         self.global_horizontal_irradiation = GlobalHorizontalIrradiation(dataset)
         self.diffuse_horizontal_irradiation = DiffuseHorizontalIrradiation(dataset)
@@ -1284,7 +1297,7 @@ class CombinedGlobalDiffuseDirect(SolarIrradiation):
     #                                                             ) #head calibration with lamp
         
     def plot_overview(self, channel = 500, ax = None, 
-                      show_alltime = True,
+                      show_alltime = False,
                       show_sunelevation = False):
         
         if isinstance(ax, type(None)):

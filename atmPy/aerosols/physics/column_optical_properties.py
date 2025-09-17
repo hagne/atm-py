@@ -33,6 +33,9 @@ class AOD_AOT(object):
 
         Parameters
         ----------
+        data: xr.Dataset, xr.DataArray, or pd.DataFrame
+            Dataset or DataArray with AOD or DataFrame with AOD values. Column names need to reflect the wavelength
+            in nm, e.g. 500 for 500nm channel.
         wavelengths: dict
             Column names are often not reflecting the precise wavelength in the channel, but the typical wavelength.
             The dictionary translates column names to exact wavelength. If AOD is calculated and wavelengths is set
