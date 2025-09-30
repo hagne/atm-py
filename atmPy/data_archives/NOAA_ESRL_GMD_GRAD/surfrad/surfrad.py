@@ -375,7 +375,9 @@ def read_raw(path2file, read_header_only = False, test = False):
         ds['direct_normal'] = direct
         ds.attrs = attrs
         
-        obs = atmradobs.CombinedGlobalDiffuseDirect(ds)
+        obs = atmradobs.CombinedGlobalDiffuseDirect(ds, 
+                                                    # raise_error_if_no_channel_wavelength = False
+                                                    )
     else:
         assert(False), 'nop, not possible!'
     return obs

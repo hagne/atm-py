@@ -640,6 +640,7 @@ class DirectNormalIrradiation(SolarIrradiation):
                  langley_fit_settings = None,
                  calibration_strategy = 'johns',
                  metdata = 'surfrad',
+                #  raise_error_if_no_channel_wavelength = True, #this is for the actual wavelength, the calibrated ones not the nominal ones in the channel dimension
                  settings_ozone = None):
         
         """
@@ -677,11 +678,12 @@ class DirectNormalIrradiation(SolarIrradiation):
                 raise RuntimeError('This should never happen (id2334442313)')
         self.variable_name_direct_normal = var_ops_direct_normal[0]
 
+        # if raise_error_if_no_channel_wavelength:
         self.variable_name_alternatives_channel_wavelength = ['channel_wavelength', 'channel_center'] 
         variable_name_channel_wavelength = [v for v in self.variable_name_alternatives_channel_wavelength if v in self.raw_data.data_vars]
         if len(variable_name_channel_wavelength)!= 1:
             if len(var_channel_center) == 0:
-                raise ValueError('Could not find channel center variable in dataset')
+                raise ValueError('Could not find channel center variable in dataset. This might mean that the data has not been spectrally calibrated yet. Use the apply_calibration_spectral method first.')
             if len(var_channel_center) > 1:
                 raise ValueError('Multiple potential channel center variables found in dataset: {}'.format(var_channel_center))
             else:
@@ -703,6 +705,7 @@ class DirectNormalIrradiation(SolarIrradiation):
         self._aod = None
         self._metdata = None
         self._od_ozone = None
+        self._solarspectrum = None
     
     @property
     def met_data(self):
@@ -1140,6 +1143,13 @@ class DirectNormalIrradiation(SolarIrradiation):
             
         return self._aod
     
+    @property
+    def solarspectrum(self):
+        if isinstance(self._solarspectrum, type(None)):
+            self._solarspectrum = xr.open_dataset(self.path2solar_spectrum)
+        return self._solarspectrum
+        
+
     def _transmission_from_toa_radiation(self):
         """
         This assumes that the dataset already contains calibrated spectral radiation data
@@ -1152,9 +1162,10 @@ class DirectNormalIrradiation(SolarIrradiation):
         """
         #### get solar spectrum at top of atmosphere
         
-        ds_solar = xr.open_dataset(self.path2solar_spectrum)
+        ds_solar = self.solarspectrum# xr.open_dataset(self.path2solar_spectrum)
         rad_top = ds_solar.interp(wavelength=self.dataset.channel, method='nearest')
-        direct_es_corr = self.dataset.direct_normal / self.sun_position.sun_earth_distance.to_xarray()**2 #correct for earth sun distance
+        direct_es_corr = self.dataset.direct_normal * self.sun_position.sun_earth_distance.to_xarray()**2 #correct for earth sun distance, this requires mulitplication not division!!!!
+        self.tp_direct_es_corr = direct_es_corr
         trans = direct_es_corr/rad_top #transmission
         trans = trans.drop_vars('wavelength')
         trans = trans.rename_vars({'irradiance':'transmission'})
@@ -1336,9 +1347,9 @@ class CombinedGlobalDiffuseDirect(SolarIrradiation):
         """
 
         super().__init__(dataset)
-        self.global_horizontal_irradiation = GlobalHorizontalIrradiation(dataset)
-        self.diffuse_horizontal_irradiation = DiffuseHorizontalIrradiation(dataset)
-        self.direct_normal_irradiation = DirectNormalIrradiation(dataset)
+        # self.global_horizontal_irradiation = GlobalHorizontalIrradiation(dataset)
+        # self.diffuse_horizontal_irradiation = DiffuseHorizontalIrradiation(dataset)
+        # self.direct_normal_irradiation = DirectNormalIrradiation(dataset)
         
     # def apply_calibration(self, 
     #                       path2cal_spectral,
@@ -1367,7 +1378,25 @@ class CombinedGlobalDiffuseDirect(SolarIrradiation):
     #                                                            varname_dark_signal_spectral = 'head_darksignal',
     #                                                            ignore_has_been_applied_error = True,
     #                                                             ) #head calibration with lamp
-        
+    
+    @property
+    def global_horizontal_irradiation(self):
+        if isinstance(self._global_horizontal_irradiation, type(None)):
+            self._global_horizontal_irradiation = GlobalHorizontalIrradiation(self.dataset)
+        return self._global_horizontal_irradiation
+    
+    @property
+    def diffuse_horizontal_irradiation(self):
+        if isinstance(self._diffuse_horizontal_irradiation, type(None)):
+            self._diffuse_horizontal_irradiation = DiffuseHorizontalIrradiation(self.dataset)
+        return self._diffuse_horizontal_irradiation
+
+    @property
+    def direct_normal_irradiation(self):
+        if isinstance(self._direct_normal_irradiation, type(None)):
+            self._direct_normal_irradiation = DirectNormalIrradiation(self.dataset)
+        return self._direct_normal_irradiation
+
     def plot_overview(self, channel = 500, ax = None, 
                       show_alltime = False,
                       show_sunelevation = False):
