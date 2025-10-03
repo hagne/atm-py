@@ -475,8 +475,9 @@ class Langley_Timeseries(object):
     
 def fit_langley(langley, 
                 # airmasslimits = (2.5,4),
-                weighted = False, error_handling = 'skip'):
+                weighted = True, error_handling = 'skip', parent = None):
     """
+    Performs a linear fit to the langleys. 
     Parameters
     ----------
     langley : TYPE
@@ -490,6 +491,7 @@ def fit_langley(langley,
 
     """
     langley = langley.copy()
+    langley = langley.dropna() # this is necessary as otherwise the fit fails
     langley.sort_index(ascending=False, inplace=True) # otherwise the weigted fit will fail for pm
     # langley = langley.truncate(*airmasslimits)
     y = langley
@@ -504,11 +506,15 @@ def fit_langley(langley,
         wx = np.arange(wt.shape[0])
         f = sp.interpolate.interp1d(wx, wt, bounds_error=False, fill_value='extrapolate')
         w = np.append(wt, f(wx[-1] + 1))
+        w = 1/w**2 
+        parent.tp_w = w
+        parent.tp_langley = langley
         mod = statsmodels.api.WLS(y, x, weights = w)
 
     try:
         res = mod.fit()
-        lser = {'slope': res.params[1], 'intercept': res.params[0], 'slope_stderr': res.bse[1], 'intercept_stderr': res.bse[0]}
+        assert(~np.isnan(res.params['x1'])), 'The fit failed and returned a nan. This should not happen.'
+        lser = {'slope': res.params['x1'], 'intercept': res.params['const'], 'slope_stderr': res.bse['x1'], 'intercept_stderr': res.bse['const']}
         fitfailed = False
         
     except np.linalg.LinAlgError:
@@ -568,7 +574,7 @@ def plot_langley(lang_ds, wls = 'all', date = 'Test'):
 
 class Langley(object):
     def __init__(self, parent, langleys, aimass_limits = (2.5,4),
-                 langley_fit_settings = None):
+                 langley_fit_settings = None, when = None):
         self.parent = parent
         langleys.columns.name = 'wavelength'
         langleys = langleys.truncate(*aimass_limits)
@@ -577,6 +583,8 @@ class Langley(object):
         self.langleys = langleys
         self.langley_fit_settings = langley_fit_settings
         self.refresh()
+        self.langley_pre_clean = False
+        self.when = when
     
     def refresh(self):
         self._langley_fitres = None
@@ -619,7 +627,7 @@ class Langley(object):
             self._fit_langles()
         return self._langley_residual_correlation_prop
     
-    def _fit_langles(self):
+    def _fit_langles(self, verbose = False, error_handling = 'raise'):
         langleys = self.langleys
             
         # df_langres = pd.DataFrame(index=['slope', 'intercept', 'stderr'])
@@ -629,7 +637,7 @@ class Langley(object):
         for wl in langleys:
             # lrg_res = stats.linregress(langleys.index, langleys[wl])
             # df_langres[wl] = pd.Series({'slope': lrg_res.slope, 'intercept': lrg_res.intercept, 'stderr': lrg_res.stderr})
-            out =  fit_langley(langleys[wl])
+            out =  fit_langley(langleys[wl], error_handling=error_handling, parent = self)
             # df_langres[wl] = out['res_series']
             fit_res_dict[wl] = out['res_series']
             if out['res']:
@@ -656,36 +664,46 @@ class Langley(object):
         self._langley_residual_correlation_prop = lrcp
         return df_langres
     
-    def clean(self, use_channels = None, verbose = False):
-        scale = 4 * 0.75
+    def clean(self, threshold = 3, use_channels = None, verbose = False):
+        scale = threshold
         langley = copy.deepcopy(self)
+        langley.langley_pre_clean = self
         # converged = False
         status = 'not convergent'
         for i in range(20):
             if isinstance(use_channels, type(None)):
                 lfr = langley.langley_fit_residual
+                # normalize the std to the 500 nm channel, this acchieves that not a single channel that is particularly noisy (like the 1625) dominates the cleaning.
+                norm = lfr.std()/lfr[500].std()
+                lfr = lfr/norm
             else:
                 lfr = langley.langley_fit_residual.loc[:,use_channels]
                 
             if lfr.dropna().shape[0] == 0: #fit failed from the beginning
                 status = 'fit failed'
                 break
-                
-            
-            # lfr = langley.langley_fit_residual.sum(axis = 1)
+            langley.tp_lfr = lfr.copy()
             lfr = lfr.sum(axis = 1)
-        
-            # skewness = (lfr.mean()-lfr.median())/lfr.std()
+            skewness = (lfr.mean()-lfr.median())/lfr.std()
             # print(f'skewness:\t{skewness:0.4f}')
             # print(f'lfr.mean():\t{lfr.mean():0.4f} {lfr.std():0.4f}')
             # print(f'lfr.median():\t{lfr.median():0.4f} {lfr.mad():0.4f}')
             # print(f'corrdet:\t{spi.am.langley_residual_correlation_prop["determinant"]:0.5f}')
             
             # print(f'mad vs std: {lfr.mad():0.3f} vs {lfr.std():0.3f} ... {lfr.mad()/lfr.std():0.5f}')
-        
-            cutoff = (lfr.median() - (lfr.std() *scale), lfr.median() + (lfr.std() *scale))
-        
-            where = np.logical_and(lfr > cutoff[0], lfr < cutoff[1])
+            # skescale = scale + (abs(skewness) * 5)
+            skescale = scale * (1 + (scale * abs(skewness)))
+
+            print(f'skewness: {skewness:0.4f}\t skewscale:{skescale:0.4f}')
+            cutoff = (lfr.median() - (lfr.std() *skescale), lfr.median() + (lfr.std() *skescale))
+            cut = 'both'
+            if cut == 'below':
+                where = lfr > cutoff[0]
+            elif cut == 'above': # this is not used yet
+                where = lfr < cutoff[1]
+            elif cut == 'both':
+                where = np.logical_and(lfr > cutoff[0], lfr < cutoff[1])
+
             if (~where).sum() == 0:
                 # converged = True
                 status = 'converged'
@@ -702,13 +720,36 @@ class Langley(object):
         out['status'] = status
         return out
     
-    def plot(self, wavelength = 500):
-        res = self.langley_fitres.loc[wavelength]
-        fit = pd.DataFrame(res.intercept + (res.slope * self.langleys.index), index = self.langleys.index)#, columns=['fit'])
-        fit.columns = ['fit',]
-        f,a = plt.subplots()
-        self.langleys[wavelength].plot(ax = a, marker = '.', ls = '', markersize = 1)
-        fit.plot(ax = a)
+    def plot(self, wavelength = None, show_pre_clean = True, ax = None):
+        def plot_one(wl, ax = None):
+            res = self.langley_fitres.loc[wl]
+            fit = pd.DataFrame(res.intercept + (res.slope * self.langleys.index), index = self.langleys.index)#, columns=['fit'])
+            fit.columns = ['fit',]
+            if not isinstance(self.langley_pre_clean, type(None)) and show_pre_clean: # if there was a cleaning step, plot the original data as well
+                self.langley_pre_clean.langleys[wl].plot(ax = a, marker = '.', ls = '', markersize = 3, 
+                                                         color = 'red', 
+                                                        #  alpha = 0.5
+                                                         )
+            self.langleys[wl].plot(ax = a, marker = '.', ls = '', markersize = 5)
+
+            fit.plot(ax = a)
+            fr = self.langley_fitres.loc[wl]
+            txt = f'wavelength: {wl} nm\n'
+            txt += f'slope: {fr.slope:0.2g} ± {fr.slope_stderr:0.1g}\n'
+            txt += f'intercept: {fr.intercept:0.4f} ± {fr.intercept_stderr:0.4f}'
+            a.text(0.1, 0.1, txt, transform = a.transAxes)
+            return None
+        if isinstance(wavelength, type(None)):
+            for wl in self.langleys.columns:
+                f,a = plt.subplots()
+                plot_one(wl, ax)
+        else:
+            if isinstance(ax, type(None)):
+                f,a = plt.subplots()
+            else:
+                a = ax
+                f = ax.figure
+            plot_one(wavelength, ax = a)
         return f,a
     
 

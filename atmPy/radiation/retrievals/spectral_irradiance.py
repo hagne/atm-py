@@ -1239,7 +1239,7 @@ class DirectNormalIrradiation(SolarIrradiation):
         
     
     def _get_langley_from_raw(self, verbose = False):
-        raw_df = self.raw_data.direct_normal_irradiation.to_pandas()
+        raw_df = self.raw_data[self.variable_name_direct_normal].to_pandas()
         
         if verbose:
             print('change to local time')
@@ -1327,8 +1327,8 @@ class DirectNormalIrradiation(SolarIrradiation):
         langley_pm = langley_pm[~langley_pm.index.isna()]
         langley_pm.sort_index(ascending=False, inplace=True)
 
-        self._am = atmlangcalib.Langley(self,langley_am, langley_fit_settings = self.langley_fit_settings)
-        self._pm = atmlangcalib.Langley(self,langley_pm, langley_fit_settings = self.langley_fit_settings)
+        self._am = atmlangcalib.Langley(self,langley_am, langley_fit_settings = self.langley_fit_settings, when = 'am')
+        self._pm = atmlangcalib.Langley(self,langley_pm, langley_fit_settings = self.langley_fit_settings, when = 'pm')
         if verbose:
             print('done')
         return True
@@ -1347,6 +1347,9 @@ class CombinedGlobalDiffuseDirect(SolarIrradiation):
         """
 
         super().__init__(dataset)
+        self._global_horizontal_irradiation = None
+        self._diffuse_horizontal_irradiation = None
+        self._direct_normal_irradiation = None
         # self.global_horizontal_irradiation = GlobalHorizontalIrradiation(dataset)
         # self.diffuse_horizontal_irradiation = DiffuseHorizontalIrradiation(dataset)
         # self.direct_normal_irradiation = DirectNormalIrradiation(dataset)

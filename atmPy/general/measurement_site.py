@@ -405,20 +405,17 @@ class Station(object):
         self._attributes[key] = value
     
     def __repr__(self):
-        return f"MyClass({self._attributes})"
+        return f"Station({self.name})"
 
     # Optional: Add a way to access attributes using dot notation as well
     def __getattr__(self, name):
+        # Prevent recursion errors for special/private attributes
+        if name.startswith('__'):
+            raise AttributeError(f"'MyClass' object has no attribute '{name}'")
         # Fall back to _attributes for undefined attributes
         if name in self._attributes:
             return self._attributes[name]
         raise AttributeError(f"'MyClass' object has no attribute '{name}'")
-        
-    def __repr__(self):
-        txt = (f'name: {self.name} ({self.abb})\n'
-               f'lat/lon/alt: {self.lat}/{self.lon}/{self.alt}')
-        # print(txt)
-        return txt
     
     @property
     def time_zone(self, date ='now'):

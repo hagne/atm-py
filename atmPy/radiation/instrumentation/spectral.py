@@ -17,8 +17,11 @@ class Mfr():
         self.spectral_calibration = spectral_calibration
         self.logger_calibration = logger_calibration
         if np.array_equal(logger_calibration, head_calibration):
-            print('logger equal head calibration')
-            self.head_calibration = self.logger_calibration.copy()
+            if logger_calibration is None:
+                self.head_calibration = head_calibration
+            else:
+                print('File for head and logger calibration are identical.')
+                self.head_calibration = self.logger_calibration.copy()
         else:
             self.head_calibration = head_calibration
         self.cosine_responds = cosine_responds
@@ -50,6 +53,8 @@ class Mfr():
     def logger_calibration(self,value):
         if isinstance(value, xr.Dataset):
             self._logger_calibration = value
+        elif value is None:
+            self._logger_calibration = None
         elif isinstance(value, (str, pl.Path)):
             self._logger_calibration = atmcal.read_factory_cal(value)
         else:
@@ -211,6 +216,8 @@ class Mfr():
     
     def _apply_calibration_logger(self,si):
         ### logger gain calibration
+        if self.logger_calibration is None:
+            return si
         calibration = self.logger_calibration.copy()
         if 'logger_gain' in calibration.variables:
             "in case of factory calibratios both head and logger calibrations are in the same file"
