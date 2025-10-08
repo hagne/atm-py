@@ -180,11 +180,32 @@ def read_langley_params(p2f = '/home/grad/surfrad/aod/tbl_mfrhead', verbose = Fa
         dsses.append(ds)
     return xr.concat(dsses, dim = 'datetime')
 
+def open_langleys(p2fld):
+    "This function is designed to open all langleys within a folder. Here the langleys "
+    "are those generated and saved in the Langley class (with Langley.save2netcdf()"
+    p2fld = pl.Path(p2fld)
+    p2flist = list(p2fld.glob('*'))
+    p2flist.sort()
+    dslist = []
+    for p2f in p2flist:
+        ds = xr.open_dataset(p2f)
+        dt = pd.to_datetime(p2f.name.split('_')[-1].split('.')[0])
+        ampm = p2f.name.split('_')[1]
+        if ampm == 'pm':
+            dt += pd.to_timedelta(6, 'h')
+        ds = ds.expand_dims(datetime = [dt])
+        # ds = ds.expand_dims(ampm = [ampm])
+        ds['ampm'] =  ({'datetime':[dt]}, [ampm])
+        dslist.append(ds)
+    ds = xr.concat(dslist, 'datetime', join='outer')
+    return Langley_Timeseries(ds)
+
 def open_langley_dailys(start = None, #'20160101',  
                         end = None, #'20220101',
                         p2fld = '/home/grad/htelg/data/grad/surfrad/mfrsr/langleys_concat/tbl/',
                         drop_variables = ['langley_residual_correlation_prop', 'valid_points', 'residual_stats', 'cleaning_iterations', 'status'], # they are not needed under normal conditions
                        ):
+    """This is something used within SURFRAD, this should not be here or made more general"""
     p2fld = pl.Path(p2fld)
     df = pd.DataFrame(p2fld.glob('*.nc'), columns=['p2f'])
     df.index = df.apply(lambda row: pd.to_datetime(row.p2f.name.split('_')[4] + '01'), axis =1)
@@ -243,21 +264,68 @@ class Langley_Timeseries(object):
         self._v0rol = None
         self._v0gam = None
         self._v0 = None
-        
-        
+        self._ranked = None    
+
+    def rank_by(self, wl = 500, fit_results = 'intercept_stderr'):
+        """Ranks the current dataset by the given values"""
+        ds = self.dataset
+        dssel = ds.langley_fitres.sel(fit_results = fit_results, wavelength = wl, drop = True)
+        ds['ranked'] = dssel.rank('datetime')
+        return
+    
     @property
     def daterange2predict(self):
         return pd.date_range(start = self.dataset.datetime.values[0], end = self.predict_until, freq='D')
+    
+    def plot_ranked(self, wl = 500):
+        if 'ranked' not in self.dataset:
+            self.rank_by()
+        ds = self.dataset.swap_dims({'datetime':'ranked'})
+        ds = ds.sortby(ds.ranked)
+        f,aa = plt.subplots(2, sharex=True, gridspec_kw={'hspace':0})
+        a = aa[0]
+        # a.plot(ds.ranked, ds.langley_fitres.sel(fit_results = 'intercept', wavelength = wl, drop = True))
+        a.errorbar(ds.ranked, ds.langley_fitres.sel(fit_results = 'intercept', wavelength = wl), ds.langley_fitres.sel(fit_results = 'intercept_stderr', wavelength = wl))
+        at = a.twinx()
+        # next(a._get_lines.prop_cycler)
+        at._get_lines.get_next_color()
+        at.plot(ds.ranked, ds.langley_fitres.sel(fit_results = 'intercept_stderr', wavelength = wl), marker = '.', 
+                # ls = ''
+                # color = at._get_lines.get_next_color()
+            )
+        ##################
+        a = aa[1]
+        # a.plot(ds.ranked, ds.langley_fitres.sel(fit_results = 'intercept', wavelength = wl, drop = True))
+        a.errorbar(ds.ranked, ds.langley_fitres.sel(fit_results = 'slope', wavelength = wl), ds.langley_fitres.sel(fit_results = 'slope_stderr', wavelength = wl))
+        at = a.twinx()
+        # next(a._get_lines.prop_cycler)
+        at._get_lines.get_next_color()
+        at.plot(ds.ranked, ds.langley_fitres.sel(fit_results = 'slope_stderr', wavelength = wl), marker = '.', 
+                # ls = ''
+                # color = at._get_lines.get_next_color()
+            )
+        return f,aa
+    
+
+
+    def plot(self, wl = 500, th = 0.2, order_stderr = 2, ampm = 'am', ax = None, **kwargs):
+        """Plots all langleys as a scatterplot where the color is a measure of the standard error.
         
-    def plot(self, wl = 500, th = 0.2, order_stderr = 2, ax = None, **kwargs):
+        Parameters
+        ----------
+        wl: int
+        ...
+        """
+
         if isinstance(ax, type(None)):
             a = plt.subplot()
         else:
             a = ax
-        intercept = np.exp(self.dataset.sel(wavelength = wl, fit_results = 'intercept').langley_fitres)
-        intercept_stdr = self.dataset.sel(wavelength = wl, fit_results = 'intercept_stderr').langley_fitres
+        intercept = np.exp(self.dataset.sel(wavelength = wl, fit_results = 'intercept', ampm = ampm).langley_fitres)
+        intercept_stdr = self.dataset.sel(wavelength = wl, fit_results = 'intercept_stderr', ampm = ampm).langley_fitres
         weights = 1/intercept_stdr**order_stderr
         intercept = intercept.where(intercept_stdr < th)
+        # return intercept.to_pandas()
         df = pd.DataFrame({'intercept':intercept.to_pandas(),
                       'intercept_stderr': intercept_stdr.to_pandas(),
                       'weights': weights.to_pandas()})#, columns=['basdf', 'asd'])
@@ -265,6 +333,7 @@ class Langley_Timeseries(object):
         df.sort_values('intercept_stderr', ascending=False, inplace=True)
         a.scatter(df.index, df.intercept, s = 8, c = df.weights, cmap =plt.cm.Greens, **kwargs)
         return a 
+    
     
     def _get_v0_gam(self,
                     th = 0.02, # this is about half the annual variability (winter vs summer) of ~0.035
@@ -442,7 +511,15 @@ class Langley_Timeseries(object):
         
         return self._v0rol
     
-    
+    @property
+    def V0_simple(self):
+        """This simply returns the V0 based on all langley result in this object. Therefore, kick out what you don't want!"""
+        dsout = xr.Dataset()
+        dsout['V0'] = self.dataset.langley_fitres.sel(fit_results = 'intercept', drop = True).mean('datetime')
+        dsout['V0_std'] = self.dataset.langley_fitres.sel(fit_results = 'intercept', drop = True).std('datetime')
+        dsout['V0_stderr'] = self.dataset.langley_fitres.sel(fit_results = 'intercept_stderr', drop = True).mean('datetime')
+        return dsout
+
     @property
     def v0prediction(self):
         """
@@ -597,11 +674,15 @@ class Langley(object):
             serialno = self.parent.raw_data.serial_no.values[0]
         except IndexError:
             serialno = self.parent.raw_data.serial_no.values
+        except AttributeError:
+            serialno = self.parent.raw_data.serial_no
         ds = xr.Dataset({'langleys': self.langleys,
                          'langley_fit_residual': self.langley_fit_residual,
                          'langley_fitres': self.langley_fitres,
                          'langley_residual_correlation_prop': self.langley_residual_correlation_prop['determinant'],
-                         'sp02_serial_no': serialno})
+                         'sp02_serial_no': serialno},)
+        ds.attrs = dict(when = self.when,
+                        date= pd.to_datetime(self.parent.dataset.datetime.values[0]).strftime('%Y%m%d'))
         return ds
     
     def save2netcdf(self, path2file):
@@ -753,8 +834,9 @@ class Langley(object):
         return f,a
     
 
-class Calibration(object):
+class Calibration_SP02(object):
     def __init__(self, raw2lang_output):
+        """I believe this is an old SP02 calibration object. not sure if used anymore"""
         self.raw2lang_output = raw2lang_output
         self.langley_fitres = raw2lang_output['ds_results']
         
@@ -1004,8 +1086,9 @@ class Calibration(object):
         f, aa = plot_langley(ds, wls = wls, date = f'{which} - {date}')
         return aa
 
-class CalibrationsOverTime(object):
+class CalibrationsOverTime_SP02(object):
     def __init__(self, path2historic = '/export/htelg/projects/sp02/calibration/BRWsp02calhist20062018SEDcorr.dat', list0path2modern = [], additional_result_instance = None):
+        "SP02 related"
         self.paths = dict(path2historic = pathlib.Path(path2historic),
                           list0path2modern = [pathlib.Path(p) for p in list0path2modern])
         self._historic = None

@@ -413,6 +413,32 @@ class SolarIrradiation(object):
         
         
         self._sun_position = None
+        self._solarspectrum = None
+        self.path2solar_spectrum = '/home/grad/htelg/fundgrube/reference_data/solar/spectrum/solar_spectral_irradiance_e490_00a_amo.nc'
+
+        
+    @property
+    def toa_solarspectrum_1AU(self):
+        """Solar spectrum at 1 AU"""
+        if isinstance(self._solarspectrum, type(None)):
+            self._solarspectrum = xr.open_dataset(self.path2solar_spectrum)
+        return self._solarspectrum
+    
+    @property
+    def toa_spectral_irradiance(self):
+        """Top of the atmosphere spectral irradiances at channels in the dataset. 
+        These are the actuall irradiances with sun earth distanced inbedded."""
+        if "toa_spectral_irradiance" not in self.dataset:
+            ds_solar = self.toa_solarspectrum_1AU# xr.open_dataset(self.path2solar_spectrum)
+            rad_top = ds_solar.interp(wavelength=self.dataset.channel_wavelength, method='linear')# 
+            self.tp_rad_topI = rad_top.copy()
+            rad_top = rad_top / self.sun_position.sun_earth_distance.to_xarray()**2
+            rad_top = rad_top.drop_vars('wavelength')
+            # self.tp_rad_topII = rad_top.copy()
+            self.dataset['toa_spectral_irradiance'] = rad_top.irradiance
+        return self.dataset.toa_spectral_irradiance
+            
+
         
 
     def unify_variables(self, dataset):
@@ -452,6 +478,52 @@ class SolarIrradiation(object):
             self._sun_position = self.site.get_sun_position(self.dataset.datetime)
         return self._sun_position
     
+    def apply_calibration_langley(self, langley_calibration, calibrate_to = 'irradiance'):
+        """Applies the langley calibration to the dataset. Make sure all other calibrations (spectral, head, cosine, etc.) 
+        have been applied before. Note, the calibration to irradiance is still quite crued, as only the center wavelength 
+        is considered instead of the full filter function! Make sure to keep the spectral irradiance at toa if you want to
+        do further processing to transmission, OD, AOD ...
+        
+        Parameters
+        ----------
+        langley_calibration: 
+            Instance of atmPy.radiation.retrievals.langley_calibration.Langley_Timeseries.
+            This is the result of a langley calibration.
+        calibrate_to: str
+            Either 'irradiance' or 'transmission'. If 'irradiance' the output will be in W/m^2/nm.
+            If 'transmission' the output will be unitless (0-1). See note above about top of the atmosphere irradiance.
+        """
+
+        assert(calibrate_to in ['irradiance', 'transmission'])
+        assert(isinstance(langley_calibration, atmlangcalib.Langley_Timeseries)), 'currently only the following instances are excepted: atmPy.radiation.retrievals.langley_calibration.Langley_Timeseries'
+        assert('calibrated_langley' not in self.dataset.attrs), 'it seems likt langley calibrations have already been applied.'
+        lt = langley_calibration
+        v0 = np.exp(lt.V0_simple.V0) / self.sun_position.sun_earth_distance.to_xarray()**2
+        toasi = self.toa_spectral_irradiance # this is already adjusted to sun earth distan
+        v0 = v0.rename({'wavelength':'channel'})
+        
+        dsnew = self.dataset.copy()
+        gh = self.dataset.global_horizontal / v0 # ratio of irradiance of what we had at the top of the atmosphere at normal
+        if calibrate_to == 'irradiance':
+            gh = gh * toasi # actual irradiance observed
+        dsnew['global_horizontal'] = gh
+        dsnew.global_horizontal.attrs['unit'] = 'W/m^2/nm'
+        
+        dh = self.dataset.diffuse_horizontal / v0 
+        dh = dh * toasi
+        dsnew['diffuse_horizontal'] = dh
+        dsnew.diffuse_horizontal.attrs['units'] = 'W/m^2/nm'   
+        
+        dn = self.dataset.direct_normal / v0 
+        dn = dn * toasi
+        dsnew['direct_normal'] = dn
+        dsnew.direct_normal.attrs['units'] = 'W/m^2/nm'
+        
+
+        dsnew.attrs['calibrated_langley'] = 'True'
+
+        return self.__class__(dsnew)
+
     def apply_calibration_spectral(self, calibration):
         """
         This will assign the nominal channel wavelength and provide the exact
@@ -476,7 +548,7 @@ class SolarIrradiation(object):
         
         ds = self.dataset.copy()         
         ds['channel'] = calibration.channel
-        ds['channel_wavelength'] = calibration.statistics.sel(stats = 'CENT', drop=True)
+        ds['channel_wavelength'] = calibration.statistics.sel(stats = 'CENT', drop=True).astype(float)
         ds.attrs['calibrated_spectral'] = 'True'
         return self.__class__(ds) #returns the same class, allows for application to all subclasses
     
@@ -695,7 +767,6 @@ class DirectNormalIrradiation(SolarIrradiation):
         self.settings_metdata = metdata
         self.settings_ozone = settings_ozone
         self.path2absorption_correction_ceoff_1625 = '1625nm_absorption_correction_coefficience.nc'
-        self.path2solar_spectrum = '/home/grad/htelg/fundgrube/reference_data/solar/spectrum/solar_spectral_irradiance_e490_00a_amo.nc'
         self._am = None
         self._pm = None
         self._transmission = None
@@ -705,11 +776,11 @@ class DirectNormalIrradiation(SolarIrradiation):
         self._aod = None
         self._metdata = None
         self._od_ozone = None
-        self._solarspectrum = None
     
     @property
     def met_data(self):
-        if isinstance(self._metdata, type(None)):
+        # if isinstance(self._metdata, type(None)):
+        if 'pressure' not in self.raw_data:
             try:
                 if isinstance(self.settings_metdata, types.FunctionType):
                     self._metdata = self.settings_metdata()
@@ -721,9 +792,46 @@ class DirectNormalIrradiation(SolarIrradiation):
                     else:
                         assert(False), 'moeeeep!'
             except FileNotFoundError as e:
-                # print('Could not find met data. Make sure the "settings_metdata" attribute is set correctly! The following error was raised:')
+                # print('Could not find met data. Make sure to set this value and or that the "settings_metdata" attribute is set correctly! The following error was raised:')
                 raise FileNotFoundError(f'Could not find met data. Make sure the "settings_metdata" attribute is set correctly! The following error was raised: {e}') from e
-        return self._metdata
+        return self.raw_data[['pressure','temperature']]
+    
+    @met_data.setter
+    def met_data(self, value):
+        if isinstance(value, xr.Dataset):
+            dsmet = value
+        elif pl.Path(value).is_file():
+            dsmet = xr.open_dataset(value)
+        else:
+            ValueError(f'Expected xr.Dataset, or valid Path (as str or pathlib.Path). Got: {value}')
+
+        if 'datetime' not in dsmet.coords:
+            altcoords = ['time',]
+            found = [coo for coo in dsmet.coords if coo in altcoords]    
+            assert(len(found) == 1), f'Problem with time coordinate. Expeced one of: {altcoords + ['datetime']}. Available coordinates: {list(dsmet.coords)}'
+            dsmet = dsmet.rename_dims({found[0]:'datetime'})
+            dsmet = dsmet.rename_vars({found[0]:'datetime'})
+
+        if fill_value := dsmet.attrs.get('fill_value', False):
+            dsmet = dsmet.where(dsmet != fill_value)
+
+        if 'pressure' not in dsmet:
+            altcoords = []
+            found = [coo for coo in dsmet if coo in altcoords]    
+            assert(len(found) == 1), f'Problem with pressure variable. Expeced one of: {altcoords + ['pressure']}. Available coordinates: {list(dsmet.coords)}'
+            dsmet = dsmet.rename_vars({found[0]:'pressure'})
+
+        if 'temperature' not in dsmet:
+            altcoords = ['air_temperature', 'temp']
+            found = [coo for coo in dsmet if coo in altcoords]    
+            assert(len(found) == 1), f'Problem with temperature variable. Expeced one of: {altcoords + ['pressure']}. Available coordinates: {list(dsmet.coords)}'
+            dsmet = dsmet.rename_vars({found[0]:'temperature'})
+
+        dst = dsmet[['pressure','temperature']].interp({'datetime':self.raw_data.datetime})
+        # dst = dst.where(dst > -90)
+
+        self.raw_data[['pressure','temperature']] = dst
+        return
     
     def _get_baseline_met_data(self):
         site = self.raw_data.attrs['site']
@@ -851,7 +959,11 @@ class DirectNormalIrradiation(SolarIrradiation):
 
         return
         
-            
+    def _apply_calibration_singleV0(self):
+        # 
+        pass
+        
+
     def _apply_calibration_johns(self):
         def datetime2angulardate(dt):
             if dt.is_leap_year:
@@ -928,33 +1040,62 @@ class DirectNormalIrradiation(SolarIrradiation):
         return self._od_rayleigh
 
     @property
-    def od_ozone(self):
-        if isinstance(self._od_ozone, type(None)):
-            #### read spectral function of ozon absorption coeff 
-            p2f = '/home/grad/surfrad/aod/ozone.coefs'
-            ozone_abs_coef = pd.read_csv(p2f, index_col= 0, sep = ' ', names=['wavelength', 'coeff'])
+    def ozone_absorption_spectrum(self):
+        if 'ozone_absorption_spectrum' not in self.raw_data:
+           #try the default folder
+           self.ozone_absorption_spectrum = '/home/grad/surfrad/aod/ozone.coefs'
+            # else:
+            #     assert(False), 'set ozone_absorption_spectrum!'
+        return self.raw_data['ozone_absorption_spectrum']
+    
+
+    @ozone_absorption_spectrum.setter
+    def ozone_absorption_spectrum(self, value):
+        if pl.Path(value).is_file():
+            ozone_abs_coef = pd.read_csv(value, index_col= 0, sep = ' ', names=['wavelength', 'coeff'])
             ozone_abs_coef = ozone_abs_coef.to_xarray()
-            ozon2bychannel = ozone_abs_coef.interp(wavelength = self.raw_data[self.variable_name_channel_wavelength])
+            ozone_abs_coef = ozone_abs_coef.coeff
+            
+        elif isinstance(value, xr.Dataset):
+            ozone_abs_coef = value
+        else:
+            assert(False), 'no idea what to do'
+        self.tp_ozone_absorption_spectrum = ozone_abs_coef
+        self.raw_data['ozone_absorption_spectrum'] = ozone_abs_coef
+        return
+  
+    @property
+    def ozone_absorption_by_channel(self):
+        if 'ozon_absoption_by_channel' not in self.raw_data:
+            ozon2bychannel = self.ozone_absorption_spectrum.interp(wavelength = self.raw_data[self.variable_name_channel_wavelength])
             self.tp_ozon2bychannel = ozon2bychannel.copy()
             ozon2bychannel = ozon2bychannel.drop('wavelength')
 
             # 368 and 1050 are outside the ozon spectrum. Values should be very small
-            ozon2bychannel.coeff[ozon2bychannel.coeff.isnull()] = 0
-            
-            if self.settings_calibration in ['johns', 'atm_gam']:
-                #### read ozon concentration file for particular site and extract data for this day
+            ozon2bychannel = ozon2bychannel.fillna(0)
+
+            self.raw_data['ozon_absoption_by_channel'] = ozon2bychannel
+        return self.raw_data['ozon_absoption_by_channel']
+
+    @property
+    def ozone_data(self):
+        if 'ozone_data' not in self.raw_data:
+            assert(False), 'Set ozone_data'
+        return self.raw_data['ozone_data']
+    
+    @ozone_data.setter
+    def ozone_data(self, value):
+        if isinstance(value, xr.Dataset):
+            ozone_data = value
+        elif isinstance(value, str):
+            if pl.Path(value).is_file():
+                ozone_data = xr.open_dataset(value)
+            elif value == 'johns':
                 p2f = f'/home/grad/surfrad/aod/ozone/{self.site.abb}_ozone.dat'
                 ozone = atmsrf.read_ozon(p2f)
                 dt = pd.to_datetime(pd.to_datetime(self.raw_data.datetime.values[0]).date())
-                total_ozone = float(ozone.interp(datetime = dt).ozone)
-                
-                # interpolate to exact filter wavelength ... its obiously not done exact at this point
-                
-                # ozon2bychannel = ozone_abs_coef.interp(wavelength = self.raw_data.channel_center)
-                # self.tp_ozon2bychannel = ozon2bychannel.copy()
-                # ozon2bychannel = ozon2bychannel.drop('wavelength')
-            
-            elif self.settings_calibration == 'sp02':
+                ozone_data = float(ozone.interp(datetime = dt).ozone)
+            elif value == 'sp02':
                 assert(self.site.abb == 'brw'), 'only works for barrow so far'
 
                 #### read ozon and interpolate
@@ -980,27 +1121,79 @@ class DirectNormalIrradiation(SolarIrradiation):
                 ozone = xr.open_mfdataset(p2f_list)
                 ozone = ozone.rename({'time': 'datetime'})
                 
-                total_ozone = ozone.interp(datetime = self.raw_data.datetime).TO3
+                ozone_data = ozone.interp(datetime = self.raw_data.datetime).TO3
+
+        elif isinstance(value, (int, float)):
+            ozone_data = xr.DataArray(value, dims=('datetime',), coords={'datetime': self.raw_data.datetime})
+
+        else:
+            assert(False), 'no idea what to do with this~!!?!?'
+        self.raw_data['ozone_data'] = ozone_data
+
+    @property
+    def od_ozone(self):
+        if 'od_ozone' not in self.raw_data:
+        # if isinstance(self._od_ozone, type(None)):
+            #### read spectral function of ozon absorption coeff 
+            # p2f = '/home/grad/surfrad/aod/ozone.coefs'
+            # ozone_abs_coef = pd.read_csv(p2f, index_col= 0, sep = ' ', names=['wavelength', 'coeff'])
+            # ozone_abs_coef = ozone_abs_coef.to_xarray()
+            # ozon2bychannel = ozone_abs_coef.interp(wavelength = self.raw_data[self.variable_name_channel_wavelength])
+            # self.tp_ozon2bychannel = ozon2bychannel.copy()
+            # ozon2bychannel = ozon2bychannel.drop('wavelength')
+
+            # 368 and 1050 are outside the ozon spectrum. Values should be very small
+            # ozon2bychannel.coeff[ozon2bychannel.coeff.isnull()] = 0
+            
+            # if self.settings_calibration in ['johns', 'atm_gam']:
+                #### read ozon concentration file for particular site and extract data for this day
+                # p2f = f'/home/grad/surfrad/aod/ozone/{self.site.abb}_ozone.dat'
+                # ozone = atmsrf.read_ozon(p2f)
+                # dt = pd.to_datetime(pd.to_datetime(self.raw_data.datetime.values[0]).date())
+                # total_ozone = float(ozone.interp(datetime = dt).ozone)
                 
-                # ozon2bychannel = ozone_abs_coef.interp(wavelength = self.raw_data.channel_center)
-                # ozon2bychannel = ozon2bychannel.drop('wavelength')
+            
+            # elif self.settings_calibration == 'sp02':
+                # assert(self.site.abb == 'brw'), 'only works for barrow so far'
+
+                # #### read ozon and interpolate
+                # dt = pd.to_datetime(self.raw_data.datetime.values[0])
+                # p2fld= pl.Path('/nfs/stu3data2/Model_data/merra_2/barrow/merra_M2I1nxasm_5.12.4/')
                 
-                # # 368 and 1050 are outside the ozon spectrum. Values should be very small
-                # ozon2bychannel.coeff[ozon2bychannel.coeff.isnull()] = 0
+                # p2f_list = []
+                # # load day before and after for interolation purposes
+                # for i in list(range(-1,2)):
+                #     dtt = dt + pd.to_timedelta(i, 'd')
                 
-            else:
-                if isinstance(self.settings_ozone, (int, float)):
-                    total_ozone = self.settings_ozone
-                else:
-                    assert(False), f'not a known calibration strategy: {self.settings_calibration}. And unknown ozone setting: {self.settings_ozone}. Make sure to set those.'
+                #     pattern = f'MERRA2_*.inst1_2d_asm_Nx.{dtt.year}{dtt.month:02d}{dtt.day:02d}.nc'
+                
+                #     res = list(p2fld.glob(pattern))
+                
+                #     if len(res) == 0:
+                #         assert(False), 'not matching ozon file'
+                
+                #     assert(len(res) ==1), 'There is more than 1 matching ozon file ... inconceivable!'
+                
+                #     p2f_list.append(res[0])
+                
+                # ozone = xr.open_mfdataset(p2f_list)
+                # ozone = ozone.rename({'time': 'datetime'})
+                
+                # total_ozone = ozone.interp(datetime = self.raw_data.datetime).TO3
+            
+                
+            # else:
+            #     if isinstance(self.settings_ozone, (int, float)):
+            #         total_ozone = self.settings_ozone
+            #     else:
+            #         assert(False), f'not a known calibration strategy: {self.settings_calibration}. And unknown ozone setting: {self.settings_ozone}. Make sure to set those.'
                 
             #### scale abs. coef. to total ozone to get OD_ozone
-            self.tp_total_ozone = total_ozone
-            self.tp_ozon2bychannel = ozon2bychannel
-            od_ozone = ozon2bychannel * (total_ozone/1000) #any idea why we devide by 1000?
+            od_ozone = self.ozone_absorption_by_channel * (self.ozone_data/1000) #any idea why we devide by 1000?
             od_ozone = od_ozone.fillna(0)
-            self._od_ozone = od_ozone.coeff
-        return self._od_ozone
+            # self._od_ozone = od_ozone
+            self.raw_data['od_ozone'] = od_ozone
+        return self.raw_data['od_ozone']
     
     @property
     def precipitable_water(self):
@@ -1142,14 +1335,9 @@ class DirectNormalIrradiation(SolarIrradiation):
             self._aod = aod
             
         return self._aod
-    
-    @property
-    def solarspectrum(self):
-        if isinstance(self._solarspectrum, type(None)):
-            self._solarspectrum = xr.open_dataset(self.path2solar_spectrum)
-        return self._solarspectrum
         
 
+    # This is now split up in the SolarIrradiatin instance and here somewhere
     def _transmission_from_toa_radiation(self):
         """
         This assumes that the dataset already contains calibrated spectral radiation data
@@ -1161,21 +1349,27 @@ class DirectNormalIrradiation(SolarIrradiation):
 
         """
         #### get solar spectrum at top of atmosphere
-        
-        ds_solar = self.solarspectrum# xr.open_dataset(self.path2solar_spectrum)
-        rad_top = ds_solar.interp(wavelength=self.dataset.channel, method='nearest')
-        direct_es_corr = self.dataset.direct_normal * self.sun_position.sun_earth_distance.to_xarray()**2 #correct for earth sun distance, this requires mulitplication not division!!!!
-        self.tp_direct_es_corr = direct_es_corr
-        trans = direct_es_corr/rad_top #transmission
-        trans = trans.drop_vars('wavelength')
-        trans = trans.rename_vars({'irradiance':'transmission'})
-        self._transmission = trans.transmission
+        if 'toa_spectral_irradiance' in self.raw_data:
+            trans = self.raw_data.direct_normal / self.raw_data.toa_spectral_irradiance
+            self.raw_data['transmission'] = trans
+        else:
+            ds_solar = self.toa_solarspectrum_1AU# xr.open_dataset(self.path2solar_spectrum)
+            rad_top = ds_solar.interp(wavelength=self.dataset.channel_wavelength, method='linear')
+            direct_es_corr = self.dataset.direct_normal * self.sun_position.sun_earth_distance.to_xarray()**2 #correct for earth sun distance, this requires mulitplication not division!!!!
+            self.tp_direct_es_corr = direct_es_corr
+            trans = direct_es_corr/rad_top #transmission
+            trans = trans.drop_vars('wavelength')
+            trans = trans.rename_vars({'irradiance':'transmission'})
+            self.raw_data['transmission'] = trans.transmission
         return
 
     @property
     def transmission(self):
-        if isinstance(self._transmission, type(None)):
-            if self.settings_calibration == 'johns':
+        # if isinstance(self._transmission, type(None)):
+        if 'transmission' not in self.raw_data:
+            if self.raw_data.attrs.get('calibrated_langley', False) and self.raw_data.global_horizontal.attrs.get('unit', 'bla') == 'W/m^2/nm':
+                self._transmission_from_toa_radiation()
+            elif self.settings_calibration == 'johns':
                 self._apply_calibration_johns()
             elif self.settings_calibration == 'atm_gam':
                 self._apply_calibration_atm_gam()
@@ -1208,7 +1402,8 @@ class DirectNormalIrradiation(SolarIrradiation):
                 
                 #### get transmission
                 self._transmission = raw_data/calib_interp_secorr
-        return self._transmission
+        return self.raw_data.transmission
+    
     
     # @property
     # def sun_position(self):
@@ -1239,6 +1434,21 @@ class DirectNormalIrradiation(SolarIrradiation):
         
     
     def _get_langley_from_raw(self, verbose = False):
+        """Converts the current direct normal data into Langleys. Including:
+        - correction for Sun-Earth distance
+        - separaton into AM and PM
+        Make sure the entire AM and PM are in the dataset, merge multiple files if necessary
+
+        Returns
+        -------
+        None.
+
+        Yields
+        ------
+        data of the langley_am and langley_pm properties, both of which are Langley instances.
+
+        """
+
         raw_df = self.raw_data[self.variable_name_direct_normal].to_pandas()
         
         if verbose:
