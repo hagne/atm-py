@@ -650,11 +650,11 @@ def plot_langley(lang_ds, wls = 'all', date = 'Test'):
     return f,aas
 
 class Langley(object):
-    def __init__(self, parent, langleys, aimass_limits = (2.5,4),
+    def __init__(self, parent, langleys, airmass_limits = (2.5,4),
                  langley_fit_settings = None, when = None):
         self.parent = parent
         langleys.columns.name = 'wavelength'
-        langleys = langleys.truncate(*aimass_limits)
+        langleys = langleys.truncate(*airmass_limits)
         # langleys = langleys.copy()
         # langleys = langleys.where(aimass_limits[0] < langleys.airmass).where(aimass_limits[1] > langleys.airmass).dropna('airmass')
         self.langleys = langleys

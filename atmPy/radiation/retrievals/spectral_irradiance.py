@@ -763,19 +763,21 @@ class DirectNormalIrradiation(SolarIrradiation):
         self.variable_name_channel_wavelength = variable_name_channel_wavelength[0]
 
         self.langley_fit_settings = langley_fit_settings
+        self.settings_langley_airmass_limits = (2.5,4)
         self.settings_calibration = calibration_strategy 
         self.settings_metdata = metdata
         self.settings_ozone = settings_ozone
+        self.settings_rayleigh = 'firstprinciple' #options: 'john', 'firstprinciple'. "john" might have an errror in it, not sure if the error happend appon translation or his code actually has that error. results in an over estimation of the rayleigh od.
         self.path2absorption_correction_ceoff_1625 = '1625nm_absorption_correction_coefficience.nc'
         self._am = None
         self._pm = None
-        self._transmission = None
-        self._od_rayleigh = None
+        # self._transmission = None
+        # self._od_rayleigh = None
         self._od_co2ch4h2o = None
         self._tpw = None
-        self._aod = None
-        self._metdata = None
-        self._od_ozone = None
+        # self._aod = None
+        # self._metdata = None
+        # self._od_ozone = None
     
     @property
     def met_data(self):
@@ -1034,10 +1036,16 @@ class DirectNormalIrradiation(SolarIrradiation):
 
     @property
     def od_rayleigh(self):
-        if isinstance(self._od_rayleigh, type(None)):
-            odr = xr.concat([atmraylab.rayleigh_od_johnsmethod(self.met_data.pressure, chan) for chan in self.raw_data[self.variable_name_channel_wavelength]], 'channel')
+        if 'od_rayleigh' not in self.raw_data:
+            if self.settings_rayleigh == 'john':
+                odr = xr.concat([atmraylab.rayleigh_od_johnsmethod(self.met_data.pressure, chan.values) for chan in self.raw_data[self.variable_name_channel_wavelength]], 'channel')
+            elif self.settings_rayleigh == 'firstprinciple':
+                odr = xr.concat([atmraylab.rayleigh_od_first_principles(chan.values, pressure = self.met_data.pressure) for chan in self.raw_data[self.variable_name_channel_wavelength]], 'channel')
             self._od_rayleigh = odr
-        return self._od_rayleigh
+            self.tp_odr = odr
+            self.raw_data['od_rayleigh'] = odr
+        return self.raw_data['od_rayleigh']
+
 
     @property
     def ozone_absorption_spectrum(self):
@@ -1324,7 +1332,7 @@ class DirectNormalIrradiation(SolarIrradiation):
     
     @property
     def aod(self):
-        if isinstance(self._aod, type(None)):
+        if 'aod' not in self.raw_data:
             odt = self.od_total
             odr = self.od_rayleigh
             odch4 = self.od_co2_ch4_h2o.ch4
@@ -1332,9 +1340,10 @@ class DirectNormalIrradiation(SolarIrradiation):
             odh2o = self.od_co2_ch4_h2o.h2o_5cm
             odozone = self.od_ozone
             aod = odt - odr - odch4 - odco2 - odh2o - odozone
-            self._aod = aod
+            # self._aod = aod
+            self.raw_data['aod'] = aod
             
-        return self._aod
+        return self.raw_data.aod
         
 
     # This is now split up in the SolarIrradiatin instance and here somewhere
@@ -1537,8 +1546,8 @@ class DirectNormalIrradiation(SolarIrradiation):
         langley_pm = langley_pm[~langley_pm.index.isna()]
         langley_pm.sort_index(ascending=False, inplace=True)
 
-        self._am = atmlangcalib.Langley(self,langley_am, langley_fit_settings = self.langley_fit_settings, when = 'am')
-        self._pm = atmlangcalib.Langley(self,langley_pm, langley_fit_settings = self.langley_fit_settings, when = 'pm')
+        self._am = atmlangcalib.Langley(self,langley_am, langley_fit_settings = self.langley_fit_settings, airmass_limits = self.settings_langley_airmass_limits, when = 'am')
+        self._pm = atmlangcalib.Langley(self,langley_pm, langley_fit_settings = self.langley_fit_settings, airmass_limits = self.settings_langley_airmass_limits, when = 'pm')
         if verbose:
             print('done')
         return True
