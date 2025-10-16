@@ -495,7 +495,8 @@ class SolarIrradiation(object):
         """
 
         assert(calibrate_to in ['irradiance', 'transmission'])
-        assert(isinstance(langley_calibration, atmlangcalib.Langley_Timeseries)), 'currently only the following instances are excepted: atmPy.radiation.retrievals.langley_calibration.Langley_Timeseries'
+        # assert(isinstance(langley_calibration, atmlangcalib.Langley_Timeseries)), 
+        assert(langley_calibration.__class__.__name__ == "Langley_Timeseries"), f'currently only the following instances are excepted: atmPy.radiation.retrievals.langley_calibration.Langley_Timeseries. I got {langley_calibration}'
         assert('calibrated_langley' not in self.dataset.attrs), 'it seems likt langley calibrations have already been applied.'
         lt = langley_calibration
         v0 = np.exp(lt.V0_simple.V0) / self.sun_position.sun_earth_distance.to_xarray()**2
@@ -767,6 +768,8 @@ class DirectNormalIrradiation(SolarIrradiation):
         self.settings_calibration = calibration_strategy 
         self.settings_metdata = metdata
         self.settings_ozone = settings_ozone
+        self.mfrsr_history = '/home/grad/htelg/projects/AOD_redesign/MFRSR_History.xlsx'
+        self.precipitable_water_varname = None
         self.settings_rayleigh = 'firstprinciple' #options: 'john', 'firstprinciple'. "john" might have an errror in it, not sure if the error happend appon translation or his code actually has that error. results in an over estimation of the rayleigh od.
         self.path2absorption_correction_ceoff_1625 = '1625nm_absorption_correction_coefficience.nc'
         self._am = None
@@ -806,7 +809,7 @@ class DirectNormalIrradiation(SolarIrradiation):
             dsmet = xr.open_dataset(value)
         else:
             ValueError(f'Expected xr.Dataset, or valid Path (as str or pathlib.Path). Got: {value}')
-
+        dsmet_clean = xr.Dataset()
         if 'datetime' not in dsmet.coords:
             altcoords = ['time',]
             found = [coo for coo in dsmet.coords if coo in altcoords]    
@@ -822,17 +825,21 @@ class DirectNormalIrradiation(SolarIrradiation):
             found = [coo for coo in dsmet if coo in altcoords]    
             assert(len(found) == 1), f'Problem with pressure variable. Expeced one of: {altcoords + ['pressure']}. Available coordinates: {list(dsmet.coords)}'
             dsmet = dsmet.rename_vars({found[0]:'pressure'})
+        dsmet_clean['pressure'] = dsmet['pressure']
 
         if 'temperature' not in dsmet:
             altcoords = ['air_temperature', 'temp']
             found = [coo for coo in dsmet if coo in altcoords]    
             assert(len(found) == 1), f'Problem with temperature variable. Expeced one of: {altcoords + ['pressure']}. Available coordinates: {list(dsmet.coords)}'
             dsmet = dsmet.rename_vars({found[0]:'temperature'})
-
-        dst = dsmet[['pressure','temperature']].interp({'datetime':self.raw_data.datetime})
+        dsmet_clean['temperature'] = dsmet['temperature']
+      
+        dsmet_clean = dsmet_clean.interp({'datetime':self.raw_data.datetime}, method = 'linear')
+        self.tp_dsmet_clean = dsmet_clean
+        # dst = dsmet[['pressure','temperature']].interp({'datetime':self.raw_data.datetime})
         # dst = dst.where(dst > -90)
 
-        self.raw_data[['pressure','temperature']] = dst
+        self.raw_data[['pressure','temperature']] = dsmet_clean[['pressure','temperature']]
         return
     
     def _get_baseline_met_data(self):
@@ -1205,52 +1212,114 @@ class DirectNormalIrradiation(SolarIrradiation):
     
     @property
     def precipitable_water(self):
-        if isinstance(self._tpw, type(None)):
-            sitedict = {'Bondville': 'BND', 
-                        'Fort Peck': 'FPK',
-                        'Goodwin Creek': 'GWN', 
-                        'Table Mountain': 'TBL',
-                        'Desert Rock': 'DRA',
-                        'Penn State': 'PSU', 
-                        'ARM SGP': 'sgp', 
-                        'Sioux Falls': 'SXF',
-                        'Canaan Valley': 'CVA',
-                       }
+        """precipitable water in cm"""
+
+        if 'precipitable_water' not in self.raw_data:
+            assert(False), 'precipitable water is not set. do so!'
             
-            #### get path to relevant soundings files
-            files = pd.DataFrame()
-            datetime = pd.to_datetime(self.raw_data.datetime.values[0])
-            for dt in [datetime, datetime + pd.to_timedelta(1, 'day')]:
-                # pass
+        return self.raw_data['precipitable_water']
+
+    # @property
+    # def precipitable_water(self):
+    #     if isinstance(self._tpw, type(None)):
+    #         sitedict = {'Bondville': 'BND', 
+    #                     'Fort Peck': 'FPK',
+    #                     'Goodwin Creek': 'GWN', 
+    #                     'Table Mountain': 'TBL',
+    #                     'Desert Rock': 'DRA',
+    #                     'Penn State': 'PSU', 
+    #                     'ARM SGP': 'sgp', 
+    #                     'Sioux Falls': 'SXF',
+    #                     'Canaan Valley': 'CVA',
+    #                    }
             
-                p2fld = pl.Path(f'/nfs/grad/surfrad/sounding/{dt.year}/')
-                searchstr = f'{dt.year}{dt.month:02d}{dt.day:02d}*.int'
-                df = pd.DataFrame(p2fld.glob(searchstr), columns=['p2f'])
-                files = pd.concat([files, df])
+    #         #### get path to relevant soundings files
+    #         files = pd.DataFrame()
+    #         datetime = pd.to_datetime(self.raw_data.datetime.values[0])
+    #         for dt in [datetime, datetime + pd.to_timedelta(1, 'day')]:
+    #             # pass
             
-            files.sort_values('p2f', inplace = True)
+    #             p2fld = pl.Path(f'/nfs/grad/surfrad/sounding/{dt.year}/')
+    #             searchstr = f'{dt.year}{dt.month:02d}{dt.day:02d}*.int'
+    #             df = pd.DataFrame(p2fld.glob(searchstr), columns=['p2f'])
+    #             files = pd.concat([files, df])
+            
+    #         files.sort_values('p2f', inplace = True)
             
             
-            tpwts = []
-            # tpsoundis = []
-            for p2f in files.p2f:
-                # pass
+    #         tpwts = []
+    #         # tpsoundis = []
+    #         for p2f in files.p2f:
+    #             # pass
             
-                soundi = atmsrf.read_sounding(p2f)
-                # tpsoundis.append({"sounding" : soundi, "fn":p2f})
-                tpwts.append(soundi.precipitable_water.expand_dims({'datetime': [soundi.data.attrs['datetime'],]}))
+    #             soundi = atmsrf.read_sounding(p2f)
+    #             # tpsoundis.append({"sounding" : soundi, "fn":p2f})
+    #             tpwts.append(soundi.precipitable_water.expand_dims({'datetime': [soundi.data.attrs['datetime'],]}))
                 
-            # self.tp_soundi = tpsoundis
-            tpw = xr.concat(tpwts, 'datetime')
-            # self.tp_tpw_all_1 = tpw.copy()
-            tpw = tpw.assign_coords(site = [sitedict[str(s.values)].lower() for s in tpw.site])
-            # self.tp_tpw_all_2 = tpw.copy()
-            tpw = tpw.sel(site = self.raw_data.site)
-            tpw = tpw.drop(['site'])
+    #         # self.tp_soundi = tpsoundis
+    #         tpw = xr.concat(tpwts, 'datetime')
+    #         # self.tp_tpw_all_1 = tpw.copy()
+    #         tpw = tpw.assign_coords(site = [sitedict[str(s.values)].lower() for s in tpw.site])
+    #         # self.tp_tpw_all_2 = tpw.copy()
+    #         tpw = tpw.sel(site = self.raw_data.site)
+    #         tpw = tpw.drop(['site'])
             
-            tpw = tpw.interp({'datetime': self.raw_data.datetime})
-            self._tpw =tpw
-        return self._tpw
+    #         tpw = tpw.interp({'datetime': self.raw_data.datetime})
+    #         self._tpw =tpw
+    #     return self._tpw
+        
+    @precipitable_water.setter
+    def precipitable_water(self, value):
+        if isinstance(value, xr.Dataset):
+            ds = value
+        elif isinstance(value, str): 
+            if pl.Path(value).is_file():
+                ds = xr.open_dataset(value)
+            else:
+                raise FileNotFoundError(f'File {value} not found')
+        elif isinstance(value, (int, float)): 
+            ds = xr.Dataset()
+            ds['precipitable_water'] =xr.DataArray(value, dims=('datetime',), coords={'datetime': self.raw_data.datetime})
+            # return self.raw_data['precipitable_water']
+        else:
+            ValueError(f'Expected xr.Dataset, or valid Path (as str or pathlib.Path). Got: {value}')
+
+        # ds_clean = xr.Dataset()
+        if 'datetime' not in ds.coords:
+            altcoords = ['time',]
+            found = [coo for coo in ds.coords if coo in altcoords]    
+            assert(len(found) == 1), f'Problem with time coordinate. Expeced one of: {altcoords + ['datetime']}. Available coordinates: {list(dsmet.coords)}'
+            ds = ds.rename_dims({found[0]:'datetime'})
+            ds = ds.rename_vars({found[0]:'datetime'})
+
+        if fill_value := ds.attrs.get('fill_value', False):
+            ds = ds.where(ds != fill_value)
+
+        if not isinstance(self.precipitable_water_varname, type(None)):
+            ds_clean = ds[self.precipitable_water_varname]
+        else:
+            varlist = [var for var in ds if 'precipitable' in var]
+            if len(varlist) > 0:
+                assert(len(varlist) == 1), f'more then one variable found that indicate precipitable water ({varlist}). Try setting self.precipitable_water_varname with the appropriete variable name.'
+                ds_clean = ds[varlist[0]]
+        
+        ds_clean = ds_clean.interp({'datetime':self.raw_data.datetime}, method = 'linear')
+        # self.tp_dsmet_clean = ds_clean
+        if 'units' in ds_clean.attrs:
+            if ds_clean.attrs['units'] == 'mm':
+                ds_clean = ds_clean / 10 # convert to cm
+            elif ds_clean.attrs['units'] in ['cm', 'centimeter', 'centimeters']:
+                pass
+            else:
+                assert(False), f'precipitable water unit {ds_clean.attrs["units"]} not recognized. Set the precipitable_water_varname attribute to the correct variable name and make sure it is in cm.'
+        else:
+            print('precipitable water variable has no unit attribute. Assuming it is in cm.')
+            
+        ds_clean.attrs['units'] = 'cm'
+        ds_clean.attrs['long_name'] = 'Precipitable water'
+        self.raw_data['precipitable_water'] = ds_clean
+
+        return
         
 
     @property
@@ -1259,60 +1328,64 @@ class DirectNormalIrradiation(SolarIrradiation):
             # get the 1625 filter info based on the MFRSR instrument serial no
             if 1625 in self.raw_data.channel:
                 #### TODO: this file should be stored somewhere more meaning full
-                fn = '/home/grad/htelg/projects/AOD_redesign/MFRSR_History.xlsx'
+                if not isinstance(self.mfrsr_history, type(None)):
+                    fn = '/home/grad/htelg/projects/AOD_redesign/MFRSR_History.xlsx'
+                    mfrsr_info = pd.read_excel(self.mfrsr_history, sheet_name='Overview')
+                    inst_info = mfrsr_info[mfrsr_info.Instrument == self.raw_data.serial_no]
                 
-                mfrsr_info = pd.read_excel(fn, sheet_name='Overview')
-                inst_info = mfrsr_info[mfrsr_info.Instrument == self.raw_data.serial_no]
+                    fab = inst_info.Filter_1625nm.iloc[0]
+                    self.tp_fab = fab
+                    filter_no = int(''.join([i for i in fab if i.isnumeric()]))
+                    filter_batch = ''.join([i for i in fab if not i.isnumeric()]).lower()
+                    self.tp_filter_no = filter_no
+                    self.tp_filter_batch = filter_batch
+                    # open the lookup dabel for the Optical depth correction
+                    # correction_info = xr.open_dataset(self.path2absorption_correction_ceoff_1625)
+                    with xr.open_dataset(self.path2absorption_correction_ceoff_1625) as correction_info:
+                        correction_info.load()
                 
-                fab = inst_info.Filter_1625nm.iloc[0]
-                filter_no = int(''.join([i for i in fab if i.isnumeric()]))
-                filter_batch = ''.join([i for i in fab if not i.isnumeric()]).lower()
-                
-                # open the lookup dabel for the Optical depth correction
-                # correction_info = xr.open_dataset(self.path2absorption_correction_ceoff_1625)
-                with xr.open_dataset(self.path2absorption_correction_ceoff_1625) as correction_info:
-                    correction_info.load()
-                
-                ds = xr.Dataset()
-                params_dict = {}
-                for molecule in ['co2', 'ch4', 'h2o_5cm']:
-                    params = correction_info.sel(filter_no = filter_no, batch = filter_batch, molecule = molecule)
-                    params_dict[molecule] = params
-                    # apply the airmass dependence
-                    da = params.OD.interp({'airmass': self.sun_position.airmass})
-                    da = da.assign_coords(airmass = self.sun_position.index.values)
-                    da = da.rename({'airmass': 'datetime'})
-                    da = da.drop(['filter_no', 'molecule', 'batch'])
-                    ds[molecule] = da
+                    ds = xr.Dataset()
+                    params_dict = {}
+                    for molecule in ['co2', 'ch4', 'h2o_5cm']:
+                        params = correction_info.sel(filter_no = filter_no, batch = filter_batch, molecule = molecule)
+                        params_dict[molecule] = params
+                        # apply the airmass dependence
+                        da = params.OD.interp({'airmass': self.sun_position.airmass})
+                        da = da.assign_coords(airmass = self.sun_position.index.values)
+                        da = da.rename({'airmass': 'datetime'})
+                        da = da.drop(['filter_no', 'molecule', 'batch'])
+                        ds[molecule] = da
                     
-                # self.tp_params = params_dict
-                # self.tp_params_interp = ds.copy()
-                
-                ds = ds.expand_dims({'channel': [1625,]})
-                # normalize to the ambiant pressure ... less air -> less absorption, 
-                # only for ch4 and c02, water is scaled by the precipitable water
-                # TODO, this can probably done better? 
-                ds[['ch4', 'co2']] = ds[['ch4', 'co2']] * (self.met_data.pressure/1013.25)
-            
-                # self.tp_ds = ds.copy()
-                # self.tp_tpw = self.tpw.copy()
-                tpw = self.precipitable_water
-                ds['h2o_5cm'] = ds.h2o_5cm / 5 * tpw
-            
-                #### add 0 for all other channels
-                dstlist = [ds]
-                for cha in self.raw_data.channel:
-                    if int(cha) == 1625:
-                        continue    
+                    # self.tp_params = params_dict
+                    # self.tp_params_interp = ds.copy()
                     
-                    dst = copy.deepcopy(ds)
-                    dst = dst.assign_coords({'channel': [cha]})
+                    ds = ds.expand_dims({'channel': [1625,]})
+                    # normalize to the ambiant pressure ... less air -> less absorption, 
+                    # only for ch4 and c02, water is scaled by the precipitable water
+                    # TODO, this can probably done better? 
+                    ds[['ch4', 'co2']] = ds[['ch4', 'co2']] * (self.met_data.pressure/1013.25)
                 
-                    for var in dst:
-                        dst[var][:] = 0
+                    # self.tp_ds = ds.copy()
+                    # self.tp_tpw = self.tpw.copy()
+                    tpw = self.precipitable_water
+                    ds['h2o_5cm'] = ds.h2o_5cm / 5 * tpw
                 
-                    dstlist.append(dst)
-                ds = xr.concat(dstlist, 'channel')
+                    #### add 0 for all other channels
+                    dstlist = [ds]
+                    for cha in self.raw_data.channel:
+                        if int(cha) == 1625:
+                            continue    
+                        
+                        dst = copy.deepcopy(ds)
+                        dst = dst.assign_coords({'channel': [cha]})
+                    
+                        for var in dst:
+                            dst[var][:] = 0
+                    
+                        dstlist.append(dst)
+                    ds = xr.concat(dstlist, 'channel')
+                else:
+                    assert(False), 'Set the mfrsr_history attribute to the path of the MFRSR history file'
                 
             else:
                 # generate a ds with zeros

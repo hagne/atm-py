@@ -37,6 +37,38 @@ def rayleigh_od_johnsmethod(pressure_surface, wavelength, pressure_standard = 10
     # trans = np.e**(-rayleigh)
     return rayleigh
 
+def rayleigh_od_ht(wl, pressure_hpa=1013.25):
+    """
+    Rayleigh optical depth using the Hansen & Travis parameterization.
+
+    Parameters
+    ----------
+    wl : float
+        Vacuum wavelength(s) in nanometer (nm).
+    pressure_hpa : float
+        Surface pressure in hPa. Defaults to standard 1013.25 hPa.
+
+    Returns
+    -------
+    numpy.ndarray or float
+        Rayleigh optical depth τ_R at each wavelength.
+
+    Formula
+    -------
+    τ_R(λ, P) = (P/1013.25) * 0.008569 * λ^{-4} * [1 + 0.0113 λ^{-2} + 0.00013 λ^{-4}]
+    with λ in µm and P in hPa.
+
+    Notes
+    -----
+    - Assumes dry air; humidity/CO₂ effects are small for most applications.
+    - Use vacuum wavelength.
+    """
+    lam = np.asarray(wl * 1e-3, dtype=float)
+    x2 = lam**-2
+    x4 = lam**-4
+    od = (pressure_hpa / 1013.25) * 0.008569 * x4 * (1.0 + 0.0113 * x2 + 0.00013 * x4)
+    # return a scalar if input was scalar
+    return od
 
 def rayleigh_od_first_principles(wl, pressure=1013.25, g=9.80665,
                                       depol_ratio=0.0279, xco2_ppm=420.0):

@@ -753,7 +753,7 @@ class Langley(object):
         status = 'not convergent'
         for i in range(20):
             if isinstance(use_channels, type(None)):
-                lfr = langley.langley_fit_residual
+                lfr = langley.langley_fit_residual.drop([940], axis = 1)# we really do not want to use the water channel for outlier detection
                 # normalize the std to the 500 nm channel, this acchieves that not a single channel that is particularly noisy (like the 1625) dominates the cleaning.
                 norm = lfr.std()/lfr[500].std()
                 lfr = lfr/norm
@@ -801,10 +801,11 @@ class Langley(object):
         out['status'] = status
         return out
     
-    def plot(self, wavelength = None, show_pre_clean = True, ax = None):
+    def plot(self, wavelength = None, show_pre_clean = True, textpos = [0.1, 0.1], ax = None):
         def plot_one(wl, ax = None):
             res = self.langley_fitres.loc[wl]
-            fit = pd.DataFrame(res.intercept + (res.slope * self.langleys.index), index = self.langleys.index)#, columns=['fit'])
+            fit_index = self.langleys.index.append(pd.Index([0])).sort_values()
+            fit = pd.DataFrame(res.intercept + (res.slope * fit_index), index = fit_index)#, columns=['fit'])
             fit.columns = ['fit',]
             if not isinstance(self.langley_pre_clean, type(None)) and show_pre_clean: # if there was a cleaning step, plot the original data as well
                 self.langley_pre_clean.langleys[wl].plot(ax = a, marker = '.', ls = '', markersize = 3, 
@@ -817,8 +818,9 @@ class Langley(object):
             fr = self.langley_fitres.loc[wl]
             txt = f'wavelength: {wl} nm\n'
             txt += f'slope: {fr.slope:0.2g} ± {fr.slope_stderr:0.1g}\n'
-            txt += f'intercept: {fr.intercept:0.4f} ± {fr.intercept_stderr:0.4f}'
-            a.text(0.1, 0.1, txt, transform = a.transAxes)
+            txt += f'intercept: {fr.intercept:0.4f} ± {fr.intercept_stderr:0.4f}\n'
+            txt += f'no points: {self.langleys.shape[0]}'
+            a.text(*textpos, txt, transform = a.transAxes)
             return None
         if isinstance(wavelength, type(None)):
             for wl in self.langleys.columns:
