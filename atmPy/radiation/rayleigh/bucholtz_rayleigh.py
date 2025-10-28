@@ -118,7 +118,6 @@ def depolarization_factor(wl):
 def rayleigh_optical_depth(alt, P, T, wl):
     """Bucholtz 95 eq(15). This function describes the optical depth at a particular
     wavelength (wl) due to molecular scattering.
-    
 
     Parameters
     ----------
