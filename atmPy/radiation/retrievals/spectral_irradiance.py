@@ -21,7 +21,7 @@ import matplotlib.pyplot as _plt
 import copy
 import types
 from .. import solar as atmsol
-
+import typing
 
 class RadiationDatabase(object):
     def __init__(self, path2db = '/nfs/grad/surfrad/database/surfraddatabase.db', 
@@ -777,7 +777,8 @@ class DirectNormalIrradiation(SolarIrradiation):
         # self._transmission = None
         # self._od_rayleigh = None
         self._od_co2ch4h2o = None
-        self._tpw = None
+        # self._tpw = None
+        self._pwv_lut = None
         # self._aod = None
         # self._metdata = None
         # self._od_ozone = None
@@ -1093,15 +1094,31 @@ class DirectNormalIrradiation(SolarIrradiation):
         return self.raw_data['ozon_absoption_by_channel']
 
     @property
-    def ozone_data(self):
+    def ozone_data(self) -> xr.DataArray:
+        """
+        Returns
+        -------
+        xr.DataArray
+        Returns the ozone data as an xarray.DataArray. 
+        
+        Setter
+        ------
+        Can be set with: xr.Dataset, xr.DataArray, int, float, str, pathlib.Path
+            If str is given it can be:
+                - a stragy, e.g. 'johns' or 'sp02'
+                - a path to a file (e.g. netcdf or csv)
+            if int or float is given it is assumed to be a constant value (in DU) for all times.      
+        """
         if 'ozone_data' not in self.raw_data:
             assert(False), 'Set ozone_data'
         return self.raw_data['ozone_data']
     
     @ozone_data.setter
-    def ozone_data(self, value):
-        if isinstance(value, xr.Dataset):
+    def ozone_data(self, value: typing.Union[xr.Dataset, xr.DataArray, int, float, str, pl.Path]) -> None:
+        if isinstance(value, (xr.Dataset, xr.DataArray)):
             ozone_data = value
+            print('whatup')
+            self.tp_ozon_data1 = ozone_data.copy()
         elif isinstance(value, str):
             if pl.Path(value).is_file():
                 ozone_data = xr.open_dataset(value)
@@ -1143,7 +1160,30 @@ class DirectNormalIrradiation(SolarIrradiation):
 
         else:
             assert(False), 'no idea what to do with this~!!?!?'
+
+        if isinstance(ozone_data, xr.Dataset):
+            varname_options = ['ozone_data', 'ozone']
+            varname_found = [v for v in varname_options if v in ozone_data]
+            assert(len(varname_found) == 1), f'Could not find ozone variable in dataset. Expected one of: {varname_options}. Available variables: {list(value.data_vars)}'
+            ozone_data = ozone_data[varname_found[0]]
+
+        if 'datetime' not in ozone_data.coords:
+            if self.verbose:
+                print('Renaming time coordinate to datetime for ozone data.')
+            time_coord_options = ['time',]
+            found = [coo for coo in ozone_data.coords if coo in time_coord_options]
+            assert(len(found) == 1), f'Problem with time coordinate. Expeced one of: {time_coord_options + ['datetime']}. Available coordinates: {list(ozone_data.coords)}'
+            ozone_data = ozone_data.rename({found[0]:'datetime'})
+
+        # interp to match times
+        ozone_data = ozone_data.interp(datetime = self.raw_data.datetime)
+
+        if ozone_data.sum() == 0:
+            raise ValueError('Ozone data is all none or zero! Try setting it with a constant value.')
         self.raw_data['ozone_data'] = ozone_data
+        self.raw_data.ozone_data.attrs = dict(long_name = "Total column ozone",
+                                             units     = "Dobson Units (DU)",)
+        return
 
     @property
     def od_ozone(self):
@@ -1209,13 +1249,63 @@ class DirectNormalIrradiation(SolarIrradiation):
             # self._od_ozone = od_ozone
             self.raw_data['od_ozone'] = od_ozone
         return self.raw_data['od_ozone']
-    
+
+        
+    def _retreive_pwv_from_940_channel(self, lookuptable: xr.DataArray) -> xr.DataArray:
+        """Retrieve precipitable water from 940nm channel using provided lookup table.
+        """
+        ds_pwdlut = lookuptable
+        ammin = ds_pwdlut.air_mass.min()
+        ammax = ds_pwdlut.air_mass.max()
+        def row2pwv(row):
+            if  ammin<= row.airmass <= ammax:
+                # print('buba')
+                aodt = self.aod.sel(channel = 940, datetime = row.name)
+                # the lut is in optical depth along the path, so not normalize to air mass
+                aodt *= row.airmass
+                lut_at_am = ds_pwdlut.interp(air_mass = row.airmass, method='linear')
+                lut_at_am_inv = xr.DataArray(lut_at_am.pwv.values, coords = {'od': lut_at_am.optical_depth.values})
+                pwv = float(lut_at_am_inv.interp(od = aodt).values)
+            else:
+                pwv = np.nan
+            return pwv
+        df = self.sun_position.apply(row2pwv, axis = 1)
+        da = df.to_xarray().rename('precipitable_water')
+        da.attrs = dict(long_name = "Precipitable water",
+                        units     = "cm",
+                        comment   = "Equivalent liquid water depth; not CF-standard, convertible to 0.1 kg m-2 per mm.",
+                        )
+        return da
+
     @property
     def precipitable_water(self):
-        """precipitable water in cm"""
+        """Set/Returns precipitable water in cm. Make sure to set it first using the setter!
+        Returns
+        -------
+        xr.DataArray
+        The precipitable water in cm.
 
+        Setter
+        ------
+        value : xr.Dataset, str, int, float
+            Either set the precipitable water directly as a constant, or dataarray (e.i. through xr.Dataset), or provide a lookup table that can be used to retreive the precipitable water from the 940nm channel. If a path is provided as str or pathlib.Path, the file will be opened as an xr.Dataset. 
+            If xr.Dataset:
+                - it should either contain a variable with precipitable water (e.g. from a sounding).
+                - or a lookup table that can be used to retreive the precipitable water from the 940nm channel.
+            If float or int: Value is used as constant precipitable water for all timestamps, unit is assumed to be cm.
+            If str or pathlib.Path: Path to a netcdf file that contains either the precipitable water variable or a lookup table that can be used to retreive the precipitable water from the 940nm channel.
+        -----------
+        """
+
+        
         if 'precipitable_water' not in self.raw_data:
-            assert(False), 'precipitable water is not set. do so!'
+            if isinstance(self._pwv_lut, xr.Dataset):
+                if self.verbose: 
+                    print('Retrieving precipitable water from 940nm channel using lookup table.')
+                da =  self._retreive_pwv_from_940_channel(self._pwv_lut)
+                self.raw_data['precipitable_water'] = da
+            else:
+                raise AttributeError('precipitable water is not set. Use the setter to set it first!')
             
         return self.raw_data['precipitable_water']
 
@@ -1267,7 +1357,8 @@ class DirectNormalIrradiation(SolarIrradiation):
     #         tpw = tpw.interp({'datetime': self.raw_data.datetime})
     #         self._tpw =tpw
     #     return self._tpw
-        
+
+
     @precipitable_water.setter
     def precipitable_water(self, value):
         if isinstance(value, xr.Dataset):
@@ -1285,6 +1376,14 @@ class DirectNormalIrradiation(SolarIrradiation):
             ValueError(f'Expected xr.Dataset, or valid Path (as str or pathlib.Path). Got: {value}')
 
         # ds_clean = xr.Dataset()
+        if 'product' in ds.attrs:
+            if ds.attrs["product"] == "mfrsr_pwv_lut":
+                # this is a lookup table to retreive pwv from 940nm channel, we will process this when the getter is called.
+                self._pwv_lut = ds
+                return
+            else:
+                pass
+        
         if 'datetime' not in ds.coords:
             altcoords = ['time',]
             found = [coo for coo in ds.coords if coo in altcoords]    
@@ -1318,7 +1417,9 @@ class DirectNormalIrradiation(SolarIrradiation):
         ds_clean.attrs['units'] = 'cm'
         ds_clean.attrs['long_name'] = 'Precipitable water'
         self.raw_data['precipitable_water'] = ds_clean
-
+        self.raw_data.precipitable_water.attrs = dict(long_name = "Precipitable water",
+                                                    units     = "cm",
+                                                    comment   = "Equivalent liquid water depth; not CF-standard, convertible to 0.1 kg m-2 per mm.")
         return
         
 
@@ -1408,6 +1509,7 @@ class DirectNormalIrradiation(SolarIrradiation):
         if 'aod' not in self.raw_data:
             odt = self.od_total
             odr = self.od_rayleigh
+            self.raw_data['aod'] = odt - odr #this generates a temporary aod variable, which is needed in case the pwv retrieva:l uses the aod at 940nm channel.
             odch4 = self.od_co2_ch4_h2o.ch4
             odco2 = self.od_co2_ch4_h2o.co2
             odh2o = self.od_co2_ch4_h2o.h2o_5cm
