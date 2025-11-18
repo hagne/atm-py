@@ -1433,7 +1433,8 @@ class DirectNormalIrradiation(SolarIrradiation):
                     fn = '/home/grad/htelg/projects/AOD_redesign/MFRSR_History.xlsx'
                     mfrsr_info = pd.read_excel(self.mfrsr_history, sheet_name='Overview')
                     inst_info = mfrsr_info[mfrsr_info.Instrument == self.raw_data.serial_no]
-                
+                    assert(len(inst_info) == 1), f'Could not find unique MFRSR instrument info for serial no {self.raw_data.serial_no} in MFRSR history file {self.mfrsr_history}. Make sure the correct serial number is stored in raw_data.attrs["serial_no"]'
+                    self.tp_inst_info = inst_info.copy()
                     fab = inst_info.Filter_1625nm.iloc[0]
                     self.tp_fab = fab
                     filter_no = int(''.join([i for i in fab if i.isnumeric()]))
