@@ -266,22 +266,49 @@ class Langley_Timeseries(object):
         self._v0 = None
         self._ranked = None    
 
-    def rank_by(self, wl = 500, fit_results = 'intercept_stderr'):
-        """Ranks the current dataset by the given values"""
-        ds = self.dataset
-        dssel = ds.langley_fitres.sel(fit_results = fit_results, wavelength = wl, drop = True)
-        ds['ranked'] = dssel.rank('datetime')
-        return
+    # def rank_by(self, wl = 500, fit_results = 'intercept_stderr'):
+    #     """Ranks the current dataset by the given values"""
+    #     ds = self.dataset
+    #     dssel = ds.langley_fitres.sel(fit_results = fit_results, wavelength = wl, drop = True)
+    #     ds['ranked'] = dssel.rank('datetime')
+    #     ds['ranked'].attrs['description'] = f'Ranked by langley_fitres {fit_results} at {wl}nm'
+    #     return
     
     @property
     def daterange2predict(self):
         return pd.date_range(start = self.dataset.datetime.values[0], end = self.predict_until, freq='D')
     
-    def plot_ranked(self, wl = 500):
-        if 'ranked' not in self.dataset:
-            self.rank_by()
-        ds = self.dataset.swap_dims({'datetime':'ranked'})
-        ds = ds.sortby(ds.ranked)
+    def sort_by(self, wl = 500, fit_results = 'intercept_stderr'):
+        """Sorts the current dataset by the given values"""
+        ds = self.dataset
+        ds = ds.sortby(ds.langley_fitres.sel(wavelength = wl, fit_results = fit_results))
+        ds['ranked'] = ('datetime', (range(ds.datetime.shape[0])))
+        self.dataset = ds
+        return
+
+    def plot_sorted(self, wl = 500, wlsort: int | None = None, sort_by = 'intercept_stderr'):
+        """Plots the langley fit results ranked by their standard error. Note, this will sort the dataset!!
+        Parameters
+        ----------
+        wl: int
+            Wavelength to plot
+        wlsort: int 
+            Wavelength to sort by (if None, use wl)
+        """
+
+        # if 'ranked' not in self.dataset:
+        #     self.rank_by(wl = wl)
+        # ds = self.dataset.swap_dims({'datetime':'ranked'})
+        # ds = ds.sortby(ds.ranked)
+        if isinstance(wlsort, type(None)):
+            wlsort = wl
+
+        self.sort_by(wl = wlsort, fit_results = sort_by)
+        ds = self.dataset
+
+        # ds = ds.sortby(ds.langley_fitres.sel(wavelength = wlsort, fit_results = sort_by))
+        # ds['ranked'] = ('datetime', (range(ds.datetime.shape[0])))
+        # self.dataset = ds
         f,aa = plt.subplots(2, sharex=True, gridspec_kw={'hspace':0})
         a = aa[0]
         # a.plot(ds.ranked, ds.langley_fitres.sel(fit_results = 'intercept', wavelength = wl, drop = True))
@@ -515,8 +542,10 @@ class Langley_Timeseries(object):
     def V0_simple(self):
         """This simply returns the V0 based on all langley result in this object. Therefore, kick out what you don't want!"""
         dsout = xr.Dataset()
-        dsout['V0'] = self.dataset.langley_fitres.sel(fit_results = 'intercept', drop = True).mean('datetime')
-        dsout['V0_std'] = self.dataset.langley_fitres.sel(fit_results = 'intercept', drop = True).std('datetime')
+        v0 = np.exp(self.dataset.langley_fitres.sel(fit_results = 'intercept', drop = True))
+        dsout['V0'] = v0.mean('datetime')
+        dsout['V0_std'] = v0.std('datetime')
+        dsout['OD_uncertainty'] = dsout['V0_std'] / dsout['V0']
         dsout['V0_stderr'] = self.dataset.langley_fitres.sel(fit_results = 'intercept_stderr', drop = True).mean('datetime')
         return dsout
 
