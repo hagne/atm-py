@@ -3,20 +3,22 @@ channels:
 dependencies:
 #- python=3.8
 # mapping
-- basemap
-- basemap-data-hires
+# - basemap # no longer needed, using cartopy
+# - basemap-data-hires
 # data
 - xarray
 - netcdf4
 - dask
 - statsmodels
+- matplotlib
+- cartopy
 # hysplit
 #- geopy
 # atmpy
 - timezonefinder
-- ephem
-- python-pptx
-- pysolar
-- metpy
+# - ephem # is this still needed? should be optional i guess
+# - python-pptx # should be optional, very specific use case ... i think?
+- pysolar # 
+# - metpy
 #satellite retrievals
 # - pyquery

@@ -269,6 +269,8 @@ def read_raw(path2file, read_header_only = False, test = False):
     Opens a MFRSR or MFR raw file. Those are the files that have an extension 
     like .mtm, .xmd, .rsr. Surfrad files are stored here:
     /nfs/grad/Inst/MFR/SURFRAD/{site}/mfrsr/raw/
+    This requires the "tu" program to be installed on the system. You can get 
+    it at: https://github.com/HagenTelg/tu_mfrsr_reader
 
     Parameters
     ----------
@@ -297,8 +299,16 @@ def read_raw(path2file, read_header_only = False, test = False):
     
     if err.split()[0] == 'Error':
         raise FileCorruptError(filename = path2file.as_posix(), message = err)
-        
+    elif err.strip() == '1 RSR files opened': #not sure why this messages ends up in err. This means it ran cleanly
+        pass 
+    elif 'tu: command not found' in err:
+        raise RuntimeError(f'The "tu" command is not found on your system. Please install the required software to read MFR(SR) raw files.')
+    elif len(err.strip()) > 0:    
+        raise RuntimeError(f'Error message while reading file {path2file}:\n{err}')
     
+    # print(f'error: {err}')
+
+
     #### the header
     header = out.split('\n')[0]    
     if read_header_only:

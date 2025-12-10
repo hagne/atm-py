@@ -414,7 +414,7 @@ class SolarIrradiation(object):
         
         self._sun_position = None
         self._solarspectrum = None
-        self.path2solar_spectrum = '/home/grad/htelg/fundgrube/reference_data/solar/spectrum/solar_spectral_irradiance_e490_00a_amo.nc'
+        self.path2solar_spectrum = '/User/htelg/fundgrube/reference_data/solar/spectrum/solar_spectral_irradiance_e490_00a_amo.nc'
 
         
     @property
