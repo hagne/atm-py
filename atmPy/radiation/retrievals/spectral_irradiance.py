@@ -499,7 +499,7 @@ class SolarIrradiation(object):
         assert(langley_calibration.__class__.__name__ == "Langley_Timeseries"), f'currently only the following instances are excepted: atmPy.radiation.retrievals.langley_calibration.Langley_Timeseries. I got {langley_calibration}'
         assert('calibrated_langley' not in self.dataset.attrs), 'it seems likt langley calibrations have already been applied.'
         lt = langley_calibration
-        v0 = np.exp(lt.V0_simple.V0) / self.sun_position.sun_earth_distance.to_xarray()**2
+        v0 = lt.V0_simple.V0 / self.sun_position.sun_earth_distance.to_xarray()**2
         toasi = self.toa_spectral_irradiance # this is already adjusted to sun earth distan
         v0 = v0.rename({'wavelength':'channel'})
         

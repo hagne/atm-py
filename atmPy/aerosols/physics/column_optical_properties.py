@@ -13,6 +13,7 @@ import scipy as _sp
 import xarray as xr
 # import statsmodels.nonparametric.smoothers_lowess as smlowess
 from atmPy.opt_imports import statsmodels
+import warnings
 
 _colors = _plt.rcParams['axes.prop_cycle'].by_key()['color']
 
@@ -1076,6 +1077,9 @@ def cloud_screening_michalsky(dataset, testdev = 0.05,rollwindow = 15, channel =
     This is a translation of Joe Michalskies R code. The translation is not 
     excact, so some small discrapencies are expected.
 
+    Note, the cloudmask does not work for very low AOD values (<0.02) as the
+    testdev becomes very small then. 
+
     Parameters
     ----------
     dataset : xarray.Dataset
@@ -1099,11 +1103,16 @@ def cloud_screening_michalsky(dataset, testdev = 0.05,rollwindow = 15, channel =
     """
     # select the channel to perform this on
     daaod5 = dataset.aod.sel(channel = channel)
-    saod5 = daaod5.to_pandas()
-    
+    saod5 = daaod5.to_pandas().abs() # the abs is needed when AOD is negative, which can happen if V0 is incorrect.
+    if saod5.min() < 0.02:
+        warnings.warn('Michalsky cloudmask may not work well for very low AOD values (<0.02, this values will need to be tested better)')
+    # The following doc is confusing ... copy past error?
     # This first test is merely a rough one to create the lowess smoothening of aod only 
-    # In a rolling window test if any difference between one value and its neighbor exceeds testdev. If not, !!all!! timestamps are excepted (not just the single timestamp that corresponds with the rolling window!! Effectively this will prevent breaks between clouds that are longer than the window to be excepted as clear. This also measn that you can get very close to a cloud!!
-    roll = saod5.rolling(f'{rollwindow} min',                         )
+    # In a rolling window test if any difference between one value and its neighbor exceeds testdev. 
+    # If not, !!all!! timestamps are excepted (not just the single timestamp that corresponds with 
+    # the rolling window!! Effectively this will prevent breaks between clouds that are longer than
+    # the window to be excepted as clear. This also measn that you can get very close to a cloud!!
+    roll = saod5.rolling(f'{rollwindow} min',)
     clear_t1 = _pd.DatetimeIndex([])
     for r in roll:    
         clear = r.diff().abs().dropna() < testdev  

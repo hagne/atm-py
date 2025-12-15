@@ -286,7 +286,7 @@ class Langley_Timeseries(object):
         self.dataset = ds
         return
 
-    def plot_sorted(self, wl = 500, wlsort: int | None = None, sort_by = 'intercept_stderr'):
+    def plot_sorted(self, wl = 500, wlsort: int | None = None, sort_by = 'intercept_stderr', aa = None):
         """Plots the langley fit results ranked by their standard error. Note, this will sort the dataset!!
         Parameters
         ----------
@@ -309,28 +309,44 @@ class Langley_Timeseries(object):
         # ds = ds.sortby(ds.langley_fitres.sel(wavelength = wlsort, fit_results = sort_by))
         # ds['ranked'] = ('datetime', (range(ds.datetime.shape[0])))
         # self.dataset = ds
-        f,aa = plt.subplots(2, sharex=True, gridspec_kw={'hspace':0})
+        if isinstance(aa, type(None)):
+            f,aa = plt.subplots(2, sharex=True, gridspec_kw={'hspace':0})
+        else:
+            f = aa[0].figure
+
         a = aa[0]
         # a.plot(ds.ranked, ds.langley_fitres.sel(fit_results = 'intercept', wavelength = wl, drop = True))
         a.errorbar(ds.ranked, ds.langley_fitres.sel(fit_results = 'intercept', wavelength = wl), ds.langley_fitres.sel(fit_results = 'intercept_stderr', wavelength = wl))
-        at = a.twinx()
+        if hasattr(a, 'at'):
+            at = a.at
+        else:
+            at = a.twinx()
+            a.at = at
         # next(a._get_lines.prop_cycler)
         at._get_lines.get_next_color()
         at.plot(ds.ranked, ds.langley_fitres.sel(fit_results = 'intercept_stderr', wavelength = wl), marker = '.', 
                 # ls = ''
                 # color = at._get_lines.get_next_color()
             )
+        a.set_ylabel('ln(V0)')
+        at.set_ylabel('std err ln(V0)')
         ##################
         a = aa[1]
         # a.plot(ds.ranked, ds.langley_fitres.sel(fit_results = 'intercept', wavelength = wl, drop = True))
         a.errorbar(ds.ranked, ds.langley_fitres.sel(fit_results = 'slope', wavelength = wl), ds.langley_fitres.sel(fit_results = 'slope_stderr', wavelength = wl))
-        at = a.twinx()
+        if hasattr(a, 'at'):
+            at = a.at
+        else:
+            at = a.twinx()
+            a.at = at
         # next(a._get_lines.prop_cycler)
         at._get_lines.get_next_color()
         at.plot(ds.ranked, ds.langley_fitres.sel(fit_results = 'slope_stderr', wavelength = wl), marker = '.', 
                 # ls = ''
                 # color = at._get_lines.get_next_color()
             )
+        a.set_ylabel('slope')
+        at.set_ylabel('std err slope')
         return f,aa
     
 
@@ -739,7 +755,6 @@ class Langley(object):
     
     def _fit_langles(self, verbose = False, error_handling = 'raise'):
         langleys = self.langleys
-            
         # df_langres = pd.DataFrame(index=['slope', 'intercept', 'stderr'])
         fit_res_dict = {}
         # resid_dict = {}
@@ -818,8 +833,12 @@ class Langley(object):
                 # converged = True
                 status = 'converged'
                 break
-            
-            langley.langleys = langley.langleys[where]
+            try:
+                langley.langleys = langley.langleys[where]
+            except:
+                print('possible reason for failure: there are nans in the langley data?')
+                raise
+                
             langley.refresh()
             # spi.am._langley_fitres = None
             # spi.am._langley_residual_correlation_prop = None
