@@ -414,7 +414,7 @@ class SolarIrradiation(object):
         
         self._sun_position = None
         self._solarspectrum = None
-        self.path2solar_spectrum = '/User/htelg/fundgrube/reference_data/solar/spectrum/solar_spectral_irradiance_e490_00a_amo.nc'
+        self.path2solar_spectrum = '/Users/htelg/fundgrube/reference_data/solar/spectrum/solar_spectral_irradiance_e490_00a_amo.nc'
 
         
     @property
@@ -487,8 +487,11 @@ class SolarIrradiation(object):
         Parameters
         ----------
         langley_calibration: 
-            Instance of atmPy.radiation.retrievals.langley_calibration.Langley_Timeseries.
             This is the result of a langley calibration.
+            - Instance of atmPy.radiation.retrievals.langley_calibration.Langley_Timeseries.
+            - An xarray.Dataset equivalent to the V0_simple variable in Langley_Timeseries, basically the presence of a 
+              variable "V0" that contains V0 values in mV.
+            
         calibrate_to: str
             Either 'irradiance' or 'transmission'. If 'irradiance' the output will be in W/m^2/nm.
             If 'transmission' the output will be unitless (0-1). See note above about top of the atmosphere irradiance.
@@ -496,10 +499,19 @@ class SolarIrradiation(object):
 
         assert(calibrate_to in ['irradiance', 'transmission'])
         # assert(isinstance(langley_calibration, atmlangcalib.Langley_Timeseries)), 
-        assert(langley_calibration.__class__.__name__ == "Langley_Timeseries"), f'currently only the following instances are excepted: atmPy.radiation.retrievals.langley_calibration.Langley_Timeseries. I got {langley_calibration}'
+        if isinstance(langley_calibration, xr.Dataset):
+            # this is the case when the V0_simple variable is passed
+            assert('V0' in langley_calibration.variables), 'The langley calibration dataset needs to have a V0 variable'
+            assert('wavelength' in langley_calibration.dims), 'The langley calibration dataset needs to have a wavelength dimension'
+            v0 = langley_calibration.V0
+        elif isinstance(langley_calibration, atmlangcalib.Langley_Timeseries):
+            # this is the case when the Langley_Timeseries instance is passed
+            assert('V0_simple' in langley_calibration.__dict__.keys()), 'The langley calibration needs to have a V0_simple variable'
+            v0 = langley_calibration.V0_simple.V0
+        # assert(langley_calibration.__class__.__name__ == "Langley_Timeseries"), f'currently only the following instances are excepted: atmPy.radiation.retrievals.langley_calibration.Langley_Timeseries. I got {langley_calibration}'
         assert('calibrated_langley' not in self.dataset.attrs), 'it seems likt langley calibrations have already been applied.'
-        lt = langley_calibration
-        v0 = lt.V0_simple.V0 / self.sun_position.sun_earth_distance.to_xarray()**2
+        # lt = langley_calibration
+        v0 = v0 / self.sun_position.sun_earth_distance.to_xarray()**2
         toasi = self.toa_spectral_irradiance # this is already adjusted to sun earth distan
         v0 = v0.rename({'wavelength':'channel'})
         
@@ -768,7 +780,7 @@ class DirectNormalIrradiation(SolarIrradiation):
         self.settings_calibration = calibration_strategy 
         self.settings_metdata = metdata
         self.settings_ozone = settings_ozone
-        self.mfrsr_history = '/home/grad/htelg/projects/AOD_redesign/MFRSR_History.xlsx'
+        self.mfrsr_history = '/Users/htelg/projects/AOD_redesign/MFRSR_History.xlsx'
         self.precipitable_water_varname = None
         self.settings_rayleigh = 'firstprinciple' #options: 'john', 'firstprinciple'. "john" might have an errror in it, not sure if the error happend appon translation or his code actually has that error. results in an over estimation of the rayleigh od.
         self.path2absorption_correction_ceoff_1625 = '1625nm_absorption_correction_coefficience.nc'
@@ -1057,9 +1069,22 @@ class DirectNormalIrradiation(SolarIrradiation):
 
     @property
     def ozone_absorption_spectrum(self):
+        """
+        Docstring for ozone_absorption_spectrum
+        
+        Setter
+        ------
+        Can be set with: xr.Dataset, str, pathlib.Path
+            If str or pathlib.Path is given it is assumed to be a path to a file (e.g. csv)
+        Returns
+        -------
+        xr.DataArray
+            Returns the ozone absorption spectrum as an xarray.DataArray.
+        """
+
         if 'ozone_absorption_spectrum' not in self.raw_data:
            #try the default folder
-           self.ozone_absorption_spectrum = '/home/grad/surfrad/aod/ozone.coefs'
+           self.ozone_absorption_spectrum = '/Users/htelg/home/grad/surfrad/aod/ozone.coefs'
             # else:
             #     assert(False), 'set ozone_absorption_spectrum!'
         return self.raw_data['ozone_absorption_spectrum']
@@ -1067,7 +1092,9 @@ class DirectNormalIrradiation(SolarIrradiation):
 
     @ozone_absorption_spectrum.setter
     def ozone_absorption_spectrum(self, value):
-        if pl.Path(value).is_file():
+        if isinstance(value, (str, pl.Path)):
+
+        # if pl.Path(value).is_file():
             ozone_abs_coef = pd.read_csv(value, index_col= 0, sep = ' ', names=['wavelength', 'coeff'])
             ozone_abs_coef = ozone_abs_coef.to_xarray()
             ozone_abs_coef = ozone_abs_coef.coeff
@@ -1075,7 +1102,7 @@ class DirectNormalIrradiation(SolarIrradiation):
         elif isinstance(value, xr.Dataset):
             ozone_abs_coef = value
         else:
-            assert(False), 'no idea what to do'
+            assert(False), f'Could not interpret ozone absorption spectrum from {value}'
         self.tp_ozone_absorption_spectrum = ozone_abs_coef
         self.raw_data['ozone_absorption_spectrum'] = ozone_abs_coef
         return
