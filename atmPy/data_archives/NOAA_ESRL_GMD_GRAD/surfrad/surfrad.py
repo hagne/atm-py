@@ -810,7 +810,7 @@ def read_ozon(p2f):
     df.sort_index(inplace=True)
     df.index.name = 'datetime'
     ds = df.to_xarray()
-    ds.ozone.attrs['unit'] = 'dobson'
+    ds.ozone.attrs['units'] = 'dobson'
     ds.attrs['info'] = "Ozone absorption is accessed from a file that is written by a Perl script that gets daily ozone over the station being processed from NASA TOMS OMI or OMPS.(from documentation in aod_analysis.f)"
     return ds
 
@@ -888,7 +888,7 @@ def read_sounding(p2f):
     
     return atmsound.BalloonSounding(ds_sonde)
 
-def read_ccc(p2f, site = None, path2cal_file = None, verbose = False, raisefilterfunctionerror = True):
+def read_ccc(p2f, site = None,  path2folder = '/nfs/grad/Calibration_facilities/cucf/Surfrad/working', path2cal_file = None ,verbose = False, raisefilterfunctionerror = True):
     """
     Reads surfrads ccc (cosine corrected) files typically located somewhere 
     around here:
@@ -1000,7 +1000,7 @@ def read_ccc(p2f, site = None, path2cal_file = None, verbose = False, raisefilte
         sel.columns.name = 'channel'
         var_name = 'all_time'
         ds[var_name] = sel
-        ds[var_name].attrs['unit'] = 'mV'
+        ds[var_name].attrs['units'] = 'mV'
         # ds[var_name].attrs['corrections'] = 'cosine' It not corrected!!!!
     else:
         assert(False), 'not possible!'
@@ -1025,7 +1025,7 @@ def read_ccc(p2f, site = None, path2cal_file = None, verbose = False, raisefilte
         sel.columns.name = 'channel'
 
         ds[groupnames[block]] = sel
-        ds[groupnames[block]].attrs['unit'] = 'mV'
+        ds[groupnames[block]].attrs['units'] = 'mV'
         ds[groupnames[block]].attrs['corrections'] = 'cosine'
 
     if filetype == 'tu':
@@ -1034,7 +1034,7 @@ def read_ccc(p2f, site = None, path2cal_file = None, verbose = False, raisefilte
         ds['solar_elevation'] = df.iloc[:,-2] # sun elevation
         ds['solar_zenith'] = df.iloc[:,-1] # sun zenith
 
-    ds.solar_elevation.attrs['unit'] = 'radian'
+    ds.solar_elevation.attrs['units'] = 'radian'
     ds.attrs['info'] = 'Cosine corrected SURFRAD MFRSR measurments.'
     
     ds.attrs['site_latitude'] = site.lat
@@ -1052,7 +1052,7 @@ def read_ccc(p2f, site = None, path2cal_file = None, verbose = False, raisefilte
     if isinstance(path2cal_file, type(None)):
         
         try:
-            fresp = get_mfrsr_filter_responds(serial_no, verbose = verbose)
+            fresp = get_mfrsr_filter_responds(serial_no, path2folder=path2folder,verbose = verbose)
             ds = ds.assign_coords(channel = fresp.channel) 
             ds['channel_center'] = fresp.statistics.sel(stats = 'CENT').to_pandas()
             # return ds
@@ -1217,3 +1217,82 @@ def open_path(path = '/nfs/grad/',
         return saod
     else:
         assert(False), 'noenoenoe'
+
+import atmPy.radiation.retrievals.langley_calibration as atmlangcalib
+
+def getV0fromJohn(site: str, date, basefld = '/Volumes/grad/surfrad/products_level2/langleys/', verbose = False):
+    """
+    Get V0 based on Johns langley calibration parameters and procedure. It uses fit coefficients 
+    from multiyear langley analysis to interpolate V0 for any date. 
+
+    Parameters
+    ----------
+    site : str
+        3 letter site abbreviation.
+    date : str, pd.Timestamp, np.datetime64
+        Date for which V0 is needed.
+    basefld : str, pathlib.Path, optional
+        Base folder where the langley calibration parameter files are located. The default is '/Volumes/grad/surfrad/products_level2/langleys/'.
+    """
+    out = {}
+    dt = _pd.to_datetime(date)
+    p2fjcal = _pl.Path(basefld)
+
+    # lanj = atmlangcalib.read_langley_params(p2fjcal)
+    
+    def datetime2angulardate(dt):
+        if dt.is_leap_year:
+            noofday = 366
+        else:
+            noofday = 365
+        fract_year = dt.day_of_year / noofday
+        yyyy_frac = dt.year+fract_year
+        angular_date = yyyy_frac * 2 * _np.pi
+        return angular_date
+    
+    #### open file that contains the calibration parameters (the fit parameters from john)
+    # site = self.site.abb
+    p2f= p2fjcal /  f'{site}_mfrhead'
+    if verbose:
+        print(f'reading langley calibration parameters from {p2f}')
+
+    langley_params = atmlangcalib.read_langley_params(p2f = p2f)
+    out['langley_params'] = langley_params
+    # return langley_params
+    #### get V0 for that date
+    # get closesed calibration parameter set based on first timestamp. 
+    # This was the wrong approach that I assumed 
+    # falsely. The right way is to use the coefficients from before that date
+    #new:using the coefficients from the last datetime before the date of this .ccc file.
+    # dt = pd.to_datetime(self.raw_data.datetime.values[0])
+    
+    dtmin = (dt - langley_params.datetime.to_pandas()) / _pd.to_timedelta(1, 'day')
+    dtmin[dtmin < 0] = _np.nan
+    idxmin = dtmin.argmin()
+    # langley_params_sel = langley_params.isel(datetime = idxmin)
+    # out['langley_params_sel'] = langley_params_sel
+    
+    # turn date into that johns angular_date (see definition of get_izero in aod_analysis.f 
+    angular_date = datetime2angulardate(dt)
+    
+    # apply the parameters to get the V0 and V0_err
+    # V0 =
+    # cons_term = langley_params_sel.V0.sel(V0_params = 'const')
+    # lin_term = langley_params_sel.V0.sel(V0_params = 'lin') * angular_date 
+    # sin_term = langley_params_sel.V0.sel(V0_params = 'sin') * _np.sin(angular_date)
+    # cos_term = langley_params_sel.V0.sel(V0_params = 'cos') * _np.cos(angular_date)
+    # V0 = cons_term + lin_term + sin_term + cos_term
+    
+    cons_term = langley_params.V0.sel(V0_params = 'const')
+    lin_term = langley_params.V0.sel(V0_params = 'lin') * angular_date 
+    sin_term = langley_params.V0.sel(V0_params = 'sin') * _np.sin(angular_date)
+    cos_term = langley_params.V0.sel(V0_params = 'cos') * _np.cos(angular_date)
+    V0overtime = cons_term + lin_term + sin_term + cos_term
+    out['V0overtime'] = V0overtime
+    V0 = V0overtime.isel(datetime = idxmin)
+    # V0df = _pd.DataFrame(V0.to_pandas())
+
+    ds = _xr.Dataset()
+    ds['V0'] = V0 #V0df.V0
+    out['V0'] = ds
+    return out
