@@ -36,6 +36,6 @@ class BalloonSounding(object):
             
             datpw = dser.to_xarray()
             datpw = datpw.rename({'index': 'site'})
-            datpw.attrs['unit'] = 'cm'
+            datpw.attrs['units'] = 'cm'
             self._tpw = datpw
         return self._tpw

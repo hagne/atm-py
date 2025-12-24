@@ -23,6 +23,7 @@ import copy
 import pathlib as pl
 # from pygam import f as pgf
 import scipy.interpolate as scint
+import scipy.stats
 import matplotlib.dates as pltdates
 
 from atmPy.opt_imports import pptx
@@ -560,8 +561,27 @@ class Langley_Timeseries(object):
         dsout = xr.Dataset()
         v0 = np.exp(self.dataset.langley_fitres.sel(fit_results = 'intercept', drop = True))
         dsout['V0'] = v0.mean('datetime')
-        dsout['V0_std'] = v0.std('datetime')
-        dsout['OD_uncertainty'] = dsout['V0_std'] / dsout['V0']
+        dsout['V0_std'] = v0.std('datetime', ddof = 1) 
+        dsout.V0_std.attrs['description'] = 'nbiased standard deviation, ddof = 1'
+        ns = []
+        osubs = []
+        alpha = 0.05
+        for wl in self.dataset.wavelength:
+            n = self.dataset.langley_fitres.sel(fit_results = 'intercept', wavelength = wl).dropna('datetime').shape[0]
+            ns.append(n)
+            chi2val = scipy.stats.chi2.ppf(alpha, df=n-1)
+            osub = np.sqrt((n-1)/chi2val) # this is the one-sided upper bound factor with a 95% confidence
+            osubs.append(osub)
+            
+        dsout['no_langleys'] = ('wavelength', ns)
+        dsout.no_langleys.attrs['description'] = 'Number of langleys used.'
+        dsout['one_sided_upper_bound_factor_95conf'] = ('wavelength', osubs)
+        dsout.one_sided_upper_bound_factor_95conf.attrs['description'] = r'one-sided upper bound factor with a 95% confidence, mostly relevant for small number of langleys.'
+
+
+        additional_uncertainty = 0.005 # ARM introduced this additional uncertainty to cover remaining uncertainties. In Michalsky 2001 this is reflected in the remaining uncertainty even in the MLO calibrations.
+        dsout['OD_uncertainty'] = (dsout['one_sided_upper_bound_factor_95conf'] * dsout['V0_std'] / dsout['V0']) + additional_uncertainty
+        dsout.OD_uncertainty.attrs['description'] = r'(V0_std / V0 * osub) + 0.005. osub: one-sided upper bound factor with a 95% confidence, mostly relevant for small number of langleys. This still needs to be multiplide by 1/AMF to get the uncertainty in (A)OD. Michalsky 2001.'
         dsout['V0_stderr'] = self.dataset.langley_fitres.sel(fit_results = 'intercept_stderr', drop = True).mean('datetime')
         return dsout
 

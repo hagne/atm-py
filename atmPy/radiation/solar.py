@@ -16,6 +16,7 @@ import atmPy.general.timeseries as _ts
 
 from atmPy.opt_imports import ephem as _ephem
 from atmPy.opt_imports import pysolar as _pysolar
+from atmPy.opt_imports import pvlib 
 # from atmPy.general.constants import a2r, r2a
 
 __julian = {"day": 0., "cent": 0.}
@@ -104,8 +105,16 @@ def get_sun_earth_distance(x):
     au = _pysolar.solar.get_sun_earth_distance(jme)
     return au
 
-def get_sun_position(lat, lon, date, elevation=0):
-    """returns sun altitude and azimuth angle as well as the air mass factor, tested against https://www.esrl.noaa.gov/gmd/grad/solcalc/
+def get_sun_position(*args, **kwargs):
+    raise RuntimeError(
+        "get_sun_position is deprecated. Use get_sun_position_pvlib instead. For legacy code, use get_sun_position_pysolar."
+    )
+
+def get_sun_position_pysolar(lat, lon, date, elevation=0):
+    """
+    This is the older function using pysolar. In particular with respect to the air mass calculation pvlib is preferred.
+
+    returns sun altitude and azimuth angle as well as the air mass factor, tested against https://www.esrl.noaa.gov/gmd/grad/solcalc/
     Arguments:
     ----------
     lat, lon: float, array-like
@@ -177,7 +186,72 @@ def get_sun_position(lat, lon, date, elevation=0):
         out = getpos(lat, lon, date, elevation)
         pos = dict(zip(('elevation', 'azimuth', 'airmass','sun_earth_distance', 'ampm'), out))
     
-    return pos
+    return pos.to_xarray() 
+
+def get_sun_position_pvlib(lat, lon, alt, date):
+    loc = pvlib.location.Location(lat, lon,
+                                  # tz=tz, 
+                                  altitude=alt)  # altitude optional but useful
+    
+    sp = loc.get_solarposition(date)
+    for cn in ['apparent_zenith', 'zenith', 'azimuth', 'apparent_elevation', 'elevation']:
+        sp[cn] = sp.apply(lambda row: _np.deg2rad(row[cn]), axis = 1)
+        
+    am = loc.get_airmass(date)
+    am = am.rename(columns={'airmass_relative': 'airmass',})
+    
+    d_au = _pd.DataFrame(pvlib.solarposition.nrel_earthsun_distance(date), columns=['sun_earth_distance'])
+    
+    df =  _pd.concat([sp, am, d_au], axis=1)
+    df.index.name = 'datetime'
+    
+    # ---- convert to xarray + set CF-style attrs (in-place, no extra function) ----
+    ds = df.to_xarray()
+    ds.attrs["Conventions"] = "CF-1.13"
+    ds.attrs["title"] = "Solar position, air mass, and Sun–Earth distance from pvlib"
+    ds.attrs["source"] = "pvlib"
+    
+    # time coordinate attrs
+    if "time" in ds.coords:
+        ds["time"].attrs.setdefault("standard_name", "time")
+        ds["time"].attrs.setdefault("long_name", "time")
+    
+    # variable attrs (units reflect your conversion to radians)
+    _var_attrs = {
+        # solar position
+        "zenith": {"long_name": "solar zenith angle", "units": "radian"},
+        "apparent_zenith": {"long_name": "apparent solar zenith angle", "units": "radian"},
+        "elevation": {"long_name": "solar elevation angle", "units": "radian"},
+        "apparent_elevation": {"long_name": "apparent solar elevation angle", "units": "radian"},
+        "azimuth": {"long_name": "solar azimuth angle (clockwise from north)", "units": "radian"},
+        "equation_of_time": {
+            "long_name": "equation of time (apparent solar time minus mean solar time)",
+            "units": "minute",
+        },
+        "declination": {"long_name": "solar declination angle", "units": "degree"},
+    
+        # airmass
+        "airmass": {"long_name": "relative optical air mass", "units": "1"},
+        "airmass_absolute": {"long_name": "pressure-corrected (absolute) optical air mass", "units": "1"},
+    
+        # earth-sun distance
+        "sun_earth_distance": {
+            "long_name": "Earth–Sun distance",
+            "units": "1",
+            "comment": "Earth–Sun distance expressed in astronomical units (AU)",
+        },
+    }
+    
+    for v in list(ds.data_vars):
+        a = _var_attrs.get(v, None)
+        if a is None:
+            ds[v].attrs.setdefault("long_name", v.replace("_", " "))
+            ds[v].attrs.setdefault("units", "1")
+        else:
+            ds[v].attrs.update(a)
+    
+    return ds
+    
 
 def get_sun_position_deprecated(lat, lon, datetime_UTC, elevation=0):
     """ I did not get good agreement with the NOAA solar calender with this function... not sure if there was a change
@@ -245,6 +319,8 @@ class SolarPosition:
             self.zenith = zenith
         else:
             assert(False)
+
+        assert(False), 'make sure the ney solar position function is implemented'
 
     @property
     def projectionNS_angle(self):

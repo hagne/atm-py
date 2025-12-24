@@ -397,9 +397,10 @@ class ClearSky(object):
                 
     
 class SolarIrradiation(object):
-    def __init__(self, dataset, site = None):
+    def __init__(self, dataset, site = None, verbose = False):
         self.dataset = self.unify_variables(dataset)
         self.clearsky = ClearSky(self)
+        self.verbose = verbose
         
         if isinstance(site, type(None)):
             assert('site' in dataset.attrs.keys()), 'If site is None, then the dataset has to have lat,lon,site, site_name, attributes'
@@ -432,7 +433,7 @@ class SolarIrradiation(object):
             ds_solar = self.toa_solarspectrum_1AU# xr.open_dataset(self.path2solar_spectrum)
             rad_top = ds_solar.interp(wavelength=self.dataset.channel_wavelength, method='linear')# 
             self.tp_rad_topI = rad_top.copy()
-            rad_top = rad_top / self.sun_position.sun_earth_distance.to_xarray()**2
+            rad_top = rad_top / self.sun_position.sun_earth_distance**2
             rad_top = rad_top.drop_vars('wavelength')
             # self.tp_rad_topII = rad_top.copy()
             self.dataset['toa_spectral_irradiance'] = rad_top.irradiance
@@ -496,9 +497,10 @@ class SolarIrradiation(object):
             Either 'irradiance' or 'transmission'. If 'irradiance' the output will be in W/m^2/nm.
             If 'transmission' the output will be unitless (0-1). See note above about top of the atmosphere irradiance.
         """
-
+        if self.verbose:
+            print('Applying langley calibration')
+            print('--------------------------------')
         assert(calibrate_to in ['irradiance', 'transmission'])
-        # assert(isinstance(langley_calibration, atmlangcalib.Langley_Timeseries)), 
         if isinstance(langley_calibration, xr.Dataset):
             # this is the case when the V0_simple variable is passed
             assert('V0' in langley_calibration.variables), 'The langley calibration dataset needs to have a V0 variable'
@@ -508,27 +510,29 @@ class SolarIrradiation(object):
             # this is the case when the Langley_Timeseries instance is passed
             assert('V0_simple' in langley_calibration.__dict__.keys()), 'The langley calibration needs to have a V0_simple variable'
             v0 = langley_calibration.V0_simple.V0
-        # assert(langley_calibration.__class__.__name__ == "Langley_Timeseries"), f'currently only the following instances are excepted: atmPy.radiation.retrievals.langley_calibration.Langley_Timeseries. I got {langley_calibration}'
         assert('calibrated_langley' not in self.dataset.attrs), 'it seems likt langley calibrations have already been applied.'
-        # lt = langley_calibration
-        v0 = v0 / self.sun_position.sun_earth_distance.to_xarray()**2
+
+
+        v0 = v0 / self.sun_position.sun_earth_distance**2 # this will adjust the v0 values to the current sun earth distance
         toasi = self.toa_spectral_irradiance # this is already adjusted to sun earth distan
         v0 = v0.rename({'wavelength':'channel'})
         
         dsnew = self.dataset.copy()
-        gh = self.dataset.global_horizontal / v0 # ratio of irradiance of what we had at the top of the atmosphere at normal
+        gh = self.dataset.global_horizontal / v0 # transmittance, both at current sun earth distance
         if calibrate_to == 'irradiance':
-            gh = gh * toasi # actual irradiance observed
+            gh = gh * toasi # actual irradiance observed 
         dsnew['global_horizontal'] = gh
         dsnew.global_horizontal.attrs['unit'] = 'W/m^2/nm'
         
         dh = self.dataset.diffuse_horizontal / v0 
-        dh = dh * toasi
+        if calibrate_to == 'irradiance':
+            dh = dh * toasi
         dsnew['diffuse_horizontal'] = dh
         dsnew.diffuse_horizontal.attrs['units'] = 'W/m^2/nm'   
         
         dn = self.dataset.direct_normal / v0 
-        dn = dn * toasi
+        if calibrate_to == 'irradiance':
+            dn = dn * toasi
         dsnew['direct_normal'] = dn
         dsnew.direct_normal.attrs['units'] = 'W/m^2/nm'
         
@@ -709,96 +713,11 @@ class SolarIrradiation(object):
             out.tp_cos_cal_NS_norm = cos_cal_NS_norm
             out.tp_cos_cal_sum_nom = cos_cal_sum_nom
         return out
-        
-
-class GlobalHorizontalIrradiation(SolarIrradiation):
-    def __init__(self, dataset):
-        super().__init__(dataset)
-
-class DiffuseHorizontalIrradiation(SolarIrradiation):
-    def __init__(self, dataset):
-        super().__init__(dataset)
-
-class DirectNormalIrradiation(SolarIrradiation):
-    def __init__(self, dataset, 
-                 site = None, 
-                 langley_fit_settings = None,
-                 calibration_strategy = 'johns',
-                 metdata = 'surfrad',
-                #  raise_error_if_no_channel_wavelength = True, #this is for the actual wavelength, the calibrated ones not the nominal ones in the channel dimension
-                 settings_ozone = None):
-        
-        """
-        Parameters
-        ----------
-        dataset : xarray.Dataset
-            The data.
-        site : atmPy.general.measurement_site.Station, optional
-            Site information should be in the dataset, if it is not or you want to overwite it (doulecheck if it actually does overwrite), set it here (forgot which format). The default is None.
-        langley_fit_settings : dict, optional
-            DESCRIPTION. The default is None.
-        calibration_strategy : str, optional
-            Depending on the strategie different files will be needed. The default is 'johns'.
-                johns: uses the langley calibration files from John.
-                sp02: uses the sp02 calibration files
-                toa_radiation: This assumes calibrated spectral radiation in the dataset. It will then get transmission using the toa radiation
-        metdata : str, optional
-            Which metdata (or data format) to use?. The default is 'surfrad'.
-                surfrad: (double check this) uses the surfrad met data (netcdf version)
-        settings_ozone : various, optional
-            A way to set the ozone. Currently most calibration strategies will pick there own way to get ozone (todo: this needs to change!). Eventually this should take a function that can read a file and aligns it to the dataset. Currently, for testing, only a single number is possible ... probly 300 DU.
-
-        """
-
-        super().__init__(dataset, site = site)
-        self.raw_data = dataset #this is not exactly raw, it is cosine corrected voltag readings, thus, un-calibrated irradiances
-        self.variable_name_alternatives_direct_normal = ['direct_normal', 'direct_normal_irradiation', 'direct_normal_irradiance']
-        var_ops_direct_normal = [v for v in self.variable_name_alternatives_direct_normal if v in self.raw_data.data_vars]
-        if len(var_ops_direct_normal)!= 1:
-            if len(var_ops_direct_normal) == 0:
-                raise ValueError('Could not find direct normal variable in dataset')
-            if len(var_ops_direct_normal) > 1:
-                raise ValueError('Multiple potential direct normal variables found in dataset: {}'.format(var_ops_direct_normal))
-            else:
-                raise RuntimeError('This should never happen (id2334442313)')
-        self.variable_name_direct_normal = var_ops_direct_normal[0]
-
-        # if raise_error_if_no_channel_wavelength:
-        self.variable_name_alternatives_channel_wavelength = ['channel_wavelength', 'channel_center'] 
-        variable_name_channel_wavelength = [v for v in self.variable_name_alternatives_channel_wavelength if v in self.raw_data.data_vars]
-        if len(variable_name_channel_wavelength)!= 1:
-            if len(var_channel_center) == 0:
-                raise ValueError('Could not find channel center variable in dataset. This might mean that the data has not been spectrally calibrated yet. Use the apply_calibration_spectral method first.')
-            if len(var_channel_center) > 1:
-                raise ValueError('Multiple potential channel center variables found in dataset: {}'.format(var_channel_center))
-            else:
-                raise RuntimeError('This should never happen (id2334442313)')
-        self.variable_name_channel_wavelength = variable_name_channel_wavelength[0]
-
-        self.langley_fit_settings = langley_fit_settings
-        self.settings_langley_airmass_limits = (2.5,4)
-        self.settings_calibration = calibration_strategy 
-        self.settings_metdata = metdata
-        self.settings_ozone = settings_ozone
-        self.mfrsr_history = '/Users/htelg/projects/AOD_redesign/MFRSR_History.xlsx'
-        self.precipitable_water_varname = None
-        self.settings_rayleigh = 'firstprinciple' #options: 'john', 'firstprinciple'. "john" might have an errror in it, not sure if the error happend appon translation or his code actually has that error. results in an over estimation of the rayleigh od.
-        self.path2absorption_correction_ceoff_1625 = '1625nm_absorption_correction_coefficience.nc'
-        self._am = None
-        self._pm = None
-        # self._transmission = None
-        # self._od_rayleigh = None
-        self._od_co2ch4h2o = None
-        # self._tpw = None
-        self._pwv_lut = None
-        # self._aod = None
-        # self._metdata = None
-        # self._od_ozone = None
     
     @property
     def met_data(self):
         # if isinstance(self._metdata, type(None)):
-        if 'pressure' not in self.raw_data:
+        if 'pressure' not in self.dataset:
             try:
                 if isinstance(self.settings_metdata, types.FunctionType):
                     self._metdata = self.settings_metdata()
@@ -812,7 +731,7 @@ class DirectNormalIrradiation(SolarIrradiation):
             except FileNotFoundError as e:
                 # print('Could not find met data. Make sure to set this value and or that the "settings_metdata" attribute is set correctly! The following error was raised:')
                 raise FileNotFoundError(f'Could not find met data. Make sure the "settings_metdata" attribute is set correctly! The following error was raised: {e}') from e
-        return self.raw_data[['pressure','temperature']]
+        return self.dataset[['pressure','temperature']]
     
     @met_data.setter
     def met_data(self, value):
@@ -847,52 +766,144 @@ class DirectNormalIrradiation(SolarIrradiation):
             dsmet = dsmet.rename_vars({found[0]:'temperature'})
         dsmet_clean['temperature'] = dsmet['temperature']
       
-        dsmet_clean = dsmet_clean.interp({'datetime':self.raw_data.datetime}, method = 'linear')
+        dsmet_clean = dsmet_clean.interp({'datetime':self.dataset.datetime}, method = 'linear')
         self.tp_dsmet_clean = dsmet_clean
-        # dst = dsmet[['pressure','temperature']].interp({'datetime':self.raw_data.datetime})
+        # dst = dsmet[['pressure','temperature']].interp({'datetime':self.dataset.datetime})
         # dst = dst.where(dst > -90)
 
-        self.raw_data[['pressure','temperature']] = dsmet_clean[['pressure','temperature']]
+        self.dataset[['pressure','temperature']] = dsmet_clean[['pressure','temperature']]
         return
+        
+
+class GlobalHorizontalIrradiation(SolarIrradiation):
+    def __init__(self, dataset):
+        super().__init__(dataset)
+
+class DiffuseHorizontalIrradiation(SolarIrradiation):
+    def __init__(self, dataset):
+        super().__init__(dataset)
+
+class DirectNormalIrradiation(SolarIrradiation):
+    def __init__(self, dataset, 
+                 site = None, 
+                 langley_fit_settings = None,
+                 calibration_strategy = 'johns',
+                #  metdata = 'surfrad',
+                #  raise_error_if_no_channel_wavelength = True, #this is for the actual wavelength, the calibrated ones not the nominal ones in the channel dimension
+                #  settings_ozone = None
+                 ):
+        
+        """
+        Parameters
+        ----------
+        dataset : xarray.Dataset
+            The data.
+        site : atmPy.general.measurement_site.Station, optional
+            Site information should be in the dataset, if it is not or you want to overwite it (doulecheck if it actually does overwrite), set it here (forgot which format). The default is None.
+        langley_fit_settings : dict, optional
+            DESCRIPTION. The default is None.
+        calibration_strategy : str, optional
+            Depending on the strategie different files will be needed. The default is 'johns'.
+                johns: uses the langley calibration files from John.
+                sp02: uses the sp02 calibration files
+                toa_radiation: This assumes calibrated spectral radiation in the dataset. It will then get transmission using the toa radiation
+        metdata : str, optional
+            Which metdata (or data format) to use?. The default is 'surfrad'.
+                surfrad: (double check this) uses the surfrad met data (netcdf version)
+        settings_ozone : various, optional
+            A way to set the ozone. Currently most calibration strategies will pick there own way to get ozone (todo: this needs to change!). Eventually this should take a function that can read a file and aligns it to the dataset. Currently, for testing, only a single number is possible ... probly 300 DU.
+
+        """
+
+        super().__init__(dataset, site = site)
+        self.dataset = dataset #this is not exactly raw, it is cosine corrected voltag readings, thus, un-calibrated irradiances
+        self.variable_name_alternatives_direct_normal = ['direct_normal', 'direct_normal_irradiation', 'direct_normal_irradiance']
+        var_ops_direct_normal = [v for v in self.variable_name_alternatives_direct_normal if v in self.dataset.data_vars]
+        if len(var_ops_direct_normal)!= 1:
+            if len(var_ops_direct_normal) == 0:
+                raise ValueError('Could not find direct normal variable in dataset')
+            if len(var_ops_direct_normal) > 1:
+                raise ValueError('Multiple potential direct normal variables found in dataset: {}'.format(var_ops_direct_normal))
+            else:
+                raise RuntimeError('This should never happen (id2334442313)')
+        self.variable_name_direct_normal = var_ops_direct_normal[0]
+
+        # if raise_error_if_no_channel_wavelength:
+        self.variable_name_alternatives_channel_wavelength = ['channel_wavelength', 'channel_center'] 
+        variable_name_channel_wavelength = [v for v in self.variable_name_alternatives_channel_wavelength if v in self.dataset.data_vars]
+        if len(variable_name_channel_wavelength)!= 1:
+            if len(var_channel_center) == 0:
+                raise ValueError('Could not find channel center variable in dataset. This might mean that the data has not been spectrally calibrated yet. Use the apply_calibration_spectral method first.')
+            if len(var_channel_center) > 1:
+                raise ValueError('Multiple potential channel center variables found in dataset: {}'.format(var_channel_center))
+            else:
+                raise RuntimeError('This should never happen (id2334442313)')
+        self.variable_name_channel_wavelength = variable_name_channel_wavelength[0]
+
+        self.langley_fit_settings = langley_fit_settings
+        self.settings_langley_airmass_limits = (2.5,4)
+        self.settings_calibration = calibration_strategy 
+        # self.settings_metdata = metdata
+        # self.settings_ozone = settings_ozone
+        self.mfrsr_history = '/Users/htelg/projects/AOD_redesign/MFRSR_History.xlsx'
+        self.precipitable_water_varname = None
+        self.settings_rayleigh = 'firstprinciple' #options: 'john', 'firstprinciple'. "john" might have an errror in it, not sure if the error happend appon translation or his code actually has that error. results in an over estimation of the rayleigh od.
+        # self.path2absorption_correction_ceoff_1625 = None #'1625nm_absorption_correction_coefficience.nc'
+        self._absorption_correction_coeff_1625 = None
+        self.skip_1625_channel = False
+        self._am = None
+        self._pm = None
+        # self._transmission = None
+        # self._od_rayleigh = None
+        self._od_co2ch4h2o = None
+        # self._tpw = None
+        self._pwv_lut = None
+        # self._aod = None
+        # self._metdata = None
+        # self._od_ozone = None
+    
+
     
     def _get_baseline_met_data(self):
-        site = self.raw_data.attrs['site']
-        dtf = pd.to_datetime(self.raw_data.datetime.values[0])
+        site = self.dataset.attrs['site']
+        dtf = pd.to_datetime(self.dataset.datetime.values[0])
         p2metfld_base = '/nfs/iftp/aftp/g-rad/baseline/'
         p2metfld_base = pl.Path(p2metfld_base)
         p2f = p2metfld_base.joinpath(f'{site}/{dtf.year}/{site}{str(dtf.year)[2:]}{dtf.day_of_year:03d}.dat')
         ds = atmbl.read(p2f)
-        pt_interp = ds[['pressure','temp']].interp({'datetime':self.raw_data.datetime})
+        pt_interp = ds[['pressure','temp']].interp({'datetime':self.dataset.datetime})
         return pt_interp
     
-    def _get_surfrad_met_data(self):
-        """
-        Loads the surfrad data (from my netcdf version), interpolates and adds 
-        to the dataset. Location is currently hardcoded, this will likey cause problems sooner or later
+    # def _get_surfrad_met_data(self):
+    #     """
+    #     No longer needed! just set met_data property form outside if needed.
 
-        Returns
-        -------
-        None.
+    #     Loads the surfrad data (from my netcdf version), interpolates and adds 
+    #     to the dataset. Location is currently hardcoded, this will likey cause problems sooner or later
 
-        """
-        start_dt = pd.to_datetime(self.raw_data[self.variable_name_direct_normal].datetime.min().values)
-        end_dt = pd.to_datetime(self.raw_data[self.variable_name_direct_normal].datetime.max().values)
+    #     Returns
+    #     -------
+    #     None.
+
+    #     """
+    #     start_dt = pd.to_datetime(self.dataset[self.variable_name_direct_normal].datetime.min().values)
+    #     end_dt = pd.to_datetime(self.dataset[self.variable_name_direct_normal].datetime.max().values)
         
-        # open relevant files
-        site = self.site.abb
-        fns = []
-        for dt in [start_dt, end_dt]:
-            fns.append(f'/nfs/grad/surfrad/products_level1/radiation_netcdf/{site}/srf_rad_full_{site}_{dt.year:04d}{dt.month:02d}{dt.day:02d}.nc')
+    #     # open relevant files
+    #     site = self.site.abb
+    #     fns = []
+    #     for dt in [start_dt, end_dt]:
+    #         fns.append(f'/nfs/grad/surfrad/products_level1/radiation_netcdf/{site}/srf_rad_full_{site}_{dt.year:04d}{dt.month:02d}{dt.day:02d}.nc')
         
-        ds = xr.open_mfdataset(np.unique(fns)) # unique in case start and end is the same
+    #     ds = xr.open_mfdataset(np.unique(fns)) # unique in case start and end is the same
         
-        # interpolate to mfrsr datetime index
-        pt_interp = ds[['pressure','temp']].interp({'datetime':self.raw_data.datetime})
-        # self._metdata = pt_interp
-        # add to dataset
-        # for var in pt_interp:
-        #     self.raw_data[var] = pt_interp[var]
-        return pt_interp
+    #     # interpolate to mfrsr datetime index
+    #     pt_interp = ds[['pressure','temp']].interp({'datetime':self.dataset.datetime})
+    #     # self._metdata = pt_interp
+    #     # add to dataset
+    #     # for var in pt_interp:
+    #     #     self.dataset[var] = pt_interp[var]
+    #     return pt_interp
             
             
     def _apply_calibration_sp02(self):
@@ -905,25 +916,25 @@ class DirectNormalIrradiation(SolarIrradiation):
 
         """
         calibrations = atmlangcalib.load_calibration_history()
-        cal = calibrations[int(self.raw_data.attrs['serial_no'])]
+        cal = calibrations[int(self.dataset.attrs['serial_no'])]
         self.calibration_inst = cal
         # use the mean and only the actual channels, other channels are artefacts
-        cal = cal.results['mean'].loc[:,self.raw_data.channel_center.values].sort_index()
+        cal = cal.results['mean'].loc[:,self.dataset.channel_center.values].sort_index()
     
         #### interpolate and resample calibration (V0s)
-        dt = self.raw_data.datetime.to_pandas()
+        dt = self.dataset.datetime.to_pandas()
         calib_interp = pd.concat([cal,dt]).drop([0], axis = 1).sort_index().interpolate().reindex(dt.index)
         #### correct VOs for earth sun distance see functions above
         calib_interp_secorr = calib_interp.divide(self.sun_position.sun_earth_distance**2, axis = 0)
         self.calibration_data = calib_interp_secorr
         
         #### match channels for operation
-        channels = self.raw_data.channel_center.to_pandas()
-        raw_data = self.raw_data.direct_normal_irradiation.to_pandas().rename(columns = channels)
-        raw_data.columns.name = 'wl'
+        channels = self.dataset.channel_center.to_pandas()
+        dataset = self.dataset.direct_normal_irradiation.to_pandas().rename(columns = channels)
+        dataset.columns.name = 'wl'
         
         #### get transmission
-        transmission = raw_data/calib_interp_secorr
+        transmission = dataset/calib_interp_secorr
         transmission = xr.DataArray(transmission)
         transmission = transmission.rename({'wl':'channel'})
         self.calibration = 'sp02'
@@ -971,11 +982,11 @@ class DirectNormalIrradiation(SolarIrradiation):
         #### FIXME: the below should no longer be required
         # v0 = v0.assign_coords({'channel': [ 415,  500, 1625,  670,  870,  940]})
         
-        v0_interp = v0.interp(datetime = self.raw_data.direct_normal_irradiation.datetime)
+        v0_interp = v0.interp(datetime = self.dataset.direct_normal_irradiation.datetime)
         sedistcorr = self.sun_position.sun_earth_distance**2
         v0_interp_secorr = v0_interp.V0 / sedistcorr.to_xarray()
         self.tp_v0_interp_secorr = v0_interp_secorr
-        transmission = self.raw_data.direct_normal_irradiation / v0_interp_secorr
+        transmission = self.dataset.direct_normal_irradiation / v0_interp_secorr
         self.calibration = 'atm_gam'
         self._transmission =transmission
 
@@ -986,85 +997,90 @@ class DirectNormalIrradiation(SolarIrradiation):
         pass
         
 
-    def _apply_calibration_johns(self):
-        def datetime2angulardate(dt):
-            if dt.is_leap_year:
-                noofday = 366
-            else:
-                noofday = 365
-            fract_year = dt.day_of_year / noofday
-            yyyy_frac = dt.year+fract_year
-            angular_date = yyyy_frac * 2 * np.pi
-            return angular_date
+    # def _apply_calibration_johns(self):
+    #     """ Deprecated, this is now done by hand instead of hardcoding it here.
+    #     """
+    # 
+    # 
+    #
+    #     def datetime2angulardate(dt):
+    #         if dt.is_leap_year:
+    #             noofday = 366
+    #         else:
+    #             noofday = 365
+    #         fract_year = dt.day_of_year / noofday
+    #         yyyy_frac = dt.year+fract_year
+    #         angular_date = yyyy_frac * 2 * np.pi
+    #         return angular_date
         
-        #### open file that contains the calibration parameters (the fit parameters from john)
-        site = self.site.abb
-        p2f=f'/home/grad/surfrad/aod/{site}_mfrhead'
-        if not pl.Path(p2f).is_file():
-            raise FileNotFoundError(f'Calibration parameter file {p2f} not found. This might be due to the wrong value in settings_calibration. Current value is {self.settings_calibration}.')
-        langley_params = atmlangcalib.read_langley_params(p2f = p2f)
+    #     #### open file that contains the calibration parameters (the fit parameters from john)
+    #     site = self.site.abb
+    #     p2f=f'/home/grad/surfrad/aod/{site}_mfrhead'
+    #     if not pl.Path(p2f).is_file():
+    #         raise FileNotFoundError(f'Calibration parameter file {p2f} not found. This might be due to the wrong value in settings_calibration. Current value is {self.settings_calibration}.')
+    #     langley_params = atmlangcalib.read_langley_params(p2f = p2f)
         
-        #### get V0 for that date
-        # get closesed calibration parameter set based on first timestamp. 
-        # This was the wrong approach that I assumed 
-        # falsely. The right way is to use the coefficients from before that date
+    #     #### get V0 for that date
+    #     # get closesed calibration parameter set based on first timestamp. 
+    #     # This was the wrong approach that I assumed 
+    #     # falsely. The right way is to use the coefficients from before that date
         
-        #old:
-        # dt = pd.to_datetime(self.raw_data.datetime.values[0])
-        # assert((langley_params.datetime.to_pandas()-dt).abs().min() < pd.to_timedelta(1.5*365, 'days')), f'The closest fit the Langleys is more than 1 year out ({(langley_params.datetime.to_pandas()-dt).abs().min()}). This probably means that John needs update fit parameter file.'
-        # idxmin = (langley_params.datetime.to_pandas()-dt).abs().argmin()
-        # langley_params_sel = langley_params.isel(datetime = idxmin)
+    #     #old:
+    #     # dt = pd.to_datetime(self.dataset.datetime.values[0])
+    #     # assert((langley_params.datetime.to_pandas()-dt).abs().min() < pd.to_timedelta(1.5*365, 'days')), f'The closest fit the Langleys is more than 1 year out ({(langley_params.datetime.to_pandas()-dt).abs().min()}). This probably means that John needs update fit parameter file.'
+    #     # idxmin = (langley_params.datetime.to_pandas()-dt).abs().argmin()
+    #     # langley_params_sel = langley_params.isel(datetime = idxmin)
         
-        #new:using the coefficients from the last datetime before the date of this .ccc file.
-        dt = pd.to_datetime(self.raw_data.datetime.values[0])
+    #     #new:using the coefficients from the last datetime before the date of this .ccc file.
+    #     dt = pd.to_datetime(self.dataset.datetime.values[0])
         
-        dtmin = (dt - langley_params.datetime.to_pandas()) / pd.to_timedelta(1, 'day')
-        dtmin[dtmin < 0] = np.nan
-        idxmin = dtmin.argmin()
-        langley_params_sel = langley_params.isel(datetime = idxmin)
+    #     dtmin = (dt - langley_params.datetime.to_pandas()) / pd.to_timedelta(1, 'day')
+    #     dtmin[dtmin < 0] = np.nan
+    #     idxmin = dtmin.argmin()
+    #     langley_params_sel = langley_params.isel(datetime = idxmin)
         
         
-        # turn date into that johns angular_date (see definition of get_izero in aod_analysis.f 
-        angular_date = datetime2angulardate(dt)
+    #     # turn date into that johns angular_date (see definition of get_izero in aod_analysis.f 
+    #     angular_date = datetime2angulardate(dt)
         
-        # apply the parameters to get the V0 and V0_err
-        # V0 =
-        cons_term = langley_params_sel.V0.sel(V0_params = 'const')
-        lin_term = langley_params_sel.V0.sel(V0_params = 'lin') * angular_date 
-        sin_term = langley_params_sel.V0.sel(V0_params = 'sin') * np.sin(angular_date)
-        cos_term = langley_params_sel.V0.sel(V0_params = 'cos') * np.cos(angular_date)
-        V0 = cons_term + lin_term + sin_term + cos_term
+    #     # apply the parameters to get the V0 and V0_err
+    #     # V0 =
+    #     cons_term = langley_params_sel.V0.sel(V0_params = 'const')
+    #     lin_term = langley_params_sel.V0.sel(V0_params = 'lin') * angular_date 
+    #     sin_term = langley_params_sel.V0.sel(V0_params = 'sin') * np.sin(angular_date)
+    #     cos_term = langley_params_sel.V0.sel(V0_params = 'cos') * np.cos(angular_date)
+    #     V0 = cons_term + lin_term + sin_term + cos_term
         
-        V0df = pd.DataFrame(V0.to_pandas())
+    #     V0df = pd.DataFrame(V0.to_pandas())
         
-        #### correct for earth sun distance
-        sedistcorr = pd.DataFrame(self.sun_position.sun_earth_distance**2)
-        sedistcorr.columns = [0]
+    #     #### correct for earth sun distance
+    #     sedistcorr = pd.DataFrame(self.sun_position.sun_earth_distance**2)
+    #     sedistcorr.columns = [0]
         
-        # self.tp_V0df = V0df
-        # self.tp_sedistcorr = sedistcorr
-        calib_interp_secorr = V0df.dot(1/sedistcorr.transpose()).transpose()
-        calib_interp_secorr.rename({936:940}, axis = 1, inplace=True)
-        calib_interp_secorr.columns.name = 'channel'
-        # self.tp_calib_interp_secorr = calib_interp_secorr
-        self.tp_calib_interp_secorr = calib_interp_secorr
-        raw_data = self.raw_data.direct_normal_irradiation.to_pandas()
-        transmission = raw_data/calib_interp_secorr
-        transmission = xr.DataArray(transmission)     
-        self.calibration = 'johns'
-        self._transmission =transmission
+    #     # self.tp_V0df = V0df
+    #     # self.tp_sedistcorr = sedistcorr
+    #     calib_interp_secorr = V0df.dot(1/sedistcorr.transpose()).transpose()
+    #     calib_interp_secorr.rename({936:940}, axis = 1, inplace=True)
+    #     calib_interp_secorr.columns.name = 'channel'
+    #     # self.tp_calib_interp_secorr = calib_interp_secorr
+    #     self.tp_calib_interp_secorr = calib_interp_secorr
+    #     dataset = self.dataset.direct_normal_irradiation.to_pandas()
+    #     transmission = dataset/calib_interp_secorr
+    #     transmission = xr.DataArray(transmission)     
+    #     self.calibration = 'johns'
+    #     self._transmission =transmission
 
     @property
     def od_rayleigh(self):
-        if 'od_rayleigh' not in self.raw_data:
+        if 'od_rayleigh' not in self.dataset:
             if self.settings_rayleigh == 'john':
-                odr = xr.concat([atmraylab.rayleigh_od_johnsmethod(self.met_data.pressure, chan.values) for chan in self.raw_data[self.variable_name_channel_wavelength]], 'channel')
+                odr = xr.concat([atmraylab.rayleigh_od_johnsmethod(self.met_data.pressure, chan.values) for chan in self.dataset[self.variable_name_channel_wavelength]], 'channel')
             elif self.settings_rayleigh == 'firstprinciple':
-                odr = xr.concat([atmraylab.rayleigh_od_first_principles(chan.values, pressure = self.met_data.pressure) for chan in self.raw_data[self.variable_name_channel_wavelength]], 'channel')
+                odr = xr.concat([atmraylab.rayleigh_od_first_principles(chan.values, pressure = self.met_data.pressure) for chan in self.dataset[self.variable_name_channel_wavelength]], 'channel')
             self._od_rayleigh = odr
             self.tp_odr = odr
-            self.raw_data['od_rayleigh'] = odr
-        return self.raw_data['od_rayleigh']
+            self.dataset['od_rayleigh'] = odr
+        return self.dataset['od_rayleigh']
 
 
     @property
@@ -1082,12 +1098,12 @@ class DirectNormalIrradiation(SolarIrradiation):
             Returns the ozone absorption spectrum as an xarray.DataArray.
         """
 
-        if 'ozone_absorption_spectrum' not in self.raw_data:
+        if 'ozone_absorption_spectrum' not in self.dataset:
            #try the default folder
            self.ozone_absorption_spectrum = '/Users/htelg/home/grad/surfrad/aod/ozone.coefs'
             # else:
             #     assert(False), 'set ozone_absorption_spectrum!'
-        return self.raw_data['ozone_absorption_spectrum']
+        return self.dataset['ozone_absorption_spectrum']
     
 
     @ozone_absorption_spectrum.setter
@@ -1104,21 +1120,21 @@ class DirectNormalIrradiation(SolarIrradiation):
         else:
             assert(False), f'Could not interpret ozone absorption spectrum from {value}'
         self.tp_ozone_absorption_spectrum = ozone_abs_coef
-        self.raw_data['ozone_absorption_spectrum'] = ozone_abs_coef
+        self.dataset['ozone_absorption_spectrum'] = ozone_abs_coef
         return
   
     @property
     def ozone_absorption_by_channel(self):
-        if 'ozon_absoption_by_channel' not in self.raw_data:
-            ozon2bychannel = self.ozone_absorption_spectrum.interp(wavelength = self.raw_data[self.variable_name_channel_wavelength])
+        if 'ozon_absoption_by_channel' not in self.dataset:
+            ozon2bychannel = self.ozone_absorption_spectrum.interp(wavelength = self.dataset[self.variable_name_channel_wavelength])
             self.tp_ozon2bychannel = ozon2bychannel.copy()
             ozon2bychannel = ozon2bychannel.drop('wavelength')
 
             # 368 and 1050 are outside the ozon spectrum. Values should be very small
             ozon2bychannel = ozon2bychannel.fillna(0)
 
-            self.raw_data['ozon_absoption_by_channel'] = ozon2bychannel
-        return self.raw_data['ozon_absoption_by_channel']
+            self.dataset['ozon_absoption_by_channel'] = ozon2bychannel
+        return self.dataset['ozon_absoption_by_channel']
 
     @property
     def ozone_data(self) -> xr.DataArray:
@@ -1136,29 +1152,29 @@ class DirectNormalIrradiation(SolarIrradiation):
                 - a path to a file (e.g. netcdf or csv)
             if int or float is given it is assumed to be a constant value (in DU) for all times.      
         """
-        if 'ozone_data' not in self.raw_data:
+        if 'ozone_data' not in self.dataset:
             assert(False), 'Set ozone_data'
-        return self.raw_data['ozone_data']
+        return self.dataset['ozone_data']
     
     @ozone_data.setter
     def ozone_data(self, value: typing.Union[xr.Dataset, xr.DataArray, int, float, str, pl.Path]) -> None:
         if isinstance(value, (xr.Dataset, xr.DataArray)):
             ozone_data = value
-            print('whatup')
             self.tp_ozon_data1 = ozone_data.copy()
         elif isinstance(value, str):
             if pl.Path(value).is_file():
                 ozone_data = xr.open_dataset(value)
-            elif value == 'johns':
-                p2f = f'/home/grad/surfrad/aod/ozone/{self.site.abb}_ozone.dat'
-                ozone = atmsrf.read_ozon(p2f)
-                dt = pd.to_datetime(pd.to_datetime(self.raw_data.datetime.values[0]).date())
-                ozone_data = float(ozone.interp(datetime = dt).ozone)
+            # elif value == 'johns':
+            #  Deprecated, ozone data now needs to be loaded from outside.
+            #     p2f = f'/home/grad/surfrad/aod/ozone/{self.site.abb}_ozone.dat'
+            #     ozone = atmsrf.read_ozon(p2f)
+            #     dt = pd.to_datetime(pd.to_datetime(self.dataset.datetime.values[0]).date())
+            #     ozone_data = float(ozone.interp(datetime = dt).ozone)
             elif value == 'sp02':
                 assert(self.site.abb == 'brw'), 'only works for barrow so far'
 
                 #### read ozon and interpolate
-                dt = pd.to_datetime(self.raw_data.datetime.values[0])
+                dt = pd.to_datetime(self.dataset.datetime.values[0])
                 p2fld= pl.Path('/nfs/stu3data2/Model_data/merra_2/barrow/merra_M2I1nxasm_5.12.4/')
                 
                 p2f_list = []
@@ -1180,10 +1196,10 @@ class DirectNormalIrradiation(SolarIrradiation):
                 ozone = xr.open_mfdataset(p2f_list)
                 ozone = ozone.rename({'time': 'datetime'})
                 
-                ozone_data = ozone.interp(datetime = self.raw_data.datetime).TO3
+                ozone_data = ozone.interp(datetime = self.dataset.datetime).TO3
 
         elif isinstance(value, (int, float)):
-            ozone_data = xr.DataArray(value, dims=('datetime',), coords={'datetime': self.raw_data.datetime})
+            ozone_data = xr.DataArray(value, dims=('datetime',), coords={'datetime': self.dataset.datetime})
 
         else:
             assert(False), 'no idea what to do with this~!!?!?'
@@ -1203,24 +1219,26 @@ class DirectNormalIrradiation(SolarIrradiation):
             ozone_data = ozone_data.rename({found[0]:'datetime'})
 
         # interp to match times
-        ozone_data = ozone_data.interp(datetime = self.raw_data.datetime)
+        ozone_data = ozone_data.interp(datetime = self.dataset.datetime)
 
         if ozone_data.sum() == 0:
             raise ValueError('Ozone data is all none or zero! Try setting it with a constant value.')
-        self.raw_data['ozone_data'] = ozone_data
-        self.raw_data.ozone_data.attrs = dict(long_name = "Total column ozone",
+        self.dataset['ozone_data'] = ozone_data
+        self.dataset.ozone_data.attrs = dict(long_name = "Total column ozone",
                                              units     = "Dobson Units (DU)",)
         return
 
     @property
     def od_ozone(self):
-        if 'od_ozone' not in self.raw_data:
+        if 'od_ozone' not in self.dataset:
+            if self.verbose:
+                print('Calculating ozone optical depth for each channel.', flush = True)
         # if isinstance(self._od_ozone, type(None)):
             #### read spectral function of ozon absorption coeff 
             # p2f = '/home/grad/surfrad/aod/ozone.coefs'
             # ozone_abs_coef = pd.read_csv(p2f, index_col= 0, sep = ' ', names=['wavelength', 'coeff'])
             # ozone_abs_coef = ozone_abs_coef.to_xarray()
-            # ozon2bychannel = ozone_abs_coef.interp(wavelength = self.raw_data[self.variable_name_channel_wavelength])
+            # ozon2bychannel = ozone_abs_coef.interp(wavelength = self.dataset[self.variable_name_channel_wavelength])
             # self.tp_ozon2bychannel = ozon2bychannel.copy()
             # ozon2bychannel = ozon2bychannel.drop('wavelength')
 
@@ -1231,7 +1249,7 @@ class DirectNormalIrradiation(SolarIrradiation):
                 #### read ozon concentration file for particular site and extract data for this day
                 # p2f = f'/home/grad/surfrad/aod/ozone/{self.site.abb}_ozone.dat'
                 # ozone = atmsrf.read_ozon(p2f)
-                # dt = pd.to_datetime(pd.to_datetime(self.raw_data.datetime.values[0]).date())
+                # dt = pd.to_datetime(pd.to_datetime(self.dataset.datetime.values[0]).date())
                 # total_ozone = float(ozone.interp(datetime = dt).ozone)
                 
             
@@ -1239,7 +1257,7 @@ class DirectNormalIrradiation(SolarIrradiation):
                 # assert(self.site.abb == 'brw'), 'only works for barrow so far'
 
                 # #### read ozon and interpolate
-                # dt = pd.to_datetime(self.raw_data.datetime.values[0])
+                # dt = pd.to_datetime(self.dataset.datetime.values[0])
                 # p2fld= pl.Path('/nfs/stu3data2/Model_data/merra_2/barrow/merra_M2I1nxasm_5.12.4/')
                 
                 # p2f_list = []
@@ -1261,7 +1279,7 @@ class DirectNormalIrradiation(SolarIrradiation):
                 # ozone = xr.open_mfdataset(p2f_list)
                 # ozone = ozone.rename({'time': 'datetime'})
                 
-                # total_ozone = ozone.interp(datetime = self.raw_data.datetime).TO3
+                # total_ozone = ozone.interp(datetime = self.dataset.datetime).TO3
             
                 
             # else:
@@ -1274,21 +1292,36 @@ class DirectNormalIrradiation(SolarIrradiation):
             od_ozone = self.ozone_absorption_by_channel * (self.ozone_data/1000) #any idea why we devide by 1000?
             od_ozone = od_ozone.fillna(0)
             # self._od_ozone = od_ozone
-            self.raw_data['od_ozone'] = od_ozone
-        return self.raw_data['od_ozone']
+            self.dataset['od_ozone'] = od_ozone
+        return self.dataset['od_ozone']
 
         
     def _retreive_pwv_from_940_channel(self, lookuptable: xr.DataArray) -> xr.DataArray:
         """Retrieve precipitable water from 940nm channel using provided lookup table.
         """
         ds_pwdlut = lookuptable
+
+        # calculate the water vapor optical depth at 940nm by extrapolation via angstrom exponent between 500 and 870nm
+        l1 =  500
+        l2 = 870
+        t1 = self.aod.sel(channel = l1)
+        t2 = self.aod.sel(channel = l2)
+        t1 = t1.where(t1>0, other = 0.001)
+        t2 = t2.where(t2>0, other = 0.001)
+        ang = - np.log(t1/t2)/np.log(l1/l2)
+        l3 = 940
+        t3 = t1 * (l3/l1)**-ang
+        tpwvaod = self.aod.sel(channel = l3)
+        tpwv = tpwvaod - t3
+
+
         ammin = ds_pwdlut.air_mass.min()
         ammax = ds_pwdlut.air_mass.max()
         def row2pwv(row):
             if  ammin<= row.airmass <= ammax:
-                # print('buba')
-                aodt = self.aod.sel(channel = 940, datetime = row.name)
-                # the lut is in optical depth along the path, so not normalize to air mass
+                # aodt = self.aod.sel(channel = 940, datetime = row.name)
+                aodt = tpwv.sel(datetime = row.name)
+                # the lut is in optical depth along the path, so not normalized to air mass --> un-normalize
                 aodt *= row.airmass
                 lut_at_am = ds_pwdlut.interp(air_mass = row.airmass, method='linear')
                 lut_at_am_inv = xr.DataArray(lut_at_am.pwv.values, coords = {'od': lut_at_am.optical_depth.values})
@@ -1325,16 +1358,16 @@ class DirectNormalIrradiation(SolarIrradiation):
         """
 
         
-        if 'precipitable_water' not in self.raw_data:
+        if 'precipitable_water' not in self.dataset:
             if isinstance(self._pwv_lut, xr.Dataset):
                 if self.verbose: 
                     print('Retrieving precipitable water from 940nm channel using lookup table.')
                 da =  self._retreive_pwv_from_940_channel(self._pwv_lut)
-                self.raw_data['precipitable_water'] = da
+                self.dataset['precipitable_water'] = da
             else:
-                raise AttributeError('precipitable water is not set. Use the setter to set it first!')
+                raise AttributeError('precipitable water is not set. Use the setter to set it first! Or set skip_1625_channel to True to avoid needing precipitable water.')
             
-        return self.raw_data['precipitable_water']
+        return self.dataset['precipitable_water']
 
     # @property
     # def precipitable_water(self):
@@ -1352,7 +1385,7 @@ class DirectNormalIrradiation(SolarIrradiation):
             
     #         #### get path to relevant soundings files
     #         files = pd.DataFrame()
-    #         datetime = pd.to_datetime(self.raw_data.datetime.values[0])
+    #         datetime = pd.to_datetime(self.dataset.datetime.values[0])
     #         for dt in [datetime, datetime + pd.to_timedelta(1, 'day')]:
     #             # pass
             
@@ -1378,10 +1411,10 @@ class DirectNormalIrradiation(SolarIrradiation):
     #         # self.tp_tpw_all_1 = tpw.copy()
     #         tpw = tpw.assign_coords(site = [sitedict[str(s.values)].lower() for s in tpw.site])
     #         # self.tp_tpw_all_2 = tpw.copy()
-    #         tpw = tpw.sel(site = self.raw_data.site)
+    #         tpw = tpw.sel(site = self.dataset.site)
     #         tpw = tpw.drop(['site'])
             
-    #         tpw = tpw.interp({'datetime': self.raw_data.datetime})
+    #         tpw = tpw.interp({'datetime': self.dataset.datetime})
     #         self._tpw =tpw
     #     return self._tpw
 
@@ -1390,6 +1423,9 @@ class DirectNormalIrradiation(SolarIrradiation):
     def precipitable_water(self, value):
         if isinstance(value, xr.Dataset):
             ds = value
+        elif isinstance(value, xr.DataArray):
+            ds = xr.Dataset()
+            ds['precipitable_water'] = value
         elif isinstance(value, str): 
             if pl.Path(value).is_file():
                 ds = xr.open_dataset(value)
@@ -1397,10 +1433,10 @@ class DirectNormalIrradiation(SolarIrradiation):
                 raise FileNotFoundError(f'File {value} not found')
         elif isinstance(value, (int, float)): 
             ds = xr.Dataset()
-            ds['precipitable_water'] =xr.DataArray(value, dims=('datetime',), coords={'datetime': self.raw_data.datetime})
-            # return self.raw_data['precipitable_water']
+            ds['precipitable_water'] =xr.DataArray(value, dims=('datetime',), coords={'datetime': self.dataset.datetime})
+            # return self.dataset['precipitable_water']
         else:
-            ValueError(f'Expected xr.Dataset, or valid Path (as str or pathlib.Path). Got: {value}')
+            raise ValueError(f'Expected xr.Dataset, or valid Path (as str or pathlib.Path). Got: {value}')
 
         # ds_clean = xr.Dataset()
         if 'product' in ds.attrs:
@@ -1429,7 +1465,7 @@ class DirectNormalIrradiation(SolarIrradiation):
                 assert(len(varlist) == 1), f'more then one variable found that indicate precipitable water ({varlist}). Try setting self.precipitable_water_varname with the appropriete variable name.'
                 ds_clean = ds[varlist[0]]
         
-        ds_clean = ds_clean.interp({'datetime':self.raw_data.datetime}, method = 'linear')
+        ds_clean = ds_clean.interp({'datetime':self.dataset.datetime}, method = 'linear')
         # self.tp_dsmet_clean = ds_clean
         if 'units' in ds_clean.attrs:
             if ds_clean.attrs['units'] == 'mm':
@@ -1443,24 +1479,39 @@ class DirectNormalIrradiation(SolarIrradiation):
             
         ds_clean.attrs['units'] = 'cm'
         ds_clean.attrs['long_name'] = 'Precipitable water'
-        self.raw_data['precipitable_water'] = ds_clean
-        self.raw_data.precipitable_water.attrs = dict(long_name = "Precipitable water",
+        self.dataset['precipitable_water'] = ds_clean
+        self.dataset.precipitable_water.attrs = dict(long_name = "Precipitable water",
                                                     units     = "cm",
                                                     comment   = "Equivalent liquid water depth; not CF-standard, convertible to 0.1 kg m-2 per mm.")
         return
         
 
     @property
+    def absorption_correction_coeff_1625(self):
+        if isinstance(self._absorption_correction_coeff_1625, type(None)):
+            txt = ('absorption_correction_coeff_1625 attribute is not set.\n' 
+                   'Hint: check folder /nfs/grad/surfrad/mfrsr_cal/1625nm_absorption_correction_coefficients/\n'
+                   'This is required to process the 1625nm channel.\n'
+                   'If you want to skip processing of the 1625nm channel set the skip_1625nm_correction attribute to True.')
+            raise ValueError(txt)
+        return self._absorption_correction_coeff_1625
+    
+    @absorption_correction_coeff_1625.setter
+    def absorption_correction_coeff_1625(self, value: xr.Dataset):
+        self._absorption_correction_coeff_1625 = value
+        return
+
+    @property
     def od_co2_ch4_h2o(self):
         if isinstance(self._od_co2ch4h2o, type(None)):
             # get the 1625 filter info based on the MFRSR instrument serial no
-            if 1625 in self.raw_data.channel:
+            if 1625 in self.dataset.channel:
                 #### TODO: this file should be stored somewhere more meaning full
                 if not isinstance(self.mfrsr_history, type(None)):
-                    fn = '/home/grad/htelg/projects/AOD_redesign/MFRSR_History.xlsx'
+                    # fn = '/home/grad/htelg/projects/AOD_redesign/MFRSR_History.xlsx'
                     mfrsr_info = pd.read_excel(self.mfrsr_history, sheet_name='Overview')
-                    inst_info = mfrsr_info[mfrsr_info.Instrument == self.raw_data.serial_no]
-                    assert(len(inst_info) == 1), f'Could not find unique MFRSR instrument info for serial no {self.raw_data.serial_no} in MFRSR history file {self.mfrsr_history}. Make sure the correct serial number is stored in raw_data.attrs["serial_no"]'
+                    inst_info = mfrsr_info[mfrsr_info.Instrument == self.dataset.serial_no]
+                    assert(len(inst_info) == 1), f'Could not find unique MFRSR instrument info for serial no {self.dataset.serial_no} in MFRSR history file {self.mfrsr_history}. Make sure the correct serial number is stored in dataset.attrs["serial_no"]'
                     self.tp_inst_info = inst_info.copy()
                     fab = inst_info.Filter_1625nm.iloc[0]
                     self.tp_fab = fab
@@ -1470,19 +1521,29 @@ class DirectNormalIrradiation(SolarIrradiation):
                     self.tp_filter_batch = filter_batch
                     # open the lookup dabel for the Optical depth correction
                     # correction_info = xr.open_dataset(self.path2absorption_correction_ceoff_1625)
-                    with xr.open_dataset(self.path2absorption_correction_ceoff_1625) as correction_info:
-                        correction_info.load()
-                
+                    # if self.path2absorption_correction_ceoff_1625 is None:
+                    #     if self.skip_1625_channel:
+                    #         assert(False), 'This is not implemented yet, what is needed to fully skip the 1625nm channel processing?'
+                    #     else:
+                    #         txt = ('path2absorption_correction_ceoff_1625 attribute is not set.\n' 
+                    #             'Hint: check folder /nfs/grad/surfrad/mfrsr_cal/1625nm_absorption_correction_coefficients/\n'
+                    #             'If you want to skip processing of the 1625nm channel set the skip_1625nm_correction attribute to True.')
+                    #         raise ValueError(txt)
+                    #Todo: I would rather that the file is opened by the user and passed as an xarray.Dataset.
+                    # with xr.open_dataset(self.path2absorption_correction_ceoff_1625) as correction_info:
+                    #     correction_info.load()
+                    correction_info = self.absorption_correction_coeff_1625
                     ds = xr.Dataset()
                     params_dict = {}
                     for molecule in ['co2', 'ch4', 'h2o_5cm']:
                         params = correction_info.sel(filter_no = filter_no, batch = filter_batch, molecule = molecule)
                         params_dict[molecule] = params
                         # apply the airmass dependence
+                        self.tp_params = params.copy()
                         da = params.OD.interp({'airmass': self.sun_position.airmass})
-                        da = da.assign_coords(airmass = self.sun_position.index.values)
-                        da = da.rename({'airmass': 'datetime'})
-                        da = da.drop(['filter_no', 'molecule', 'batch'])
+                        da = da.assign_coords(airmass = self.sun_position.datetime)
+                        # da = da.rename({'airmass': 'datetime'})
+                        da = da.drop(['filter_no', 'molecule', 'batch', 'airmass'])
                         ds[molecule] = da
                     
                     # self.tp_params = params_dict
@@ -1501,7 +1562,7 @@ class DirectNormalIrradiation(SolarIrradiation):
                 
                     #### add 0 for all other channels
                     dstlist = [ds]
-                    for cha in self.raw_data.channel:
+                    for cha in self.dataset.channel:
                         if int(cha) == 1625:
                             continue    
                         
@@ -1519,8 +1580,8 @@ class DirectNormalIrradiation(SolarIrradiation):
             else:
                 # generate a ds with zeros
                 ds =  xr.Dataset()
-                ds['co2'] = xr.DataArray(np.zeros(tuple(self.raw_data.dims[d] for d in ['datetime', 'channel'])), 
-                                         coords={'datetime':self.raw_data.datetime, 'channel':self.raw_data.channel})
+                ds['co2'] = xr.DataArray(np.zeros(tuple(self.dataset.dims[d] for d in ['datetime', 'channel'])), 
+                                         coords={'datetime':self.dataset.datetime, 'channel':self.dataset.channel})
                 ds['ch4'] = ds.co2.copy()
                 ds['h2o_5cm'] = ds.co2.copy()
                 
@@ -1529,24 +1590,41 @@ class DirectNormalIrradiation(SolarIrradiation):
 
     @property
     def od_total(self):
-        od = - np.log(self.transmission)/self.sun_position.airmass.to_xarray()
+        od = - np.log(self.transmission)/self.sun_position.airmass
         return od
     
     @property
     def aod(self):
-        if 'aod' not in self.raw_data:
+        if 'aod' not in self.dataset:
             odt = self.od_total
             odr = self.od_rayleigh
-            self.raw_data['aod'] = odt - odr #this generates a temporary aod variable, which is needed in case the pwv retrieva:l uses the aod at 940nm channel.
-            odch4 = self.od_co2_ch4_h2o.ch4
-            odco2 = self.od_co2_ch4_h2o.co2
-            odh2o = self.od_co2_ch4_h2o.h2o_5cm
+            aod = odt - odr# - odch4 - odco2 - odh2o - odozone
+            attrs = dict(long_name = "Aerosol Optical Depth",
+                         units     = "unitless",
+                         corrected_for_rayleigh = "True",
+                            corrected_for_ozone = "False",
+                            corrected_for_co2_ch4_h2o = "False",
+
+
+                         )
+            # TODO the following line can be done on the fly instead of setting the aod, which is causing a lot of trouble
+            # self.dataset['aod'] = odt - odr #this generates a temporary aod variable, which is needed in case the pwv retrieva:l uses the aod at 940nm channel.
+            if not self.skip_1625_channel:
+                self.tp_aod = aod.copy()
+                odch4 = self.od_co2_ch4_h2o.ch4
+                odco2 = self.od_co2_ch4_h2o.co2
+                odh2o = self.od_co2_ch4_h2o.h2o_5cm
+                odtmp =  odch4 + odco2 + odh2o
+                aod = aod - odtmp
+                attrs['corrected_for_co2_ch4_h2o'] = "True"
             odozone = self.od_ozone
-            aod = odt - odr - odch4 - odco2 - odh2o - odozone
+            aod -= odozone
+            attrs['corrected_for_ozone'] = "True"
+            # aod = odt - odr - odch4 - odco2 - odh2o - odozone
             # self._aod = aod
-            self.raw_data['aod'] = aod
-            
-        return self.raw_data.aod
+            self.dataset['aod'] = aod
+            self.dataset.aod.attrs = attrs
+        return self.dataset.aod
         
 
     # This is now split up in the SolarIrradiatin instance and here somewhere
@@ -1561,10 +1639,12 @@ class DirectNormalIrradiation(SolarIrradiation):
 
         """
         #### get solar spectrum at top of atmosphere
-        if 'toa_spectral_irradiance' in self.raw_data:
-            trans = self.raw_data.direct_normal / self.raw_data.toa_spectral_irradiance
-            self.raw_data['transmission'] = trans
+        if 'toa_spectral_irradiance' in self.dataset:
+
+            trans = self.dataset.direct_normal / self.dataset.toa_spectral_irradiance
+            self.dataset['transmission'] = trans
         else:
+            assert(False), 'this should no longer be needed, use calibrate to irradiance or write another option here that allows to not use toa radiation at all!'
             ds_solar = self.toa_solarspectrum_1AU# xr.open_dataset(self.path2solar_spectrum)
             rad_top = ds_solar.interp(wavelength=self.dataset.channel_wavelength, method='linear')
             direct_es_corr = self.dataset.direct_normal * self.sun_position.sun_earth_distance.to_xarray()**2 #correct for earth sun distance, this requires mulitplication not division!!!!
@@ -1572,17 +1652,17 @@ class DirectNormalIrradiation(SolarIrradiation):
             trans = direct_es_corr/rad_top #transmission
             trans = trans.drop_vars('wavelength')
             trans = trans.rename_vars({'irradiance':'transmission'})
-            self.raw_data['transmission'] = trans.transmission
+            self.dataset['transmission'] = trans.transmission
         return
 
     @property
     def transmission(self):
         # if isinstance(self._transmission, type(None)):
-        if 'transmission' not in self.raw_data:
-            if self.raw_data.attrs.get('calibrated_langley', False) and self.raw_data.global_horizontal.attrs.get('unit', 'bla') == 'W/m^2/nm':
+        if 'transmission' not in self.dataset:
+            if self.dataset.attrs.get('calibrated_langley', False) and self.dataset.global_horizontal.attrs.get('unit', 'bla') == 'W/m^2/nm':
                 self._transmission_from_toa_radiation()
-            elif self.settings_calibration == 'johns':
-                self._apply_calibration_johns()
+            # elif self.settings_calibration == 'johns':
+            #     self._apply_calibration_johns()
             elif self.settings_calibration == 'atm_gam':
                 self._apply_calibration_atm_gam()
             elif self.settings_calibration == 'sp02':
@@ -1596,31 +1676,31 @@ class DirectNormalIrradiation(SolarIrradiation):
                 #### load calibrations
                 #### TODO: remove once SP02 is working again
                 calibrations = atmlangcalib.load_calibration_history()
-                cal = calibrations[int(self.raw_data.serial_no.values)]
+                cal = calibrations[int(self.dataset.serial_no.values)]
                 # use the mean and only the actual channels, other channels are artefacts
-                cal = cal.results['mean'].loc[:,self.raw_data.channle_wavelengths.values].sort_index()
+                cal = cal.results['mean'].loc[:,self.dataset.channle_wavelengths.values].sort_index()
                 
                 #### interpolate and resample calibration (V0s)
-                dt = self.raw_data.datetime.to_pandas()
+                dt = self.dataset.datetime.to_pandas()
                 calib_interp = pd.concat([cal,dt]).drop([0], axis = 1).sort_index().interpolate().reindex(dt.index)
                 
                 #### correct VOs for earth sun distance see functions above
                 calib_interp_secorr = calib_interp.divide(self.sun_position.sun_earth_distance**2, axis = 0)
                 
                 #### match channels for operation
-                channels = self.raw_data.channle_wavelengths.to_pandas()
-                raw_data = self.raw_data.raw_data.to_pandas().rename(columns = channels)
-                raw_data.columns.name = 'wl'
+                channels = self.dataset.channle_wavelengths.to_pandas()
+                dataset = self.dataset.dataset.to_pandas().rename(columns = channels)
+                dataset.columns.name = 'wl'
                 
                 #### get transmission
-                self._transmission = raw_data/calib_interp_secorr
-        return self.raw_data.transmission
+                self._transmission = dataset/calib_interp_secorr
+        return self.dataset.transmission
     
     
     # @property
     # def sun_position(self):
     #     if isinstance(self._sun_position, type(None)):
-    #         self._sun_position = self.site.get_sun_position(self.raw_data.datetime)
+    #         self._sun_position = self.site.get_sun_position(self.dataset.datetime)
     #     return self._sun_position
     
     @property
@@ -1636,7 +1716,7 @@ class DirectNormalIrradiation(SolarIrradiation):
         return self._pm
     
     # def tp_get_rdl(self):
-    #     raw_df = self.raw_data.raw_data.to_pandas()
+    #     raw_df = self.dataset.dataset.to_pandas()
         
     #     # changing to local time
     #     raw_df_loc = raw_df.copy()
@@ -1661,7 +1741,7 @@ class DirectNormalIrradiation(SolarIrradiation):
 
         """
 
-        raw_df = self.raw_data[self.variable_name_direct_normal].to_pandas()
+        raw_df = self.dataset[self.variable_name_direct_normal].to_pandas()
         
         if verbose:
             print('change to local time')
@@ -1756,7 +1836,7 @@ class DirectNormalIrradiation(SolarIrradiation):
         return True
 
 class CombinedGlobalDiffuseDirect(SolarIrradiation):
-    def __init__(self, dataset):
+    def __init__(self, dataset, **kwargs):
         """
         A class that combines the three irradiation components into one dataset and provides some specific functions
         Parameters
@@ -1768,7 +1848,7 @@ class CombinedGlobalDiffuseDirect(SolarIrradiation):
         2024-06-10, HTelg   
         """
 
-        super().__init__(dataset)
+        super().__init__(dataset, **kwargs)
         self._global_horizontal_irradiation = None
         self._diffuse_horizontal_irradiation = None
         self._direct_normal_irradiation = None

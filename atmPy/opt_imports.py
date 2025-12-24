@@ -58,3 +58,4 @@ cartopy = OptionalImport('cartopy', submodules = 'io.img_tiles')
 pygam = OptionalImport('pygam')
 
 numba = OptionalImport('numba')
+pvlib = OptionalImport('pvlib')

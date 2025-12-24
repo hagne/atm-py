@@ -7,6 +7,7 @@ import matplotlib.pylab as _plt
 import os as _os
 import numpy as _np
 import pandas as _pd
+import xarray as _xr
 from atmPy.radiation import solar as _solar
 # import datetime as _datetime
 # import timezonefinder as _tzf
@@ -437,9 +438,18 @@ class Station(object):
         return out
         
     
-    def get_sun_position(self, datetime):
-        out = _solar.get_sun_position(self.lat, self.lon, datetime, elevation = self.alt)
-        return out
+    def get_sun_position(self, datetime, method = 'pvlib', return_type = 'dataset') -> '_xr.Dataset or _pd.DataFrame':
+        if method == 'pvlib':
+            ds = _solar.get_sun_position_pvlib(self.lat, self.lon, self.alt, datetime)
+        elif method == 'pysolar':
+            ds = _solar.get_sun_position_pysolar(self.lat, self.lon, datetime, elevation=self.alt)
+        else:
+            raise ValueError("method must be either 'pvlib' or 'pysolar'")
+        
+        if return_type == 'dataset':
+            return ds
+        elif return_type == 'dataframe':
+            return ds.to_dataframe()
         
     def plot(self,
              backend = 'cartopy',
