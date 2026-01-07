@@ -715,11 +715,15 @@ def plot_langley(lang_ds, wls = 'all', date = 'Test'):
     return f,aas
 
 class Langley(object):
-    def __init__(self, parent, langleys, airmass_limits = (2.5,4),
+    def __init__(self, parent, langleys, airmass_limits = (2.2,4.7),
                  langley_fit_settings = None, when = None):
         self.parent = parent
+        amf_min, amf_max = airmass_limits
+        ds = langleys.where((langleys.airmass > amf_min) & (langleys.airmass < amf_max), drop = True)
+        self.dataset = ds
+        langleys = ds.direct_normal.to_pandas()
         langleys.columns.name = 'wavelength'
-        langleys = langleys.truncate(*airmass_limits)
+        # langleys = langleys.truncate(*airmass_limits)
         # langleys = langleys.copy()
         # langleys = langleys.where(aimass_limits[0] < langleys.airmass).where(aimass_limits[1] > langleys.airmass).dropna('airmass')
         self.langleys = langleys
@@ -736,11 +740,11 @@ class Langley(object):
     
     def to_xarray_dataset(self):
         try:
-            serialno = self.parent.raw_data.serial_no.values[0]
+            serialno = self.parent.dataset.serial_no.values[0]
         except IndexError:
-            serialno = self.parent.raw_data.serial_no.values
+            serialno = self.parent.dataset.serial_no.values
         except AttributeError:
-            serialno = self.parent.raw_data.serial_no
+            serialno = self.parent.dataset.serial_no
         ds = xr.Dataset({'langleys': self.langleys,
                          'langley_fit_residual': self.langley_fit_residual,
                          'langley_fitres': self.langley_fitres,

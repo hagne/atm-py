@@ -508,9 +508,11 @@ class SolarIrradiation(object):
             v0 = langley_calibration.V0
         elif isinstance(langley_calibration, atmlangcalib.Langley_Timeseries):
             # this is the case when the Langley_Timeseries instance is passed
-            assert('V0_simple' in langley_calibration.__dict__.keys()), 'The langley calibration needs to have a V0_simple variable'
+            assert(hasattr(langley_calibration, 'V0_simple')), 'The langley calibration needs to have a V0_simple variable'
             v0 = langley_calibration.V0_simple.V0
-        assert('calibrated_langley' not in self.dataset.attrs), 'it seems likt langley calibrations have already been applied.'
+        else:
+            raise TypeError(f'langley_calibration needs to be either an xarray.Dataset or an instance of atmPy.radiation.retrievals.langley_calibration.Langley_Timeseries, but it is a {type(langley_calibration)}')
+        assert('calibrated_langley' not in self.dataset.attrs), 'it seems like langley calibrations have already been applied.'
 
 
         v0 = v0 / self.sun_position.sun_earth_distance**2 # this will adjust the v0 values to the current sun earth distance
@@ -841,7 +843,7 @@ class DirectNormalIrradiation(SolarIrradiation):
         self.variable_name_channel_wavelength = variable_name_channel_wavelength[0]
 
         self.langley_fit_settings = langley_fit_settings
-        self.settings_langley_airmass_limits = (2.5,4)
+        self.settings_langley_airmass_limits = (2.2,4.7) #default values used by john
         self.settings_calibration = calibration_strategy 
         # self.settings_metdata = metdata
         # self.settings_ozone = settings_ozone
@@ -1488,6 +1490,19 @@ class DirectNormalIrradiation(SolarIrradiation):
 
     @property
     def absorption_correction_coeff_1625(self):
+        """
+        Data needed to correct for absorption by CO2, CH4, and H2O in the 1625nm channel.   
+
+        Setter
+        ------
+        Can be set with: xr.Dataset
+            If str or pathlib.Path is given it is assumed to be a path to a file of netcdf format.
+        Returns
+        -------
+        xr.Dataset
+            Returns the absorption correction coefficients as an xarray.Dataset.
+        
+        """
         if isinstance(self._absorption_correction_coeff_1625, type(None)):
             txt = ('absorption_correction_coeff_1625 attribute is not set.\n' 
                    'Hint: check folder /nfs/grad/surfrad/mfrsr_cal/1625nm_absorption_correction_coefficients/\n'
@@ -1497,7 +1512,13 @@ class DirectNormalIrradiation(SolarIrradiation):
         return self._absorption_correction_coeff_1625
     
     @absorption_correction_coeff_1625.setter
-    def absorption_correction_coeff_1625(self, value: xr.Dataset):
+    def absorption_correction_coeff_1625(self, value: xr.Dataset | str | pl.Path):
+        if isinstance(value, (str, pl.Path)):
+            value = xr.open_dataset(value)
+        elif isinstance(value, xr.Dataset):
+            pass
+        else:
+            assert(False), f'Could not interpret absorption_correction_coeff_1625 from {value}'
         self._absorption_correction_coeff_1625 = value
         return
 
@@ -1724,9 +1745,76 @@ class DirectNormalIrradiation(SolarIrradiation):
     #     raw_df_loc.index = index_local
     #     self.raw_df_loc = raw_df_loc
         
-    
     def _get_langley_from_raw(self, verbose = False):
         """Converts the current direct normal data into Langleys. Including:
+        - correction for Sun-Earth distance
+        - separaton into AM and PM
+        Make sure the entire AM and PM are in the dataset, merge multiple files if necessary
+
+        Returns
+        -------
+        Tuple: set of langley am and pm data.
+
+        Yields
+        ------
+        data of the langley_am and langley_pm properties, both of which are Langley instances.
+
+        """
+
+        sunpos = self.sun_position.copy()
+        direct_normal = self.dataset[self.variable_name_direct_normal].copy()
+        if verbose:
+            print('normalize to sun earth dist.')
+        # return direct_normal, sunpos
+        direct_normal = direct_normal * sunpos.sun_earth_distance**2
+        direct_normal = np.log(direct_normal)
+        assert(sunpos.datetime.equals(direct_normal.datetime)), 'datetime coordinates of sun position and direct normal data do not match!'
+    
+        ds = xr.Dataset()
+        ds['direct_normal'] = direct_normal
+        ds['airmass'] = sunpos.airmass
+        ds['sun_earth_distance'] = sunpos.sun_earth_distance
+        ds['zenith'] = sunpos.zenith   
+
+        if verbose:
+            print('get the one day')
+        ##### getting the one day
+        if np.rad2deg(ds.isel(datetime = [0]).zenith) < 90: # if the first value is during daytime, start from previous day
+            assert(False), 'This needs to be implemented more carefully, do so!!'
+
+        if verbose:
+            print('remove night')
+        #### remove the night
+        ds = ds.where(ds.airmass > 0, drop = True)
+        if verbose:
+            print('get min airmass')
+
+        #### get the minimum airmass befor I start cutting it out
+        noon = ds.airmass.idxmin()
+
+        if verbose:
+            print('keep whats in right airmasses')
+
+        if verbose:
+            print('split into am/pm')
+        ds_am = ds.where(ds.datetime < noon, drop = True)
+        ds_pm = ds.where(ds.datetime > noon, drop = True)
+
+        for dst in [ds_am, ds_pm]:
+            assert(np.all((dst.airmass[:-1].values - dst.airmass[1:].values) > 0) or np.all((dst.airmass[:-1].values - dst.airmass[1:].values) < 0)), 'Airmass values are not strictly monotonic, this is required for Langley analysis!'
+        langley_am = ds_am.swap_dims({'datetime':'airmass'}).reset_coords("datetime", drop=False).sortby('airmass')
+        langley_pm = ds_pm.swap_dims({'datetime':'airmass'}).reset_coords("datetime", drop=False).sortby('airmass')
+
+        self._am = atmlangcalib.Langley(self,langley_am, langley_fit_settings = self.langley_fit_settings, airmass_limits = self.settings_langley_airmass_limits, when = 'am')
+        self._pm = atmlangcalib.Langley(self,langley_pm, langley_fit_settings = self.langley_fit_settings, airmass_limits = self.settings_langley_airmass_limits, when = 'pm')
+        if verbose:
+            print('done')
+        return self._am, self._pm
+
+    def _get_langley_from_raw_deprecated(self, verbose = False):
+        """Deprecated: uses pandas dataframe, the new versions directly goes into xarray.Dataset
+
+        Converts the current direct normal data into Langleys. Including:
         - correction for Sun-Earth distance
         - separaton into AM and PM
         Make sure the entire AM and PM are in the dataset, merge multiple files if necessary
@@ -1754,7 +1842,7 @@ class DirectNormalIrradiation(SolarIrradiation):
         if verbose:
             print('get the one day')
         ##### getting the one day
-        sunpos = self.sun_position.copy()
+        sunpos = self.sun_position.to_dataframe().copy()
         start = raw_df_loc.index[0]
         if sunpos.iloc[0].airmass > 0:
             start = pd.to_datetime(f'{start.year}{start.month:02d}{start.day:02d}') + pd.to_timedelta(1,'d')
