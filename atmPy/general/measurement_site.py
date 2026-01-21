@@ -439,6 +439,21 @@ class Station(object):
         
     
     def get_sun_position(self, datetime, method = 'pvlib', return_type = 'dataset') -> '_xr.Dataset or _pd.DataFrame':
+        """ Provides the solar position for the station at given datetime(s)
+
+        Parameters
+        ----------
+        datetime : pd.Timestamp, pd.DatetimeIndex, list of datetime or similar
+            The datetime(s) for which the solar position should be calculated
+        method : str, optional
+            The method to use for calculating the solar position. Either 'pvlib' or 'pysolar'. The default is 'pvlib'.
+        return_type : str, optional
+            The return type. Either 'dataset' or 'dataframe'. The default is 'dataset'.
+        
+        Returns
+        -------
+        
+        """
         if method == 'pvlib':
             ds = _solar.get_sun_position_pvlib(self.lat, self.lon, self.alt, datetime)
         elif method == 'pysolar':

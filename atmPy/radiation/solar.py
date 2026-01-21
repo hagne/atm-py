@@ -196,7 +196,10 @@ def get_sun_position_pvlib(lat, lon, alt, date):
     sp = loc.get_solarposition(date)
     for cn in ['apparent_zenith', 'zenith', 'azimuth', 'apparent_elevation', 'elevation']:
         sp[cn] = sp.apply(lambda row: _np.deg2rad(row[cn]), axis = 1)
-        
+    # for legacy reasons rename zenith to zenith_geometric and apperent_zenith to zenith
+    sp = sp.rename(columns={'zenith': 'zenith_geometric',
+                            'apparent_zenith': 'zenith',})
+    
     am = loc.get_airmass(date)
     am = am.rename(columns={'airmass_relative': 'airmass',})
     
@@ -219,8 +222,8 @@ def get_sun_position_pvlib(lat, lon, alt, date):
     # variable attrs (units reflect your conversion to radians)
     _var_attrs = {
         # solar position
-        "zenith": {"long_name": "solar zenith angle", "units": "radian"},
-        "apparent_zenith": {"long_name": "apparent solar zenith angle", "units": "radian"},
+        "zenith_geometric": {"long_name": "solar zenith angle without considering atmospheric refraction", "units": "radian"},
+        "zenith": {"long_name": "apparent solar zenith angle", "units": "radian"},
         "elevation": {"long_name": "solar elevation angle", "units": "radian"},
         "apparent_elevation": {"long_name": "apparent solar elevation angle", "units": "radian"},
         "azimuth": {"long_name": "solar azimuth angle (clockwise from north)", "units": "radian"},
