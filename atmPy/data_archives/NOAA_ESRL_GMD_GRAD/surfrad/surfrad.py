@@ -285,6 +285,7 @@ def read_raw(path2file, read_header_only = False, test = False):
         DESCRIPTION.
 
     """
+    warnings.warn('This function is deprecated. Please use surfradpy.file_io.mfrsr.open_rsr instead. That function no longer requires the "tu" programm and is therefore worth it!')
     command = f"tu -d joe -H {path2file.absolute()}"
     # print(command)
     # out = subprocess.check_output(command, shell=True).decode()
@@ -299,7 +300,11 @@ def read_raw(path2file, read_header_only = False, test = False):
     
     if err.split()[0] == 'Error':
         raise FileCorruptError(filename = path2file.as_posix(), message = err)
-    elif err.strip() == '1 RSR files opened': #not sure why this messages ends up in err. This means it ran cleanly
+    elif "Can't read byte 1 from" in err:
+        raise FileCorruptError(filename = path2file.as_posix(), message = err)
+    elif "Unable to read data_length bytes" in err:
+        raise FileCorruptError(filename = path2file.as_posix(), message = err)
+    elif '1 RSR files opened' in err.strip(): #not sure why this messages ends up in err. This means it ran cleanly
         pass 
     elif 'tu: command not found' in err:
         raise RuntimeError(f'The "tu" command is not found on your system. Please install the required software to read MFR(SR) raw files.')
@@ -318,8 +323,9 @@ def read_raw(path2file, read_header_only = False, test = False):
     if bla == '0':
         instrument = 'mfr'
     else:
+        print('bla:', bla)
         instrument = 'mfrsr'
-    
+
     
     #### format the data
     df = _pd.read_csv(io.StringIO(out), sep = r'\s+', header = None, skiprows=1)
@@ -343,7 +349,9 @@ def read_raw(path2file, read_header_only = False, test = False):
                  path2file = path2file,
                  measurement_sequenc = ', '.join(header.split()[5:8]),
                  instrument_type = instrument,
+                 header = header,
                 )
+    
     # non photodiod collums
     # 0: time
     # 1: no idea
