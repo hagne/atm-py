@@ -5,8 +5,7 @@ import warnings
 #     warnings.warn('ephem is not installed. You might encounter some functionality limitations.')
 import numpy as _np
 import pandas as _pd
-import matplotlib.pyplot as _plt
-import pytz
+# import pytz
 import atmPy.general.timeseries as _ts
 # try:
 #     from pysolar import solar as _solar
@@ -17,6 +16,8 @@ import atmPy.general.timeseries as _ts
 from atmPy.opt_imports import ephem as _ephem
 from atmPy.opt_imports import pysolar as _pysolar
 from atmPy.opt_imports import pvlib 
+from atmPy.opt_imports import pytz
+from atmPy.opt_imports import matplotlib as mpl
 # from atmPy.general.constants import a2r, r2a
 
 __julian = {"day": 0., "cent": 0.}
@@ -351,7 +352,7 @@ class SolarPosition:
              # phi = 35, # zenith angle
              ax = None, ew = True, ns = True):
         
-        colors = _plt.rcParams['axes.prop_cycle'].by_key()['color']
+        colors = mpl.pyplot.rcParams['axes.prop_cycle'].by_key()['color']
         # Parameters for the vector in spherical coordinates
         # r = 1.0
         r = self.radiance
@@ -365,7 +366,7 @@ class SolarPosition:
         
         # Start figure
         if ax is None:
-            fig = _plt.figure(figsize=(8, 8))
+            fig = mpl.pyplot.figure(figsize=(8, 8))
             ax = fig.add_subplot(111, projection='3d')
             ax.view_init(elev=10, azim=180 - 15)
             ax.set_axis_off()

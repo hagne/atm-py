@@ -3,7 +3,6 @@ import warnings
 #     from mpl_toolkits.basemap import Basemap as _Basemap
 # except:
 #     warnings.warn('There seams to be an issue with importing mpl_toolkits.basemap. Make sure it is installed and working (try: "from mpl_toolkits.basemap import Basemap as _Basemap"). For now plotting on map will not be possible')
-import matplotlib.pylab as _plt
 import os as _os
 import numpy as _np
 import pandas as _pd
@@ -11,14 +10,13 @@ import xarray as _xr
 from atmPy.radiation import solar as _solar
 # import datetime as _datetime
 # import timezonefinder as _tzf
-import pytz as _pytz
 # The following is to ensure that one can use as large of an image as one desires
 try:
     from PIL import Image as _image
     _image.MAX_IMAGE_PIXELS = None
 except ModuleNotFoundError:
     warnings.warn('PIL not installed. This is needed to plot images of arbitrary resolution, e.g. when plotting satellite images.')
-from matplotlib import path as _path
+# from matplotlib import path as _path
 # try:
 #     import geopy as _geopy
 #     # import geopy.distance as _gd #otherwise distance will not be available
@@ -26,14 +24,16 @@ from matplotlib import path as _path
 #     warnings.warn('geopy not installed. You might encounter some functionality limitations.')
 # import plt_tools as _plt_tools
 import atmPy.tools.plt_tool_kit as _plt_tools
-default_colors = _plt.rcParams['axes.prop_cycle'].by_key()['color']
 
 
 from atmPy.opt_imports import timezonefinder as _tzf
 from atmPy.opt_imports import mpl_toolkits_basemap as _basemap
 from atmPy.opt_imports import geopy as _geopy
 from atmPy.opt_imports import cartopy
-import cartopy.io.img_tiles as cimgt
+from atmPy.opt_imports import matplotlib
+from atmPy.opt_imports import pytz as _pytz
+
+# import cartopy.io.img_tiles as cimgt
 
 
 class NetworkStations(object):
@@ -84,6 +84,7 @@ class SubNetworks(object):
 
     def plot(self, colors = None, **kwargs):
         if isinstance(colors, type(None)):
+            default_colors = matplotlib.pyplot.rcParams['axes.prop_cycle'].by_key()['color']
             site_label_colors = default_colors
         else:
             site_label_colors = colors
@@ -268,6 +269,7 @@ class Network(object):
     
             for e, station in enumerate(stl):
                 if 'color' not in kwargs['station_symbol_kwargs']:
+                    default_colors = matplotlib.pyplot.rcParams['axes.prop_cycle'].by_key()['color']
                     kwargs['station_symbol_kwargs']['color'] = default_colors[1]
                 a, bmap = station.plot(plot_only_if_on_map = True, **kwargs)
                 kwargs['bmap'] = bmap
@@ -571,12 +573,13 @@ class Station(object):
         if 'markersize' not in station_symbol_kwargs:
             station_symbol_kwargs['markersize'] = 4
         if 'color' not in station_symbol_kwargs:
+            default_colors = matplotlib.pyplot.rcParams['axes.prop_cycle'].by_key()['color']
             station_symbol_kwargs['color'] = default_colors[1]
         if 'zorder' not in station_symbol_kwargs:
             station_symbol_kwargs['zorder'] = 100
 
         if isinstance(ax, type(None)):
-            f,a = _plt.subplots(subplot_kw={'projection': projection})
+            f,a = matplotlib.pyplot.subplots(subplot_kw={'projection': projection})
             background = False
             from_scratch = True
         else:
@@ -632,7 +635,7 @@ class Station(object):
             a.set_extent(extent, crs=transform)
             
             if isinstance(google, list):
-                google_terrain = cimgt.GoogleTiles(style=google[0])
+                google_terrain = cartopy.io.img_tiles.GoogleTiles(style=google[0])
                 a.add_image(google_terrain, google[1])
             else:
                 a.add_feature(cartopy.feature.STATES, linewidth=0.5)
@@ -701,6 +704,7 @@ class Station(object):
         if 'markersize' not in station_symbol_kwargs:
             station_symbol_kwargs['markersize'] = 4
         if 'color' not in station_symbol_kwargs:
+            default_colors = matplotlib.pyplot.rcParams['axes.prop_cycle'].by_key()['color']
             station_symbol_kwargs['color'] = default_colors[1]
         if 'zorder' not in station_symbol_kwargs:
             station_symbol_kwargs['zorder'] = 100
@@ -708,12 +712,12 @@ class Station(object):
 
         if bmap:
             # a = bmap.ax
-            a = _plt.gca()
+            a = matplotlib.pyplot.gca()
         else:
             if ax:
                 a = ax
             else:
-                f ,a = _plt.subplots()
+                f ,a = matplotlib.pyplot.subplots()
 
             #         self.lat = 36.605700
             #         self.lon = -97.487846
@@ -761,7 +765,7 @@ class Station(object):
         # Note that lon,lat can be scalars, lists or numpy arrays.
 
         if plot_only_if_on_map:
-            map_bound_path = _path.Path(_np.array([bmap.boundarylons, bmap.boundarylats]).transpose())
+            map_bound_path = matplotlib.path.Path(_np.array([bmap.boundarylons, bmap.boundarylats]).transpose())
             if not map_bound_path.contains_point((lon, lat)):
                 if verbose:
                     txt = 'Station {} was not plot, since it is not on the map.'.format(self.name)
@@ -874,11 +878,11 @@ class Station(object):
         label_pos_pt = [self._bmap(*cco) for cco in label_pos]
 
         # plot it
-        square = _plt.Polygon(corners_pt)
+        square = matplotlib.pyplot.Polygon(corners_pt)
         square.set_linestyle('--')
         square.set_edgecolor(col1)
         square.set_facecolor([1, 1, 1, 0])
-        a = _plt.gca()
+        a = matplotlib.pyplot.gca()
         a.add_artist(square)
 
         #######
