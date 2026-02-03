@@ -63,3 +63,5 @@ pvlib = OptionalImport('pvlib')
 matplotlib = OptionalImport('matplotlib', submodules='pyplot')
 
 pytz = OptionalImport('pytz')
+
+psutil = OptionalImport('psuitl')

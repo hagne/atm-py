@@ -14,8 +14,10 @@ from  atmPy.aerosols.size_distribution import sizedistribution as _sizedistribut
 # import warnings as _warnings
 
 import time
-import psutil
+
 import os
+
+from atmPy.opt_imports import psutil
 
 # Todo: Docstring is wrong
 # todo: This function can be sped up by breaking it apart. Then have OpticalProperties
@@ -1591,6 +1593,7 @@ class Inversion2SizeDistribution(object):
         
         #### computations cost start
         self.no_of_iterations = 0
+        
         p = psutil.Process(os.getpid())
         start_time = time.time()
         p.cpu_percent()

@@ -1,7 +1,7 @@
 import warnings as _warnings
 import pandas as _pd
 import numpy as _np
-import matplotlib.pylab as _plt
+from atmPy.opt_imports import matplotlib as _mpl
 from copy import deepcopy as _deepcopy
 try:
     from netCDF4 import Dataset as _Dataset
@@ -128,7 +128,7 @@ class VerticalProfile(object):
 
     def plot(self, ax=False, **kwargs):
         if not ax:
-            f, a = _plt.subplots()
+            f, a = _mpl.pyplot.subplots()
         else:
             a = ax
 
