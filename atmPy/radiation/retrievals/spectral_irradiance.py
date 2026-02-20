@@ -22,6 +22,7 @@ import copy
 import types
 from .. import solar as atmsol
 import typing
+import warnings
 
 class RadiationDatabase(object):
     def __init__(self, path2db = '/nfs/grad/surfrad/database/surfraddatabase.db', 
@@ -398,7 +399,8 @@ class ClearSky(object):
     
 class SolarIrradiation(object):
     def __init__(self, dataset, site = None, verbose = False):
-        self.dataset = self.unify_variables(dataset)
+        self.dataset = dataset #self.unify_variables(dataset)
+        assert('datetime' in dataset.coords), 'datetime coordinate is missing. Sorry, i know that is an unconventional choise for the time cooridinate name, but it is what it is. Please rename the time coordinate to datetime.'
         self.clearsky = ClearSky(self)
         self.verbose = verbose
         
@@ -412,7 +414,7 @@ class SolarIrradiation(object):
         else:
             self.site = site
         
-        
+        self._sun_position_variables = ['zenith', 'zenith_geometric', 'apparent_elevation', 'elevation', 'azimuth', 'equation_of_time', 'airmass', 'airmass_absolute', 'sun_earth_distance']
         self._sun_position = None
         self._solarspectrum = None
         self.path2solar_spectrum = '/Users/htelg/fundgrube/reference_data/solar/spectrum/solar_spectral_irradiance_e490_00a_amo.nc'
@@ -442,21 +444,31 @@ class SolarIrradiation(object):
 
         
 
-    def unify_variables(self, dataset):
-        """Seach for variable names containing global, diffuse and direct and 
+    def deprecated_unify_variables(self, dataset):
+        """This has moved to only doing a check if the right variable names are present. 
+        
+        Seach for variable names containing global, diffuse and direct and 
         renames to global_horizontal, diffuse_horizontal, direct_normal"""
         #### variable cleaining
         # The exact variable name is sometimes
-        ds = dataset.copy()
-        for altvar in ['global_horizontal', 'diffuse_horizontal', 'direct_normal']:
-            # altshort = altvar.split('_')[0] # This lead to problems when direct_horizontal and direct_normal are present
-            match = [var for var in ds.variables if altvar in var]
-            assert(len(match) < 2), f'There are multiple variables with {altvar} in it ({match}).'
-            if len(match) == 0:
-                # e.g. MFR has no direct
-                continue
-            ds = ds.rename({match[0]: altvar})
-        return ds
+        assert('datetime' in dataset.coords), 'datetime coordinate is missing. Sorry, i know that is an unconventional choise for the time cooridinate name, but it is what it is. Please rename the time coordinate to datetime.'
+        assert('global_horizontal' in dataset), f'global_horizontal variable is missing.'
+        assert('diffuse_horizontal' in dataset), f'diffuse_horizontal variable is missing.'
+        assert(('direct_normal' in dataset) or ('direct_horizontal' in dataset)), f'direct_normal or alternatively direct_horizontal variable is missing.'
+        # if 'direct_horizontal' in dataset:
+        #     warnings.warn('use direct_normal_from_horizontal function to convert direct_horizontal to direct_normal. This requires site to be not None')
+        # ds = dataset.copy()
+
+        # No longer used. We might want to revive it?
+        # for altvar in ['global_horizontal', 'diffuse_horizontal', 'direct_normal']:
+        #     # altshort = altvar.split('_')[0] # This lead to problems when direct_horizontal and direct_normal are present
+        #     match = [var for var in ds.variables if altvar in var]
+        #     assert(len(match) < 2), f'There are multiple variables with {altvar} in it ({match}).'
+        #     if len(match) == 0:
+        #         # e.g. MFR has no direct
+        #         continue
+        #     ds = ds.rename({match[0]: altvar})
+        return dataset
         
 
     def register_file_in_database(self, database, overwrite = False):
@@ -475,9 +487,18 @@ class SolarIrradiation(object):
                              overwrite = overwrite)
     @property
     def sun_position(self):
-        if isinstance(self._sun_position, type(None)):
-            self._sun_position = self.site.get_sun_position(self.dataset.datetime)
-        return self._sun_position
+        if not np.all([v in self.dataset for v in self._sun_position_variables]):
+        # if isinstance(self._sun_position, type(None)):
+            sp = self.site.get_sun_position(self.dataset.datetime)
+            for v in self._sun_position_variables:
+                self.dataset[v] = sp[v]
+        return self.dataset[self._sun_position_variables]
+    
+    @sun_position.setter
+    def sun_position(self, value):
+        self.dataset.datetime.identical(value.datetime)
+        for v in self._sun_position_variables:
+            self.dataset[v] = value[v]
     
     def apply_calibration_langley(self, langley_calibration, calibrate_to = 'irradiance'):
         """Applies the langley calibration to the dataset. Make sure all other calibrations (spectral, head, cosine, etc.) 
@@ -780,10 +801,13 @@ class SolarIrradiation(object):
 class GlobalHorizontalIrradiation(SolarIrradiation):
     def __init__(self, dataset):
         super().__init__(dataset)
+        assert('global_horizontal' in dataset), f'global_horizontal variable is missing.'
+
 
 class DiffuseHorizontalIrradiation(SolarIrradiation):
     def __init__(self, dataset):
         super().__init__(dataset)
+        assert('diffuse_horizontal' in dataset), f'diffuse_horizontal variable is missing.'
 
 class DirectNormalIrradiation(SolarIrradiation):
     def __init__(self, dataset, 
@@ -818,29 +842,36 @@ class DirectNormalIrradiation(SolarIrradiation):
         """
 
         super().__init__(dataset, site = site)
-        self.dataset = dataset #this is not exactly raw, it is cosine corrected voltag readings, thus, un-calibrated irradiances
-        self.variable_name_alternatives_direct_normal = ['direct_normal', 'direct_normal_irradiation', 'direct_normal_irradiance']
-        var_ops_direct_normal = [v for v in self.variable_name_alternatives_direct_normal if v in self.dataset.data_vars]
-        if len(var_ops_direct_normal)!= 1:
-            if len(var_ops_direct_normal) == 0:
-                raise ValueError('Could not find direct normal variable in dataset')
-            if len(var_ops_direct_normal) > 1:
-                raise ValueError('Multiple potential direct normal variables found in dataset: {}'.format(var_ops_direct_normal))
-            else:
-                raise RuntimeError('This should never happen (id2334442313)')
-        self.variable_name_direct_normal = var_ops_direct_normal[0]
+        # self.dataset = dataset #this is not exactly raw, it is cosine corrected voltag readings, thus, un-calibrated irradiances
+        assert(('direct_normal' in dataset) or ('direct_horizontal' in dataset)), f'direct_normal or alternatively direct_horizontal variable is missing.'
+        if 'direct_horizontal' in dataset and 'direct_normal' not in dataset:
+            self.direct_normal_from_direct_horizontal()
 
-        # if raise_error_if_no_channel_wavelength:
-        self.variable_name_alternatives_channel_wavelength = ['channel_wavelength', 'channel_center'] 
-        variable_name_channel_wavelength = [v for v in self.variable_name_alternatives_channel_wavelength if v in self.dataset.data_vars]
-        if len(variable_name_channel_wavelength)!= 1:
-            if len(var_channel_center) == 0:
-                raise ValueError('Could not find channel center variable in dataset. This might mean that the data has not been spectrally calibrated yet. Use the apply_calibration_spectral method first.')
-            if len(var_channel_center) > 1:
-                raise ValueError('Multiple potential channel center variables found in dataset: {}'.format(var_channel_center))
-            else:
-                raise RuntimeError('This should never happen (id2334442313)')
-        self.variable_name_channel_wavelength = variable_name_channel_wavelength[0]
+        # i would like to get away from those hardcoded variable name alternatives, just change it before using it
+        # remove the below in the future unless it breaks too much
+        if 0:
+            self.variable_name_alternatives_direct_normal = ['direct_normal', 'direct_normal_irradiation', 'direct_normal_irradiance']
+            var_ops_direct_normal = [v for v in self.variable_name_alternatives_direct_normal if v in self.dataset.data_vars]
+            if len(var_ops_direct_normal)!= 1:
+                if len(var_ops_direct_normal) == 0:
+                    raise ValueError('Could not find direct normal variable in dataset')
+                if len(var_ops_direct_normal) > 1:
+                    raise ValueError('Multiple potential direct normal variables found in dataset: {}'.format(var_ops_direct_normal))
+                else:
+                    raise RuntimeError('This should never happen (id2334442313)')
+            self.variable_name_direct_normal = var_ops_direct_normal[0]
+
+            # if raise_error_if_no_channel_wavelength:
+            self.variable_name_alternatives_channel_wavelength = ['channel_wavelength', 'channel_center'] 
+            variable_name_channel_wavelength = [v for v in self.variable_name_alternatives_channel_wavelength if v in self.dataset.data_vars]
+            if len(variable_name_channel_wavelength)!= 1:
+                if len(var_channel_center) == 0:
+                    raise ValueError('Could not find channel center variable in dataset. This might mean that the data has not been spectrally calibrated yet. Use the apply_calibration_spectral method first.')
+                if len(var_channel_center) > 1:
+                    raise ValueError('Multiple potential channel center variables found in dataset: {}'.format(var_channel_center))
+                else:
+                    raise RuntimeError('This should never happen (id2334442313)')
+            self.variable_name_channel_wavelength = variable_name_channel_wavelength[0]
 
         self.langley_fit_settings = langley_fit_settings
         self.settings_langley_airmass_limits = (2.2,4.7) #default values used by john
@@ -864,7 +895,12 @@ class DirectNormalIrradiation(SolarIrradiation):
         # self._metdata = None
         # self._od_ozone = None
     
-
+    def direct_normal_from_direct_horizontal(self):
+        """Converts direct horizontal irradiance to direct normal irradiance. 'direct_normal' will be added to the dataset if it is not already present. """
+        if 'direct_normal' not in self.dataset:
+            ds = self.dataset
+            ds['direct_normal'] = ds.direct_horizontal / xr.DataArray(np.cos(self.sun_position.zenith))
+        return ds['direct_normal']
     
     def _get_baseline_met_data(self):
         site = self.dataset.attrs['site']
@@ -1940,6 +1976,7 @@ class CombinedGlobalDiffuseDirect(SolarIrradiation):
         self._global_horizontal_irradiation = None
         self._diffuse_horizontal_irradiation = None
         self._direct_normal_irradiation = None
+        self._kwargs = kwargs
         # self.global_horizontal_irradiation = GlobalHorizontalIrradiation(dataset)
         # self.diffuse_horizontal_irradiation = DiffuseHorizontalIrradiation(dataset)
         # self.direct_normal_irradiation = DirectNormalIrradiation(dataset)
@@ -1987,7 +2024,7 @@ class CombinedGlobalDiffuseDirect(SolarIrradiation):
     @property
     def direct_normal_irradiation(self):
         if isinstance(self._direct_normal_irradiation, type(None)):
-            self._direct_normal_irradiation = DirectNormalIrradiation(self.dataset)
+            self._direct_normal_irradiation = DirectNormalIrradiation(self.dataset, **self._kwargs)
         return self._direct_normal_irradiation
 
     def plot_overview(self, channel = 500, ax = None, 
