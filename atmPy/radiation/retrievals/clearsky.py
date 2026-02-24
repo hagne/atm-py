@@ -77,6 +77,12 @@ def normalized_diffuse_ratio_variability_test(
     test_mask = (ndr_std <= ndr_std_max) & ndr_std.notnull() & valid
     test_mask.name = "test_ndr_var"
 
+    test_mask.attrs = {}
+    test_mask.attrs["info"] = "Mask based on normalized diffuse ratio (NDR) variability test. See Long & Ackerman (2000) and subsequent iterations for details."
+    test_mask.attrs["unit"] = "1", 
+    test_mask.attrs["long_name"] = "clear sky classification mask",
+    test_mask.attrs["flag_values"] = '0, 1',
+    test_mask.attrs["flag_meanings"] = "0: fails NDR variability test (cloudy), 1: passes NDR variability test (possible clear-sky)"
     return test_mask
 
 #TODO: the following should not just be for global, this should be applicable to any radiation, just the shresholds would change.
@@ -130,6 +136,15 @@ def global_irradiance_variability_test(self,
 
     test_mask = (dsw_dt_abs <= max_dsw_dt) & dsw_dt_abs.notnull()
     test_mask.name = "test_change_with_time"
+
+
+    test_mask.attrs = {}
+    test_mask.attrs["info"] = "Mask based on change-with-time test on global shortwave (global variability test). See Long & Ackerman (2000) and subsequent iterations for details."
+    test_mask.attrs["unit"] = "1", 
+    test_mask.attrs["long_name"] = "clear sky classification mask",
+    test_mask.attrs["flag_values"] = '0, 1',
+    test_mask.attrs["flag_meanings"] = "0: fails change-with-time test (cloudy), 1: passes change-with-time test (possible clear-sky)"
+
     return test_mask
 
 # TODO: find better name for this function
@@ -179,6 +194,15 @@ def diffuse_magnitude_test(diffuse_irradiance: xr.DataArray,
 
     test_mask = valid & (diffuse_irradiance <= diffuse_limit)
     test_mask.name = "test_diffuse_mag"
+
+
+    test_mask.attrs = {}
+    test_mask.attrs["info"] = "Mask based on diffuse shortwave magnitude test. See Long & Ackerman (2000) and subsequent iterations for details."
+    test_mask.attrs["unit"] = "1", 
+    test_mask.attrs["long_name"] = "clear sky classification mask",
+    test_mask.attrs["flag_values"] = '0, 1',
+    test_mask.attrs["flag_meanings"] = "0: fails diffuse magnitude test (cloudy), 1: passes diffuse magnitude test (possible clear-sky)"
+
     return test_mask
 
 # TODO come up with a better name
@@ -240,6 +264,13 @@ def normalized_global_magnitude_test(
     iqr_k = 3
     nsw_min = max(median - iqr_k * iqr, 0.0)
     nsw_max = median + iqr_k * iqr
+
+    test_mask.attrs = {}
+    test_mask.attrs["info"] = "Mask based on normalized shortwave magnitude (NSW) test. See Long & Ackerman (2000) and subsequent iterations for details."
+    test_mask.attrs["unit"] = "1", 
+    test_mask.attrs["long_name"] = "clear sky classification mask",
+    test_mask.attrs["flag_values"] = '0, 1',
+    test_mask.attrs["flag_meanings"] = "0: fails NSW test (cloudy), 1: passes NSW test (possible clear-sky)",
     test_mask.attrs["nsw_min"] = nsw_min
     test_mask.attrs["nsw_max"] = nsw_max
     return test_mask

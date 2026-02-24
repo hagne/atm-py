@@ -97,14 +97,14 @@ class GlobalHorizontalIrradiation(SolarIrradiation):
                                             # time_dim: str,
                                             # max_dsw_dt: float,
                                         ):
-        if 'global_irradiance_variability_test' not in self.dataset:
+        if 'mask_global_irradiance_variability' not in self.dataset:
             if self.verbose:
                 print('Running global irradiance variability test')
             mask = atmcsk.global_irradiance_variability_test(self, 
                                                              self.dataset.global_horizontal, 
                                                              max_dsw_dt = self.get_attr('max_dsw_dt'))
-            self.dataset['global_irradiance_variability_test'] = mask
-        return self.dataset.global_irradiance_variability_test
+            self.dataset['mask_global_irradiance_variability'] = mask
+        return self.dataset.mask_global_irradiance_variability
     
     @property
     def mask_normalized_global_magnitude(self):
@@ -187,6 +187,9 @@ class CombinedGlobalDiffuseDirect(SolarIrradiation):
             params = atmcsk.fit_global_powerlaw_mu0(self.mu0, self.dataset.global_horizontal, self.mask_clear_sky_radflux, 
                                                         mu0_min = self.get_attr('mu0_min'),
                                                         min_points = 100)
+            if isinstance(params, type(None)) and self.verbose:
+                print('fit failed, probably not enough clear sky points')
+                
             self.dataset['clearsky_global_irradiation_powerlow_fit_params'] = params
         return self.dataset['clearsky_global_irradiation_powerlow_fit_params']
         # return params
@@ -194,22 +197,53 @@ class CombinedGlobalDiffuseDirect(SolarIrradiation):
         # return A * np.power(mu0_values, b)
 
     def plot_clearsky_global_irradiation_powerlow_fit(self, ax = None):
+        params = self.clearsky_global_irradiation_powerlow_fit_params
+        if params.isnull():
+            print('Not enough clearsky points for valid fit.')
+            return None, None
         if isinstance(ax, type(None)):
             f, a= _plt.subplots()    
         else:
             a = ax
             f = a.get_figure()
         
-        params = self.clearsky_global_irradiation_powerlow_fit_params
         A = params.to_pandas().a
         b = params.to_pandas().b
         fit = A * np.power(self.mu0, b)
         fit.plot(ax = a, label = 'fit')
         return f,a
 
+    @property
+    def clearsky_parameters(self):
+        return self._get_clearsky_parameters()
+    
+    @clearsky_parameters.setter
+    def clearsky_parameters(self, cs_params: dict):
+        self.dataset = self.dataset.drop_vars(['mask_normalized_global_magnitude',
+                                               'mask_normalized_diffuse_ratio_variability',
+                                               'mask_clear_sky_shortwave_radflux', 
+                                               'clearsky_global_irradiation_powerlow_fit_params',
+                                               'mask_diffuse_magnitude',
+                                               'mask_global_irradiance_variability'], errors= 'ignore')
+        for k,v in cs_params.items():
+            self.dataset.attrs[k] = v
+
+    def _get_clearsky_parameters(self, include_estimates = True):
+        cs_params = ['mu0_min', 'nsw_exp', 'nsw_min', 'nsw_max', 'diffuse_max_coeff', 'diffuse_max_exp', 'max_dsw_dt', 'ndr_exp', 'ndr_std_max', 'ndr_window']
+        if include_estimates:
+            cs_params += ['ndr_std_max_estimated',
+                            'diffuse_max_coeff_estimated',
+                            'diffuse_max_exp_estimated',
+                            'max_dsw_dt_estimated'
+                            ]
+        attr = self.dataset.attrs
+        cs_params_dict = {k: attr[k] for k in attr if k in cs_params}
+        return cs_params_dict
 
 
 
+
+    
     @property
     def global_horizontal_irradiation(self):
         if isinstance(self._global_horizontal_irradiation, type(None)):
@@ -244,7 +278,7 @@ class CombinedGlobalDiffuseDirect(SolarIrradiation):
     #TODO: come up with a better name
     @property
     def mask_normalized_diffuse_ratio_variability(self):
-        if 'ndr_variability_test' not in self.dataset:
+        if 'mask_normalized_diffuse_ratio_variability' not in self.dataset:
             if self.verbose:
                 print('Running normalized diffuse ratio variability test')
             test_mask = atmcsk.normalized_diffuse_ratio_variability_test(global_irradiance=self.dataset.global_horizontal,
@@ -254,8 +288,8 @@ class CombinedGlobalDiffuseDirect(SolarIrradiation):
                                                                          ndr_exp = self.get_attr('ndr_exp'),
                                                                          ndr_std_max = self.get_attr('ndr_std_max'),
                                                                          window = self.get_attr('ndr_window'),)
-            self.dataset['ndr_variability_test'] = test_mask
-        return self.dataset.ndr_variability_test
+            self.dataset['mask_normalized_diffuse_ratio_variability'] = test_mask
+        return self.dataset.mask_normalized_diffuse_ratio_variability
     
     @property
     def mask_clear_sky_radflux(self) -> xr.DataArray:
@@ -305,7 +339,18 @@ class CombinedGlobalDiffuseDirect(SolarIrradiation):
         if 'mask_clear_sky_shortwave_radflux' not in self.dataset:
             if self.verbose:
                 print('Running clear sky tests (RADFLUX equivalent)')
-            self.dataset['mask_clear_sky_shortwave_radflux'] = self.global_horizontal_irradiation.mask_normalized_global_magnitude & self.diffuse_horizontal_irradiation.mask_magnitude & self.global_horizontal_irradiation.mask_variability & self.mask_normalized_diffuse_ratio_variability
+            self.dataset['mask_clear_sky_shortwave_radflux'] = (self.global_horizontal_irradiation.mask_normalized_global_magnitude 
+                                                                & self.diffuse_horizontal_irradiation.mask_magnitude 
+                                                                & self.global_horizontal_irradiation.mask_variability 
+                                                                & self.mask_normalized_diffuse_ratio_variability)
+            self.dataset.mask_clear_sky_shortwave_radflux.attrs = {}
+            
+            self.dataset.mask_clear_sky_shortwave_radflux.attrs["info"] = "Radflux clear sky mask according to Long & Ackerman (2000) and subsequent publication iterations."
+            self.dataset.mask_clear_sky_shortwave_radflux.attrs["unit"] = "1", 
+            self.dataset.mask_clear_sky_shortwave_radflux.attrs["long_name"] = "clear sky classification mask",
+            self.dataset.mask_clear_sky_shortwave_radflux.attrs["flag_values"] = '0, 1',
+            self.dataset.mask_clear_sky_shortwave_radflux.attrs["flag_meanings"] = "0: fails radflux clear-sky test (cloudy), 1: passes radflux clear-sky test (possible clear-sky)"
+
         if ('clear_sky_params_optimized' not in self.dataset.attrs) or (self.dataset.attrs['clear_sky_params_optimized'] == 'False'):
             warnings.warn('Clear_sky parameters have not been optimized! It is recommended to run optimize_clearsky_parameters().')
         return self.dataset['mask_clear_sky_shortwave_radflux']
@@ -315,8 +360,9 @@ class CombinedGlobalDiffuseDirect(SolarIrradiation):
     def plot_overview(self, 
                     #   channel = 500, 
                       ax = None, 
-                      show_alltime = False,
-                      show_sunelevation = False):
+                      apply_mask_clear_sky = False,
+                      show_sunelevation = False,
+                      plot_kwargs = {},):
         
         if isinstance(ax, type(None)):
             f, a= _plt.subplots()    
@@ -329,13 +375,28 @@ class CombinedGlobalDiffuseDirect(SolarIrradiation):
         self.direct_normal_irradiation
         
         dssel = self.dataset
-        
-        if show_alltime:
-            dssel.alltime.plot(ax = a, label = 'alltime')
-        
+
         dssel.global_horizontal.plot(ax = a, label = 'global_horizontal')
+        if apply_mask_clear_sky:
+            g = a.get_lines()[-1]
+            col = g.get_color()
+            g.set_alpha(0.5)
+            g.set_label('_nolegend_')
+            dssel.global_horizontal.where(self.mask_clear_sky_radflux).plot(ax = a, label = 'global_horizontal', color = col)
         dssel.diffuse_horizontal.plot(ax = a, label = 'diffuse_horizontal')
+        if apply_mask_clear_sky:
+            g = a.get_lines()[-1]
+            col = g.get_color()
+            g.set_alpha(0.5)
+            g.set_label('_nolegend_')
+            dssel.diffuse_horizontal.where(self.mask_clear_sky_radflux).plot(ax = a, label = 'diffuse_horizontal', color = col)
         dssel.direct_normal.plot(ax = a, label = 'direct')
+        if apply_mask_clear_sky:
+            g = a.get_lines()[-1]
+            col = g.get_color()
+            g.set_alpha(0.5)
+            g.set_label('_nolegend_')
+            dssel.direct_normal.where(self.mask_clear_sky_radflux).plot(ax = a, label = 'direct_normal', color = col)
         
         if show_sunelevation:
             at = a.twinx()
@@ -350,6 +411,7 @@ class CombinedGlobalDiffuseDirect(SolarIrradiation):
     def optimize_clearsky_parameters(self,
                                      n_iterations = 3,
                                      min_clear_for_update = 200,):
+        
         self.dataset.attrs['clear_sky_params_optimized'] = 'Failed'
         if self.verbose:
             print((f'Original values -- nsw_exp:{self.get_attr('nsw_exp'):0.3f},'
@@ -359,15 +421,16 @@ class CombinedGlobalDiffuseDirect(SolarIrradiation):
 
         for it in range(n_iterations):
             # 1 clear sky
-            n_clear = self.mask_clear_sky_radflux.sum()
-            
+            n_clear = int(self.mask_clear_sky_radflux.sum())
+            if self.verbose:
+                print('Number of clearsky (valid) points: ', n_clear)
             if n_clear < min_clear_for_update:
-                assert(False)
+                if self.verbose:
+                    print('Not enough clear sky points -> skip optimazation, keep old params')
+                self.dataset.attrs['clear_sky_params_optimized'] = 'Not enough clear sky points'
+                return None
             
             # 2. Update NSW thresholds/exponent
-            update_nsw = True
-            if update_nsw:
-                pass
             
              #TODO is this even a thing? Do we need to catch bad fits?
             # if fit is None:
@@ -398,29 +461,35 @@ class CombinedGlobalDiffuseDirect(SolarIrradiation):
             self.dataset.attrs['nsw_min'] = mask_ngm.nsw_min
             self.dataset.attrs['nsw_max'] = mask_ngm.nsw_max
             self.dataset.attrs['ndr_exp'] = float(dgr_fit.to_pandas().b)
+            self.dataset.attrs['ndr_std_max_estimated'] = float(dgr_fit.ndr_std_max_estimated)
             if self.verbose:
                 print((f'New values -- nsw_exp:{self.dataset.attrs['nsw_exp']:0.3f},'
                     f'nsw_min: {self.dataset.attrs['nsw_min']:0.1f},' 
                     f'nsw_max: {self.dataset.attrs['nsw_max']:0.1f},'
                     f'ndr_exp: {self.dataset.attrs['ndr_exp']:0.3f}'))
-            self.dataset = self.dataset.drop_vars(['mask_normalized_global_magnitude','ndr_variability_test', 'mask_clear_sky_shortwave_radflux', 'clearsky_global_irradiation_powerlow_fit_params'])
+            self.dataset = self.dataset.drop_vars(['mask_normalized_global_magnitude',
+                                                   'mask_normalized_diffuse_ratio_variability',
+                                                    'mask_clear_sky_shortwave_radflux',
+                                                    'mask_diffuse_magnitude',
+                                                     'clearsky_global_irradiation_powerlow_fit_params',
+                                                     'mask_global_irradiance_variability'])
 
         dcswd = atmcsk.fit_diffuse_mu0_powerlaw(self.mu0,self.dataset.diffuse_horizontal, self.mask_clear_sky_radflux, mu0_min = self.get_attr('mu0_min'))
 
-        self.dataset.attrs['diffuse_max_coeff_estimated'] = dcswd.to_pandas().a * 1.2
-        self.dataset.attrs['tdiffuse_max_exp'] = dcswd.to_pandas().b
+        self.dataset.attrs['diffuse_max_coeff_estimated'] = float(dcswd.to_pandas().a * 1.2)
+        self.dataset.attrs['diffuse_max_exp_estimated'] = float(dcswd.to_pandas().b)
 
         dsw_dt = self.dataset.global_horizontal.where(self.mask_clear_sky_radflux).differentiate('datetime') 
         ns_per_minute = np.float64(60 * 1e9)
         dsw_dt_per_min = dsw_dt * ns_per_minute
         dsw_dt_abs = np.abs(dsw_dt_per_min)
-        self.dataset.attrs['max_dsw_dt_estimated'] = dsw_dt_abs.mean()*3
+        self.dataset.attrs['max_dsw_dt_estimated'] = float(dsw_dt_abs.mean()*3)
 
         if self.verbose:
             print('suggested adjustements to user controlled configurations')
             print(f'\tdiffuse_max_coeff: {self.dataset.diffuse_max_coeff_estimated:0.2f} (is: {self.get_attr('diffuse_max_coeff')})')
-            print(f'\tdiffuse_max_exp: {self.dataset.tdiffuse_max_exp:0.2f} (is: {self.get_attr('diffuse_max_exp')})')
+            print(f'\tdiffuse_max_exp: {self.dataset.diffuse_max_exp_estimated:0.2f} (is: {self.get_attr('diffuse_max_exp')})')
             print(f'\tmax_dsw_dt: {self.dataset.max_dsw_dt_estimated:0.2f} (is: {self.get_attr('max_dsw_dt')})')
-            print(f'\tndr_std_max: {dgr_fit.ndr_std_max_estimated:0.4f} (is: {self.get_attr('ndr_std_max')})')
+            print(f'\tndr_std_max: {self.dataset.ndr_std_max_estimated:0.4f} (is: {self.get_attr('ndr_std_max')})')
 
         self.dataset.attrs['clear_sky_params_optimized'] = 'True'
