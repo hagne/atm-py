@@ -1,6 +1,9 @@
 import colorsys as _colorsys
 import numpy as _np
-import matplotlib.pylab as _plt
+from  atmPy.opt_imports import OptionalImport
+mpl = OptionalImport('matplotlib', submodules = ['pyplot', 'colors'])
+if mpl.module_available:
+    import matplotlib.pylab as _plt
 
 
 def wavelength_to_rgb(wavelength, gamma=0.8, rgbrange=1):

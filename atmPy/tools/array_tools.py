@@ -3,16 +3,16 @@ __author__ = 'htelg'
 import numpy as _np
 import pandas as _pd
 from scipy import stats as _stats
-import matplotlib.pylab as _plt
+from atmPy.opt_imports import OptionalImport
+mpl = OptionalImport('matplotlib', submodules=['pyplot', 'ticker', 'patches','projections',])
+mpl_toolkits = OptionalImport('mpl_toolkits', submodules = 'axisartist')
 from atmPy.tools import plt_tools as _plt_tools
 import scipy.odr as _odr
 import warnings as _warnings
-from matplotlib.projections import PolarAxes
-import mpl_toolkits.axisartist.floating_axes as floating_axes
-import mpl_toolkits.axisartist.grid_finder as grid_finder
-import matplotlib.patches as _patches
+# import mpl_toolkits.axisartist.floating_axes as floating_axes
+# import mpl_toolkits.axisartist.grid_finder as grid_finder
 
-_colors = _plt.rcParams['axes.prop_cycle'].by_key()['color']
+# _colors = _plt.rcParams['axes.prop_cycle'].by_key()['color']
 
 
 class TaylorDiagram(object):
@@ -43,7 +43,7 @@ class TaylorDiagram(object):
 
         self.refstd = refstd            # Reference standard deviation
 
-        tr = PolarAxes.PolarTransform()
+        tr = mpl.projections.PolarAxes.PolarTransform()
 
         # Correlation labels
         rlocs = _np.array([0, 0.2, 0.4, 0.6, 0.7, 0.8, 0.9, 0.95, 0.99, 1])
@@ -55,25 +55,25 @@ class TaylorDiagram(object):
             # Diagram limited to positive correlations
             self.tmax = _np.pi/2
         tlocs = _np.arccos(rlocs)        # Conversion to polar angles
-        gl1 = grid_finder.FixedLocator(tlocs)    # Positions
-        tf1 = grid_finder.DictFormatter(dict(zip(tlocs, map(str, rlocs))))
+        gl1 = mpl_toolkits.axisartist.grid_finder.FixedLocator(tlocs)    # Positions
+        tf1 = mpl_toolkits.axisartist.grid_finder.DictFormatter(dict(zip(tlocs, map(str, rlocs))))
 
         # Standard deviation axis extent (in units of reference stddev)
         self.smin = srange[0] * self.refstd
         self.smax = srange[1] * self.refstd
 
-        ghelper = floating_axes.GridHelperCurveLinear(
+        ghelper = mpl_toolkits.axisartist.floating_axes.GridHelperCurveLinear(
             tr,
             extremes=(0, self.tmax, self.smin, self.smax),
             grid_locator1=gl1, tick_formatter1=tf1)
 
         #### figure
         if fig is None:
-            fig = _plt.figure()
+            fig = mpl.pyplot.figure()
         
         self.fig = fig
         #### axes generation
-        ax = floating_axes.FloatingSubplot(fig, rect, grid_helper=ghelper)
+        ax = mpl_toolkits.axisartist.floating_axes.FloatingSubplot(fig, rect, grid_helper=ghelper)
         fig.add_subplot(ax)
 
         # Adjust axes
@@ -514,7 +514,7 @@ class Correlation(object):
             ylabel = '$\\overline{D}$'
             
         if isinstance(ax, type(None)):
-            f,a = _plt.subplots()
+            f,a = mpl.pyplot.subplots()
             force_axes_repoplulation = True
 
         else:
@@ -540,7 +540,7 @@ class Correlation(object):
             
             radii = [i for i in a.xaxis.get_majorticklocs() if i > 0]
             for radius in radii:
-                circle = _patches.Circle((0, 0), radius, fill=False, edgecolor='0.7')
+                circle = mpl.patches.Circle((0, 0), radius, fill=False, edgecolor='0.7')
                 circle.set_linestyle('--')
                 a.add_patch(circle)
             
@@ -621,7 +621,7 @@ class Correlation(object):
             
             # Add RMS contours, and label them
             contours = dia.add_contours(colors='0.5')
-            _plt.clabel(contours, inline=1, fontsize=10, fmt='%.2f')
+            mpl.pyplot.clabel(contours, inline=1, fontsize=10, fmt='%.2f')
             
         
         # Add a figure legend
@@ -701,6 +701,8 @@ class Correlation(object):
         -------
 
         """
+        _colors = mpl.rcParams['axes.prop_cycle'].by_key()['color']
+        _plt = mpl.pyplot
         def plot_one(data, correlant,
                      odr_res,
                      reg_type='odr',
@@ -723,7 +725,7 @@ class Correlation(object):
                      dots_kwargs = {},
                      fit_plot_kwargs={}):
             if not ax:
-                f, a = _plt.subplots()
+                f, a = mpl.pyplot.subplots()
             else:
                 f = ax.get_figure()
                 a = ax
@@ -837,7 +839,7 @@ class Correlation(object):
                     fit_res_kwargs['bb_ec'] = [0,0,0,1]
 
                 if 'bb_lw' not in fit_res_kwargs.keys():
-                    fit_res_kwargs['bb_lw'] = _plt.rcParams['axes.linewidth']
+                    fit_res_kwargs['bb_lw'] = mpl.rcParams['axes.linewidth']
                     
                 if 'show_params' not in fit_res_kwargs.keys():
                     fit_res_kwargs['show_params'] = None
@@ -999,7 +1001,7 @@ class Correlation(object):
         return a,hb
 
     def plot_regression_and_residual(self, regression_kwargs = {}, residual_kwargs = {}):
-        f,aa = _plt.subplots(2, height_ratios=[5,2],sharex=True, gridspec_kw={'hspace': 0})
+        f,aa = mpl.pyplot.subplots(2, height_ratios=[5,2],sharex=True, gridspec_kw={'hspace': 0})
         a = aa[0]
         # fit_res_kwargs={'show_params': None, 
         #                 # 'show_params': ['r', 'm', 'c', ], 
@@ -1055,7 +1057,7 @@ class Correlation(object):
 
         _warnings.warn('plot_pearson is deprecated, use plot_regression instead')
         if not ax:
-            f,a = _plt.subplots()
+            f,a = mpl.pyplot.subplots()
         else:
             f = ax.get_figure()
             a = ax
@@ -1069,7 +1071,7 @@ class Correlation(object):
         a.set_ylabel(self._y_label_correlation)
 
         if cm == 'auto':
-            cm = _plt.cm.copper_r
+            cm = mpl.cm.copper_r
 
         cm.set_under('w')
 
@@ -1161,6 +1163,7 @@ class Correlation(object):
         return a
 
     def plot_original_data(self, ax = None, **kwargs):
+        _plt = mpl.pyplot
         if not ax:
             f,a = _plt.subplots()
         else:
@@ -1205,14 +1208,14 @@ class Correlation(object):
         return a, a2
 
     def plot_pearsonANDoriginal_data(self, gridsize = 20, zero_intersect = False, xlim = None, ylim = None, cm = 'auto', width_ratio = [1.5, 2], corr_kwargs = {}, orig_kwargs = {}):
-        f, (a_corr, a_orig) = _plt.subplots(1,2, gridspec_kw = {'width_ratios':width_ratio})
+        f, (a_corr, a_orig) = mpl.pyplot.subplots(1,2, gridspec_kw = {'width_ratios':width_ratio})
         f.set_figwidth(f.get_figwidth()*1.7)
         a1 = self.plot_pearson(zero_intersect = zero_intersect, gridsize=gridsize, cm = cm, xlim = xlim, ylim = ylim, ax = a_corr, **corr_kwargs)
         a2,a3 = self.plot_original_data(ax = a_orig, **orig_kwargs)
         return a1, a2, a3
 
     def plot_regressionANDoriginal_data(self, reg_type = 'simple', gridsize = 20, zero_intersect = False, xlim = None, ylim = None, cm = 'auto', width_ratio = [1.5, 2], corr_kwargs = {}, orig_kwargs = {}):
-        f, (a_corr, a_orig) = _plt.subplots(1,2, gridspec_kw = {'width_ratios':width_ratio})
+        f, (a_corr, a_orig) = mpl.pyplot.subplots(1,2, gridspec_kw = {'width_ratios':width_ratio})
         f.set_figwidth(f.get_figwidth()*1.7)
         a1 = self.plot_regression(reg_type = reg_type, zero_intersect = zero_intersect, gridsize=gridsize, cm = cm, xlim = xlim, ylim = ylim, ax = a_corr, **corr_kwargs)
         a2,a3 = self.plot_original_data(ax = a_orig, **orig_kwargs)
@@ -1235,12 +1238,12 @@ class Correlation(object):
         matplotlib.collections.PolyCollection
         """
         if not ax:
-            f,a = _plt.subplots()
+            f,a = mpl.pyplot.subplots()
         else:
             a = ax
             f = ax.get_figure()
 
-        cm = _plt.cm.gnuplot
+        cm = mpl.cm.gnuplot
         cm.set_under([1, 1, 1, 0])
         if norm == 'relative':
             scale = self._data
@@ -1265,7 +1268,7 @@ class Correlation(object):
 
         """
         if isinstance(ax, type(None)):
-            f, aa = _plt.subplots(4, sharex=True, gridspec_kw={'hspace': 0})
+            f, aa = mpl.pyplot.subplots(4, sharex=True, gridspec_kw={'hspace': 0})
             f.set_figheight(f.get_figheight() * 1.2)
         else:
             aa = ax
@@ -1293,6 +1296,6 @@ class Correlation(object):
 
         #####
         for at in aa:
-            at.yaxis.set_major_locator(_plt.MaxNLocator(5, prune='both'))
+            at.yaxis.set_major_locator(mpl.ticker.MaxNLocator(5, prune='both'))
 
         return aa

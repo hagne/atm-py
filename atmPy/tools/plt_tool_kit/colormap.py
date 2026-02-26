@@ -1,8 +1,10 @@
 import numpy as _np
-import matplotlib.colors as _mcolors
+from atmPy.opt_imports import OptionalImport
+mpl = OptionalImport('matplotlib', submodules = ['pyplot', 'colors',])
+# import matplotlib.colors as _mcolors
 # import LinearSegmentedColormap as _LinearSegmentedColormap
 
-import atmPy.tools.plt_tool_kit._my_colormaps as my_colormaps
+# import atmPy.tools.plt_tool_kit._my_colormaps as my_colormaps
 
 def creat_cmap(colors = None, color_range = 1, norm='linear', log_min=0.1, reverse=False):
     """
@@ -69,27 +71,31 @@ def creat_cmap(colors = None, color_range = 1, norm='linear', log_min=0.1, rever
              'blue': b
              }
 
-    hag_cmap = _mcolors.LinearSegmentedColormap('hag_cmap', cdict)
+    hag_cmap = mpl.colors.LinearSegmentedColormap('hag_cmap', cdict)
     hag_cmap.set_bad('black')
     return hag_cmap
 
+if mpl.module_available:
+    class FermiNormalize(mpl.colors.Normalize):
+        """creates a normalization for a colormap that is linear but with a step in it. It is the combination of an inverted fermi function and a linear function
+        Usage
+        -----
+        ferminorm = FermiNormalize(vmin=0, vcenter=0.92, vmax=8, stepsteepness = 0.15, global_slope = 0.1)
+        pc = a.pcolor(X,Y,Z, norm = ferminorm)
+        """
+        def __init__(self, vmin=None, vmax=None, vcenter=None, stepsteepness = 0.3, global_slope = 0.3, clip=False):
+            self.vcenter = vcenter
+            self.stepsteepness = stepsteepness
+            mpl.colors.Normalize.__init__(self, vmin, vmax, clip)
 
-class FermiNormalize(_mcolors.Normalize):
-    """creates a normalization for a colormap that is linear but with a step in it. It is the combination of an inverted fermi function and a linear function
-    Usage
-    -----
-    ferminorm = FermiNormalize(vmin=0, vcenter=0.92, vmax=8, stepsteepness = 0.15, global_slope = 0.1)
-    pc = a.pcolor(X,Y,Z, norm = ferminorm)
-    """
-    def __init__(self, vmin=None, vmax=None, vcenter=None, stepsteepness = 0.3, global_slope = 0.3, clip=False):
-        self.vcenter = vcenter
-        self.stepsteepness = stepsteepness
-        _mcolors.Normalize.__init__(self, vmin, vmax, clip)
-
-    def __call__(self, value, clip=None):
-        # I'm ignoring masked values and all kinds of edge cases to make a
-        # simple example...
-#         x, y = [self.vmin, self.vcenter, self.vmax], [0, 0.25, 1]
-        funk = lambda x : (1 / (_np.exp((self.vcenter-x)/self.stepsteepness) + 1)) + (0.03 * x)
-        trans = (_np.ma.masked_array(funk(value)) - funk(self.vmin)) / (funk(self.vmax) - funk(self.vmin))
-        return trans
+        def __call__(self, value, clip=None):
+            # I'm ignoring masked values and all kinds of edge cases to make a
+            # simple example...
+    #         x, y = [self.vmin, self.vcenter, self.vmax], [0, 0.25, 1]
+            funk = lambda x : (1 / (_np.exp((self.vcenter-x)/self.stepsteepness) + 1)) + (0.03 * x)
+            trans = (_np.ma.masked_array(funk(value)) - funk(self.vmin)) / (funk(self.vmax) - funk(self.vmin))
+            return trans
+else:
+    class FermiNormalize:
+        def __init__(self, *args, **kwargs):
+            raise ImportError("matplotlib is required for FermiNormalize.")

@@ -9,11 +9,11 @@ except ModuleNotFoundError:
     _warnings.warn('netCDF4 not installed. You might encounter some functionality limitations.')
 # from netCDF4 import date2num as _date2num
 import atmPy.general.timeseries
-from atmPy.tools import plt_tools as _plt_tools
-from atmPy.tools import pandas_tools as _pandas_tools
-import os as _os
-from atmPy.tools import git as _git_tools
+# from atmPy.tools import plt_tools as _plt_tools
+
 from atmPy.tools import array_tools as _array_tools
+import os as _os
+import atmPy.tools.git as _git_tools
 
 # _unit_time = 'days since 1900-01-01'
 
@@ -186,6 +186,7 @@ class VerticalProfile(object):
 
 class VerticalProfile_2D(VerticalProfile):
     def plot(self, xaxis = 0, ax = None, autofmt_xdate = True, cb_kwargs = {}, pc_kwargs = {},  **kwargs):
+        from atmPy.tools import pandas_tools as _pandas_tools
         if 'cb_kwargs' in kwargs.keys():
             cb_kwargs = kwargs['cb_kwargs']
         if 'pc_kwargs' in kwargs.keys():
