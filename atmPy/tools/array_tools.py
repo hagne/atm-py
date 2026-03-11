@@ -639,7 +639,7 @@ class Correlation(object):
                         style = 'density',
                         zero_intersect=False,
                         gridsize=100,
-                        cm='auto',
+                        cmap='auto',
                         xlim=None,
                         ylim=None,
                         colorbar=False,
@@ -707,7 +707,7 @@ class Correlation(object):
                      style='density',
                      zero_intersect=False,
                      gridsize=100,
-                     cm='auto',
+                    #  cmap='auto',
                      xlim=None,
                      ylim=None,
                      colorbar=False,
@@ -915,10 +915,11 @@ class Correlation(object):
             a.legend()
             return a, hb
 
-        if cm == 'auto':
-            cm = _plt.cm.gnuplot
-            cm.set_under([1, 1, 1, 0])
-            hexbin_kwargs['cmap'] = cm
+        if cmap == 'auto':
+            cmap = _plt.cm.gnuplot
+            cmap.set_under([1, 1, 1, 0])
+
+        hexbin_kwargs['cmap'] = cmap
 
 
         if isinstance(self._subsets, list):
@@ -958,7 +959,7 @@ class Correlation(object):
                                  style=style,
                                  zero_intersect=zero_intersect,
                                  gridsize=gridsize,
-                                 cm=cm,
+                                #  cm=cm,
                                  xlim=xlim,
                                  ylim=ylim,
                                  colorbar=colorbar,
@@ -982,7 +983,7 @@ class Correlation(object):
                             style=style,
                             zero_intersect=zero_intersect,
                             gridsize=gridsize,
-                            cm=cm,
+                            # cm=cm,
                             xlim=xlim,
                             ylim=ylim,
                             colorbar=colorbar,

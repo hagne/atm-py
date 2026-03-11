@@ -384,7 +384,7 @@ def correlate(data, correlant, data_column = False, correlant_column = False, di
               skip_remove_nans = False,
               correlant_lim = None,
               align_timeseries = True,
-              weights = 'relative'):
+              weights = 'relative') -> _array_tools.Correlation:
     """Correlates data in correlant to that in data. In the process the data in correlant
     will be aligned to that in data. Make sure that data has the lower period (less data per period of time).
 
