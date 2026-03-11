@@ -1,7 +1,9 @@
-from matplotlib.colors import LinearSegmentedColormap
-from matplotlib.ticker import FuncFormatter
-from matplotlib import ticker
-from matplotlib import dates as _dates
+from atmPy.opt_imports import OptionalImport
+matplotlib = OptionalImport('matplotlib', submodules=['ticker', 'colors','dates']) 
+# from matplotlib.colors import LinearSegmentedColormap
+# from matplotlib.ticker import FuncFormatter
+# from matplotlib import ticker
+# from matplotlib import dates as _dates
 
 import numpy as np
 ###
@@ -90,7 +92,7 @@ def get_colorMap_intensity():
                        (1.0,color5[2] ,color5[2]))
             }
     
-    hag_cmap  = LinearSegmentedColormap('hag_cmap',cdict)
+    hag_cmap  = matplotlib.colors.LinearSegmentedColormap('hag_cmap',cdict)
     hag_cmap.set_bad('black')
     return hag_cmap
 
@@ -120,7 +122,7 @@ def get_colorMap_intensity_r():
                        (1.0,color5[2] ,color5[2]))
             }
     
-    hag_cmap = LinearSegmentedColormap('hag_cmap',cdict)
+    hag_cmap = matplotlib.colors.LinearSegmentedColormap('hag_cmap',cdict)
     hag_cmap.set_bad('black')
     return hag_cmap
 
@@ -151,7 +153,7 @@ def get_colorMap_heat():
                        (1.0,color5[2] ,color5[2]))
             }
     
-    hag_cmap  = LinearSegmentedColormap('hag_cmap',cdict)
+    hag_cmap  = matplotlib.colors.LinearSegmentedColormap('hag_cmap',cdict)
     hag_cmap.set_bad('black')
     return hag_cmap
 
@@ -176,22 +178,22 @@ def tick_labels_format_time(a, axis='x', style='auto', format='auto', rotation=3
         bywhatever = None
         interval = 1
     if style == 'second':
-        loc = _dates.SecondLocator(bywhatever, interval)
+        loc = matplotlib.dates.SecondLocator(bywhatever, interval)
         if format == 'auto':
-            form = _dates.DateFormatter('%H:%M:%S')
+            form = matplotlib.dates.DateFormatter('%H:%M:%S')
     elif style == 'minute':
-        loc = _dates.MinuteLocator(bywhatever, interval)
+        loc = matplotlib.dates.MinuteLocator(bywhatever, interval)
         if format == 'auto':
-            form = _dates.DateFormatter('%H:%M:%S')
+            form = matplotlib.dates.DateFormatter('%H:%M:%S')
     elif style == 'day':
-        loc = _dates.DayLocator(bywhatever, interval)
+        loc = matplotlib.dates.DayLocator(bywhatever, interval)
         if format == 'auto':
             pass
             #             form = dates.DateFormatter('')
     elif style == 'month':
-        loc = _dates.MonthLocator(bywhatever, interval)
+        loc = matplotlib.dates.MonthLocator(bywhatever, interval)
     elif style == 'auto':
-        form = _dates.DateFormatter('%H:%M:%S')
+        form = matplotlib.dates.DateFormatter('%H:%M:%S')
 
     if axis == 'x' or axis == 'both':
         if style != 'auto':
@@ -259,7 +261,7 @@ def scale_format_ticklabels(a,scale = 1, format = '{:.0f}', axis = 'x', which = 
     which: str ['major', 'minor']
         which of the tick labels to apply the function to."""
 
-    ticks = ticker.FuncFormatter(lambda x, pos: format.format(x*scale))
+    ticks = matplotlib.ticker.FuncFormatter(lambda x, pos: format.format(x*scale))
     if type(a).__name__ == 'Colorbar':
         a.formatter = ticks
         a.update_ticks()
@@ -337,7 +339,7 @@ def get_formatter_minor_log():
         out = str(x)[0]
         return out
 
-    formatter = FuncFormatter(minor_log)
+    formatter = matplotlib.ticker.FuncFormatter(minor_log)
     return formatter
 
 

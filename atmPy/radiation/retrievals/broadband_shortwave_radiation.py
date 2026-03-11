@@ -4,7 +4,8 @@ import numpy as np
 import xarray as xr
 import pandas as pd
 import atmPy.radiation.retrievals.clearsky as atmcsk
-import matplotlib.pyplot as _plt
+# import matplotlib.pyplot as _plt
+from atmPy.opt_imports import matplotlib as mpl
 import warnings
 
 
@@ -202,7 +203,7 @@ class CombinedGlobalDiffuseDirect(SolarIrradiation):
             print('Not enough clearsky points for valid fit.')
             return None, None
         if isinstance(ax, type(None)):
-            f, a= _plt.subplots()    
+            f, a= mpl.pyplot.subplots()    
         else:
             a = ax
             f = a.get_figure()
@@ -365,7 +366,7 @@ class CombinedGlobalDiffuseDirect(SolarIrradiation):
                       plot_kwargs = {},):
         
         if isinstance(ax, type(None)):
-            f, a= _plt.subplots()    
+            f, a= mpl.pyplot.subplots()    
         else:
             a = ax
             f = a.get_figure()

@@ -1,5 +1,7 @@
-from mpl_toolkits.axes_grid1.inset_locator import inset_axes as _inset_axes
-from mpl_toolkits.axes_grid1 import make_axes_locatable as _make_axes_locatable
+from atmPy.opt_imports import OptionalImport
+mpltk = OptionalImport('mpl_toolkits', submodules = ['axes_grid1'])
+# from mpl_toolkits.axes_grid1.inset_locator import inset_axes as _inset_axes
+# from mpl_toolkits.axes_grid1 import make_axes_locatable as _make_axes_locatable
 
 
 
@@ -31,7 +33,7 @@ def colorbar_axis_split_off(mappable, ax, position = 'right', size = '5%', pad =
 
     """
     f = ax.get_figure()
-    divider = _make_axes_locatable(ax)
+    divider = mpltk.axes_grid1.make_axes_locatable(ax)
     cax = divider.append_axes(position, size=size, pad=pad)
     if isinstance(mappable, type(None)):
         cax.axis('off')
@@ -71,7 +73,7 @@ def colorbar_inside_plot(ax, mappable, extend = ('17%', '60%'), extend_cb = ('25
     """
 
     # first insert that acts as a background of the colorbar ... so you can see the text on the underlying plot
-    cbbox = _inset_axes(ax, extend[0], extend[1], loc = loc)
+    cbbox = mpltk.axes_grid1.inset_axes(ax, extend[0], extend[1], loc = loc)
     [cbbox.spines[k].set_visible(False) for k in cbbox.spines]  # remove axes
     cbbox.tick_params(axis='both',
                       left='off',
@@ -88,7 +90,7 @@ def colorbar_inside_plot(ax, mappable, extend = ('17%', '60%'), extend_cb = ('25
     cbbox.set_axis_off() # there where still some ticklabel showing up, even with the tickparams set above?!?
     # second insert that will be filled by the colorbar
     # extend_cb = ('25%', '90%')
-    ax_cb = _inset_axes(cbbox, extend_cb[0], extend_cb[1], loc = loc_cb)
+    ax_cb = mpltk.axes_grid1.inset_axes(cbbox, extend_cb[0], extend_cb[1], loc = loc_cb)
     f = ax.get_figure()
     cb=f.colorbar(mappable, cax=ax_cb, **colorbar_kw) #make colorbar
     return cb, ax_cb, cbbox

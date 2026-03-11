@@ -1,4 +1,15 @@
-# optional_imports.py
+"""
+This module provides a class for optional imports. It allows to import a module and check if it is available, without raising an ImportError if it is not. 
+
+Usage
+-----
+either use one of the predefined optional imports, e.g. statsmodels, timezonefinder, cartopy, etc. or create your own optional import like this:
+from atmPy.opt_imports import statsmodels
+
+or use the OptionalImport class directly:
+from atmPy.opt_imports import OptionalImport
+matplotlib = OptionalImport('matplotlib', submodules=['pyplot', 'colors']) 
+"""
 class OptionalImport:
     def __init__(self, name, submodules = None):
         self.module_available = False
@@ -60,7 +71,7 @@ pygam = OptionalImport('pygam')
 numba = OptionalImport('numba')
 pvlib = OptionalImport('pvlib')
 
-matplotlib = OptionalImport('matplotlib', submodules='pyplot')
+matplotlib = OptionalImport('matplotlib', submodules='pyplot') #The following will replace the import of plt: from atmPy.opt_imports import matplotlib as mpl; mpl.pyplot.plot(...)
 
 pytz = OptionalImport('pytz')
 

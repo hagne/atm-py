@@ -1,5 +1,6 @@
 import numpy as np
-import matplotlib.pylab as plt
+# import matplotlib.pylab as plt
+from atmPy.opt_imports import matplotlib as mpl
 import pandas as _pd
 
 def ensure_column_exists(df, col_name, col_alt = False, raise_error = True):
@@ -51,7 +52,7 @@ def plot_dataframe_meshgrid(df, xaxis = 0, ax = None, pc_kwargs = {}, cb_kwargs 
         a = ax
         f = a.get_figure()
     else:
-        f,a = plt.subplots()
+        f,a = mpl.pyplot.subplots()
 
     if not pc_kwargs:
         pc_kwargs = {}
@@ -109,7 +110,7 @@ def plot_panel_meshgrid(panel, xaxis = 0, yaxis = 1, sub_set = 0, ax = None, kwa
         a = ax
         f = a.get_figure()
     else:
-        f,a = plt.subplots()
+        f,a = mpl.pyplot.subplots()
 
     pc = a.pcolormesh(x, y , z, **kwargs)
 

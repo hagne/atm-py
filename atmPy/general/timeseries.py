@@ -5,15 +5,15 @@ import atmPy.general.vertical_profile
 
 import pandas as _pd
 import numpy as _np
-import matplotlib.pylab as _plt
+# import matplotlib.pylab as _plt
 
 from atmPy.tools import pandas_tools as _pandas_tools
 from atmPy.tools import time_tools as _time_tools
-from atmPy.tools import array_tools as _array_tools
 from atmPy.tools import plt_tools as _plt_tools
 from atmPy.tools import git as _git_tools
 from atmPy.general import data_structure
 
+from atmPy.tools import array_tools as _array_tools
 try:
     from netCDF4 import Dataset as _Dataset
     # from netCDF4 import num2date as _num2date
@@ -22,11 +22,14 @@ except ModuleNotFoundError:
     _warnings.warn('netCDF4 not installed. You might encounter some functionality limitations.')
 import warnings as _warnings
 import datetime
-from matplotlib.ticker import FuncFormatter as _FuncFormatter
-from matplotlib.dates import DayLocator as _DayLocator
-from matplotlib.dates import MonthLocator as _MonthLocator
+
+from atmPy.opt_imports import OptionalImport
+mpl = OptionalImport('matplotlib', submodules=['ticker','pyplot','dates'])
+# from matplotlib.ticker import FuncFormatter as _FuncFormatter
+# from matplotlib.dates import DayLocator as _DayLocator
+# from matplotlib.dates import MonthLocator as _MonthLocator
 import os as _os
-from matplotlib import dates as _dates
+# from matplotlib import dates as _dates
 import atmPy.general.statistics as _statistics
 
 from atmPy.atmosphere import standards as _atm_std
@@ -454,7 +457,6 @@ def correlate(data, correlant, data_column = False, correlant_column = False, di
             correlant_values[correlant_values < correlant_lim[0]] = _np.nan
         if correlant_lim[1]:
             correlant_values[correlant_values > correlant_lim[1]] = _np.nan
-
     out = _array_tools.Correlation(data_values, correlant_values, differenciate, remove_zeros=remove_zeros, index = data.data.index, weights = weights, skip_remove_nans=skip_remove_nans)
     out._x_label_orig = 'DataTime'
     return out
@@ -898,6 +900,7 @@ def plot_wrapped(ts,periods = 1, frequency = 'h', ylabel = 'auto', max_wraps = 1
 
     if ax is set, all other parameters will be ignored
     ylim: set to False if you don't want """
+    _plt = mpl.pyplot
     if 'cb_kwargs' in plot_kwargs.keys():
         cb_kwargs = plot_kwargs.pop('cb_kwargs')
     else:
@@ -1021,8 +1024,8 @@ def plot_wrapped(ts,periods = 1, frequency = 'h', ylabel = 'auto', max_wraps = 1
                     return out
                 text = start_t
 
-                df = _FuncFormatter(day_formatter)
-                at.xaxis.set_major_locator(_DayLocator(interval=4))
+                df = mpl.ticker.FuncFormatter(day_formatter)
+                at.xaxis.set_major_locator(mpl.date.DayLocator(interval=4))
                 at.xaxis.set_major_formatter(df)
 
             elif frequency == 'Y':
@@ -1033,8 +1036,8 @@ def plot_wrapped(ts,periods = 1, frequency = 'h', ylabel = 'auto', max_wraps = 1
                     out = dt.month
                     return month_str[out]
 
-                df = _FuncFormatter(month_formatter)
-                at.xaxis.set_major_locator(_MonthLocator(interval=1))
+                df = mpl.ticker.FuncFormatter(month_formatter)
+                at.xaxis.set_major_locator(mpl.date.MonthLocator(interval=1))
                 at.xaxis.set_major_formatter(df)
                 text = text[0].split('-')[0]
             elif frequency == 'D':
@@ -1630,7 +1633,7 @@ class TimeSeries(object):
 
         # a = self.data.plot(**kwargs)
         if not ax:
-            f,ax = _plt.subplots()
+            f,ax = mpl.pyplot.subplots()
         else:
             f = ax.get_figure()
         if 'picker' in kwargs.keys():
@@ -1640,7 +1643,7 @@ class TimeSeries(object):
             def onclick(event):
                 self.plot_events.append(event)
                 x = event.mouseevent.xdata
-                xdate = _pd.Timestamp(_dates.num2date(x))
+                xdate = _pd.Timestamp(mpl.dates.num2date(x))
                 y = event.mouseevent.ydata
                 self.plot_click_positions.append([xdate, y])
                 ax.text(x, y, 'x = {:02d}:{:02d}:{:02d}\ny = {:.0f}'.format(xdate.hour, xdate.minute, xdate.second, y))
@@ -1677,7 +1680,7 @@ class TimeSeries(object):
                 ax.plot(self.data.index.values, self.data[k].values, label = label_t, **kwargs)
 
                 if self._time_format == 'timedelta':
-                    formatter = _FuncFormatter(timeTicks)
+                    formatter = mpl.ticker.FuncFormatter(timeTicks)
                     ax.xaxis.set_major_formatter(formatter)
 
                 did_plot = True

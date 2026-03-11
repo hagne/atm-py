@@ -1,15 +1,17 @@
 import pandas as _pd
-import matplotlib.pylab as _plt
+from atmPy.opt_imports import OptionalImport
+mpl = OptionalImport('matplotlib', submodules=['pyplot', 'ticker', 'legend_handler', 'colors', 'dates', 'lines', 'gridspec', 'patches'])
+# import matplotlib.pylab as _plt
 import numpy as _np
 # from matplotlib.dates import MonthLocator  as _MonthLocator
 # from matplotlib.dates import DateFormatter as _DateFormatter
-from matplotlib.ticker import FuncFormatter as _FuncFormatter
-from matplotlib.ticker import MultipleLocator as _MultipleLocator
-import matplotlib.gridspec as mplgrid
-import matplotlib.patches as mpatches
-from matplotlib.legend_handler import HandlerTuple
-import matplotlib.colors as _mcolors
-colors = _plt.rcParams['axes.prop_cycle'].by_key()['color']
+# from matplotlib.ticker import FuncFormatter as _FuncFormatter
+# from matplotlib.ticker import MultipleLocator as _MultipleLocator
+# import matplotlib.gridspec as mplgrid
+# import matplotlib.patches as mpatches
+# from matplotlib.legend_handler import HandlerTuple
+# import matplotlib.colors as _mcolors
+# colors = _plt.rcParams['axes.prop_cycle'].by_key()['color']
 #import plt_tools as _plt_tools
 from atmPy.tools import array_tools as _array_tools
 import atmPy.tools.plt_tool_kit.colors as _atmcols
@@ -17,9 +19,9 @@ import atmPy.tools.plt_tool_kit.colors as _atmcols
 
 import datetime
 import xarray as _xr 
-import matplotlib.dates as mdates
-import  matplotlib.lines as _mpllines
-import matplotlib.dates as _mpldates
+# import matplotlib.dates as mdates
+# import  matplotlib.lines as _mpllines
+# import matplotlib.dates as _mpldates
 
 # from statsmodels.graphics.tsaplots import plot_acf as statsmod_plot_acf
 from atmPy.opt_imports import statsmodels as sm
@@ -527,7 +529,7 @@ class GamClimatology(object):
         offset: float or str ['center', 'intercept']
         transform: str ['log2lin', 'percent']
             """
-        
+        _plt = mpl.pyplot
         if isinstance(ax, type(None)):
             f, a = _plt.subplots()
         else:
@@ -607,11 +609,11 @@ class GamClimatology(object):
             hbin = a.hexbin(data.x_doy, y, linewidths=0.2, gridsize = obs_gridsize, vmin = 0.1, cmap = cm, zorder = 1)
             hbin.set_clim(vmax = hbin.get_clim()[1] * 0.5)
             pcolors = _plt.cm.Oranges_r(_np.linspace(0, 1, 100))
-            patch = [mpatches.Patch(facecolor=c,) for c in pcolors]
+            patch = [mpl.patches.Patch(facecolor=c,) for c in pcolors]
             handles=[patch]
             labels=['data density',]
             a.legend(handles, labels, ncol=len(labels), fontsize='small',
-                       handler_map = {list: HandlerTuple(None)})
+                       handler_map = {list: mpl.legend_handler.HandlerTuple(None)})
         #######################################
         #### Settings
         #############
@@ -621,6 +623,7 @@ class GamClimatology(object):
                 axis = a.yaxis
             else: 
                 axis = a.xaxis
+            mdates = mpl.dates
             axis.set_major_locator(mdates.MonthLocator())  # Set the major ticks to be at the beginning of each month
             axis.set_minor_locator(mdates.WeekdayLocator())  # Set the minor ticks to be at the beginning of each week
             axis.set_major_formatter(mdates.DateFormatter('%b'))  # Format the major ticks with abbreviated month names
@@ -631,8 +634,9 @@ class GamClimatology(object):
         return f,a,fill, hbin
     
     def plot_prediction(self, ax = None, show_confidence=True, show_original_data=True, **plot_kwargs):
+
         if isinstance(ax, type(None)):
-            f, a = _plt.subplots()
+            f, a = mpl.pyplot.subplots()
         else:
             a = ax
             f = a.get_figure()
@@ -667,7 +671,7 @@ class GamClimatology(object):
             if False, no colorbar will be shown
         """
         if isinstance(ax, type(None)):
-            f,a = _plt.subplots()
+            f,a = mpl.pyplot.subplots()
         else:
             a = ax 
             f = a.get_figure()
@@ -684,7 +688,7 @@ class GamClimatology(object):
         
             
         pc = da.plot(x = 'datetime', ax = a, add_colorbar = False)
-        pc.set_cmap(_plt.cm.Spectral_r)
+        pc.set_cmap(mpl.cm.Spectral_r)
 
         cbar = None
         if cbkwargs:
@@ -699,10 +703,11 @@ class GamClimatology(object):
         
         if xticklablesmonth:
             axis = a.yaxis
+            mdates = mpl.dates
             axis.set_major_locator(mdates.MonthLocator())  # Set the major ticks to be at the beginning of each month
             axis.set_minor_locator(mdates.WeekdayLocator())  # Set the minor ticks to be at the beginning of each week
             axis.set_major_formatter(mdates.DateFormatter('%b'))  # Format the major ticks with abbreviated month names
-            axis.set_minor_locator(_plt.NullLocator())
+            axis.set_minor_locator(mpl.pyplot.NullLocator())
             axis.set_label_text('')
         return f,a, pc, cbar
         
@@ -716,6 +721,7 @@ class GamClimatology(object):
         """
         
         out = []
+        _plt = mpl.pyplot
         if isinstance(axis, type(None)):
             if self.interactions:
                 f,aa = _plt.subplots(3,2, #sharex=True, sharey=True,
@@ -854,7 +860,7 @@ class GamClimatology(object):
             DESCRIPTION.
 
         """
-        
+        _plt = mpl.pyplot
         if isinstance(shade_seasons, dict):
             shade_kwargs = shade_seasons
             shade_seasons = True
@@ -901,12 +907,12 @@ class GamClimatology(object):
                 g.set_color('0.4')
             else:
                 scale = 1
-                qm = a.hexbin(mdates.date2num(residual_plustrend.datetime), residual_plustrend, 
+                qm = a.hexbin(mpl.dates.date2num(residual_plustrend.datetime), residual_plustrend, 
                                # gridsize = (scale*50,scale*100), 
                               
                                linewidth = 0.2)
-                cm = plt.cm.inferno_r
-                cm = plt.cm.gnuplot2
+                cm = _plt.cm.inferno_r
+                cm = _plt.cm.gnuplot2
                 cm.set_under([1,1,1,0])
                 qm.set_cmap(cm)
                 qm.set_clim(vmin = 0.1)
@@ -990,6 +996,7 @@ class GamClimatology(object):
             #                 _mpllines.Line2D([0], [0], color=f'{pltcolorlam(seasons[2])}', lw=4),
             #                 _mpllines.Line2D([0], [0], color=f'{colorlam(seasons[3])}', lw=4),
             #                ]
+            _mpllines = mpl.lines
             custom_lines = [_mpllines.Line2D([0], [0], color=coll[0], lw=4, **shade_kwargs),
                             _mpllines.Line2D([0], [0], color=coll[1], lw=4, **shade_kwargs),
                             _mpllines.Line2D([0], [0], color=coll[2], lw=4, **shade_kwargs),
@@ -1000,6 +1007,7 @@ class GamClimatology(object):
             
             noy = end_year - start_year
             base = int(_np.ceil(noy/10))
+            _mpldates = mpl.dates
             a.xaxis.set_major_locator(_mpldates.YearLocator(base=base))
             a.xaxis.set_major_formatter(_mpldates.DateFormatter('%Y'))
             a.xaxis.set_minor_locator(_mpldates.MonthLocator(interval = base))
@@ -1009,13 +1017,14 @@ class GamClimatology(object):
         return f,a
 
     def plot_test_overview(self, acf_kwarts = {}):
+        _plt = mpl.pyplot
         f = _plt.figure()
         # f.set_figheight(f.get_figheight() * 1.5)
         f.set_figheight(7.4)
         
         #### Settyo
         if 1:
-            gs = mplgrid.GridSpec(3,2, figure = f, 
+            gs = mpl.gridspec.GridSpec(3,2, figure = f, 
                                   height_ratios= [1,1,1.5],
                                   hspace=0.35,  wspace = 0.3)
             # gs.update(
@@ -1049,7 +1058,7 @@ class GamClimatology(object):
         
         
             colors = _plt.cm.Oranges_r(_np.linspace(0, 1, 100))
-            patch = [mpatches.Patch(facecolor=c) for c in colors]
+            patch = [mpl.patches.Patch(facecolor=c) for c in colors]
             dummy = _plt.Line2D([0], [0], color=[1,0,0,1],
                                # marker='o', markersize=0, lw=0, ls = '',
                               )
@@ -1064,7 +1073,7 @@ class GamClimatology(object):
             
             legr = a.legend(handles, labels, ncol=len(handles), fontsize='small',
                      # title = 'Residual represenations',
-                    handler_map = {list: HandlerTuple(None)},
+                    handler_map = {list: mpl.legend_handler.HandlerTuple(None)},
                     # handletextpad = -5,
                     )
             
@@ -1132,6 +1141,7 @@ class GamClimatology(object):
                                   ll=0.001, 
                                   ax=None,
                                   gridsize = 100):
+        _plt = mpl.pyplot
         if not isinstance(ax, type(None)):
             a = ax
             f = a.get_figure()
@@ -1170,7 +1180,7 @@ class GamClimatology(object):
             a = ax
             f = a.get_figure()
         else:
-            f,a = _plt.subplots()
+            f,a = mpl.pyplot.subplots()
         pred = self.prediction
         # residual = self.data.iloc[:,0] - pred.prediction
         residual = pred.residual
@@ -1189,6 +1199,7 @@ class GamClimatology(object):
         return f,a 
     
     def plot_test_qq(self, ax = None, textpos = (0.1, 0.9), sig_fig = 2, gridsize = 50):
+        _plt = mpl.pyplot
         def format_significant(x, sig_digits=2):
             if x == 0:
                 return f"{0:.{sig_digits-1}f}"  # handle zero specially
@@ -1210,7 +1221,7 @@ class GamClimatology(object):
                 
                     # return f"{scaled:.{sig_digits-1}f}"
                 return r"${:.{prec}f} \cdot 10^{{{exp}}}$".format(scaled, prec=sig_digits-1, exp=exponent)
-            
+        
         if not isinstance(ax, type(None)):
             a = ax
             f = a.get_figure()
@@ -1246,7 +1257,7 @@ class GamClimatology(object):
         #              f'$r$={format_significant(r, sig_fig)}'),
         #            )
         pcolors = pc.get_cmap()(_np.linspace(0, 1, 100))
-        patch = [mpatches.Patch(facecolor=c) for c in pcolors]
+        patch = [mpl.patches.Patch(facecolor=c) for c in pcolors]
         
         handles=[patch,g]
         glabel = ('linear reg.\n'
@@ -1257,7 +1268,7 @@ class GamClimatology(object):
         leg = a.legend(handles, labels, 
                        # ncol=len(handles), 
                          fontsize='small',
-                       handler_map = {list: HandlerTuple(None)},
+                       handler_map = {list: mpl.legend_handler.HandlerTuple(None)},
                        loc = 4)
         col = [0,0,0,.5]
         a.axvline(0, ls = '--', color = col)
@@ -1265,6 +1276,8 @@ class GamClimatology(object):
         return f,a,pc, leg
     
     def plot_test_residual(self, window = 2*365, ax = None, show_std = True, gridsize = 80):
+        _plt = mpl.pyplot
+        mdates = mpl.dates
         if not isinstance(ax, type(None)):
         #     a = ax
         #     f = a.get_figure()
@@ -1345,7 +1358,7 @@ class GamClimatology(object):
             a = ax
             f = a.get_figure()
         else:
-            f,a = _plt.subplots()
+            f,a = mpl.pyplot.subplots()
             
         acf = self.autocorrelation
 
@@ -1376,6 +1389,7 @@ class GamClimatology(object):
         return f,a 
     
     def plot_test_obs_vs_pred(self, ll = 0.05, ul = 0.95, ax = None):
+        _plt = mpl.pyplot
         if not isinstance(ax, type(None)):
             a = ax
             f = a.get_figure()
@@ -1555,6 +1569,8 @@ class Climatology(object):
         -------
         f, a, boxes, vlines, wisker_tips, mean
         """
+        _plt = mpl.pyplot
+        _mcolors = mpl.colors
         try:
             import plt_tools as _plt_tools
             if type(color) == int:
@@ -1660,7 +1676,7 @@ class Climatology(object):
         except:
             pass
 
-        mjl = _MultipleLocator(tickbase)
+        mjl = mpl.ticker.MultipleLocator(tickbase)
         a.xaxis.set_major_locator(mjl)
 
 
@@ -1779,7 +1795,7 @@ class Seasonality(Climatology):
             return month[num]
 
         if self.frequency == 'M':
-            a.xaxis.set_major_formatter(_FuncFormatter(num2month))
+            a.xaxis.set_major_formatter(mpl.ticker.FuncFormatter(num2month))
             a.set_xlim(0.5, 12.5)
         a.set_xlabel('Month of year')
         return out
