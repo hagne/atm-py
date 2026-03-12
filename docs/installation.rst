@@ -21,4 +21,7 @@ Download from github: ``git clone https://github.com/hagne/atm-py``
 
 Enter directory: ``cd atm-py``
 
-install using pip: ``pip install .``
+If you regularly update your local copy of atmPy, it is recommended to install in editable mode:
+``python -m pip install -e . --config-settings editable_mode=compat``
+
+Otherwise, simply install using: ``python -m pip install .``
