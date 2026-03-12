@@ -13,22 +13,28 @@ jobs:
     runs-on: ubuntu-latest
     steps:
     - name: Check out code
-      uses: actions/checkout@v2
+      uses: actions/checkout@v4
 
     - name: Set up Python
-      uses: actions/setup-python@v2
+      uses: actions/setup-python@v5
       with:
         python-version: '3.10'  # Set this to the Python version you use
 
     - name: Install dependencies
       run: |
-        pip install sphinx sphinx_rtd_theme nbsphinx pandoc
+        python -m pip install --upgrade pip
+        pip install . sphinx sphinx_rtd_theme nbsphinx
         # Add any other dependencies here
+
+    - name: Install pandoc
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y pandoc
 
     - name: Build Sphinx Documentation
       run: |
         cd docs
-        make html
+        make clean html
 
     - name: Deploy to GitHub Pages
       uses: peaceiris/actions-gh-pages@v3

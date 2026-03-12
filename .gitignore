@@ -68,4 +68,5 @@ examples/instruments_ARM-ceilm.ipynb
 .spyproject/config/defaults/defaults-vcs-0.2.0.ini
 *nohup.out
 build/*
+docs/_build/
 .vscode/settings.json
