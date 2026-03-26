@@ -26,7 +26,8 @@ class TaylorDiagram(object):
     def __init__(self, refstd,
                  # relative = False,
                  fig=None, std_label = 'Standard deviation',
-                 rect=111, label='_', srange=(0, 1.5), extend=False):
+                 rect=111, label='_', srange=(0, 1.5), extend=False,
+                 circle_fraction = 0.5):
         """
         Set up Taylor diagram axes, i.e. single quadrant polar
         plot, using `mpl_toolkits.axisartist.floating_axes`.
@@ -37,6 +38,7 @@ class TaylorDiagram(object):
         * label: reference label
         * srange: stddev axis extension, in units of *refstd*
         * extend: extend diagram to negative correlations
+        * circle_fraction: fraction of the circle to display (if not extended to negative correlations)
         """
 
 
@@ -53,7 +55,7 @@ class TaylorDiagram(object):
             rlocs = _np.concatenate((-rlocs[:0:-1], rlocs))
         else:
             # Diagram limited to positive correlations
-            self.tmax = _np.pi/2
+            self.tmax = _np.pi * circle_fraction
         tlocs = _np.arccos(rlocs)        # Conversion to polar angles
         gl1 = mpl_toolkits.axisartist.grid_finder.FixedLocator(tlocs)    # Positions
         tf1 = mpl_toolkits.axisartist.grid_finder.DictFormatter(dict(zip(tlocs, map(str, rlocs))))
@@ -259,6 +261,148 @@ def weighted_quantile(values, quantiles, sample_weight=None, values_sorted=False
         weighted_quantiles /= _np.sum(sample_weight)
     return _np.interp(quantiles, weighted_quantiles, values)
 
+class CorrelationComparison(object):
+    def __init__(self, correlations: dict):
+        """This is a simple wrapper for multiple Correlation objects. 
+        It allows to easily compare the correlation of different data sets with the same reference data set. 
+        For example, you want to track the correlation over the coarse of the year, etc.
+
+        Parameters
+        ----------
+        correlations: dict
+            A dictionary of Correlation objects. The keys will be used for labeling the different correlation in
+            the plots. The values have to be Correlation objects. 
+        """
+        self.correlations = correlations
+
+    def plot_target_diagram(self, **plot_kwargs):
+        """Plots target diagrams for all wrapped correlation objects.
+
+        Parameters
+        ----------
+        **plot_kwargs
+            Forwarded to :meth:`Correlation.plot_target_diagram`.
+
+        See Also
+        --------
+        Correlation.plot_target_diagram
+            Full parameter and behavior documentation for the underlying plot.
+        """
+        a = None
+        for m in self.correlations:
+            col = mpl.pyplot.cm.gnuplot2((m-1)/len(self.correlations))
+            corr = self.correlations[m]
+            f,a = corr.plot_target_diagram(ax = a, color = col, label = m, **plot_kwargs)
+            # break
+        a.legend(title = 'Month')
+
+        xy = []
+        for g in a.get_lines():
+            xy.append([g.get_xdata(), g.get_ydata()])
+        xy.append(xy[0])
+        x,y = zip(*xy)
+        a.plot(x,y, color = '0.2', ls = '--', zorder = 0)
+
+
+    def plot_orthogonal_distance_regression_intercept(self, ax = None, **plot_kwargs):
+        """Plots the orthogonla_distance_regression_intercept of the different Correlation objects."""
+        if 'marker' not in plot_kwargs:
+            plot_kwargs['marker'] = '.'
+
+        if ax is None:
+            f, a = mpl.pyplot.subplots()
+        else:
+            a = ax
+            f = a.get_figure()
+
+        y = [self.correlations[cor].orthogonal_distance_regression_intercept for cor in self.correlations]
+        a.plot(self.correlations.keys(), y, **plot_kwargs)
+        a.set_ylabel('Orthogonal Distance Regression Intercept')
+        return f,a
+
+    def plot_orthogonal_distance_regression_slope(self, ax = None, **plot_kwargs):
+        """Plots the orthogonla_distance_regression_slope of the different Correlation objects."""
+        if 'marker' not in plot_kwargs:
+            plot_kwargs['marker'] = '.'
+
+        if ax is None:
+            f, a = mpl.pyplot.subplots()
+        else:
+            a = ax
+            f = a.get_figure()
+
+        y = [self.correlations[cor].orthogonal_distance_regression_slope for cor in self.correlations]
+        a.plot(self.correlations.keys(), y, **plot_kwargs)
+        a.set_ylabel('Orthogonal Distance Regression Slope')
+        return f,a
+
+
+    def plot_centered_root_mean_square_difference(self, ax = None, **plot_kwargs):
+        """Plots the centeredroot-mean-square difference of the different Correlation objects."""
+        if 'marker' not in plot_kwargs:
+            plot_kwargs['marker'] = '.'
+
+        if ax is None:
+            f, a = mpl.pyplot.subplots()
+        else:
+            a = ax
+            f = a.get_figure()
+
+        y = [self.correlations[cor].centered_root_mean_square_difference for cor in self.correlations]
+        a.plot(self.correlations.keys(), y, **plot_kwargs)
+        a.set_ylabel('Centered Root Mean Square Difference')
+        return f,a
+
+    def plot_root_mean_square_difference(self, ax = None, **plot_kwargs):
+        """Plots the root-mean-square difference of the different Correlation objects."""
+        if 'marker' not in plot_kwargs:
+            plot_kwargs['marker'] = '.'
+
+        if ax is None:
+            f, a = mpl.pyplot.subplots()
+        else:
+            a = ax
+            f = a.get_figure()
+
+        y = [self.correlations[cor].root_mean_square_difference for cor in self.correlations]
+        a.plot(self.correlations.keys(), y, **plot_kwargs)
+        a.set_ylabel('Root Mean Square Difference')
+        return f,a
+
+    def plot_bias(self, ax = None, **plot_kwargs):
+        """Plots the bias of the different Correlation objects."""
+        if 'marker' not in plot_kwargs:
+            plot_kwargs['marker'] = '.'
+
+        if ax is None:
+            f, a = mpl.pyplot.subplots()
+        else:
+            a = ax
+            f = a.get_figure()
+
+        y = [self.correlations[cor].bias for cor in self.correlations]
+        a.plot(self.correlations.keys(), y, **plot_kwargs)
+        a.set_ylabel('Bias')
+        return f,a
+
+    def plot_pearson_r(self, ax = None, **plot_kwargs):
+        """Plots the Pearson r of the different Correlation objects."""
+        if 'marker' not in plot_kwargs:
+            plot_kwargs['marker'] = '.'
+
+        if ax is None:
+            f, a = mpl.pyplot.subplots()
+        else:
+            a = ax
+            f = a.get_figure()
+
+        y = [self.correlations[cor].pearson_r.statistic for cor in self.correlations]
+        a.plot(self.correlations.keys(), y, **plot_kwargs)
+        a.set_ylabel('Correlation coefficient r')
+        return f,a
+
+         
+
 class Correlation(object):
     def __init__(self, data, correlant,
                  differenciate = None,
@@ -279,7 +423,8 @@ class Correlation(object):
         differenciate: array like
             This will generate unique(differenciate) number of correlation.
             differenciate needs to have the same shape as the rest of the data.
-            Data and correlant will be classified according to this array.
+            Data and correlant will be classified according to this array. For example, 
+            if you have a column (variable) that is called "month" then all parameters will be calculated for each month separately. 
         remove_zeros: bool
             If zeros ought to be deleted. Datasets often contain zeros that are the
             result of invalid data. If there is the danger that this introduces a
@@ -306,7 +451,8 @@ class Correlation(object):
         data = data.copy()
         correlant = correlant.copy()
         self._pearson_r = None
-        self._stdofdifference = None
+        self._rmsd = None
+        self._crmsd = None
         self._bias = None
         self.__linear_regression = None
         self.__linear_regression_function = None
@@ -442,7 +588,7 @@ class Correlation(object):
         if isinstance(self.__orthogonal_distance_regression, type(None)):
             data, correlant, odr_function, poly_order, weights = [self._data, self._correlant, self.odr_function,
                                                                     self.poly_order, self.weights]
-            if isinstance(self._subsets, list):
+            if isinstance(self._subsets, list): #todo: remove if subsets are no longer used
                 odr_res_list = []
                 for subset in self._subsets:
                     # where = _np.where(self._differenciate == key)
@@ -461,17 +607,18 @@ class Correlation(object):
         return self.__orthogonal_distance_regression
     
     @property
+    def orthogonal_distance_regression_intercept(self):
+        return self.orthogonla_distance_regression['output'].beta[0]
+    
+    @property
+    def orthogonal_distance_regression_slope(self):
+        return self.orthogonla_distance_regression['output'].beta[1]
+
+    @property
     def bias(self):
         """
-        Bias D̄ between an observation and a reference:
-            
-        D = \{d_1, d_2, \ldots, d_n\}, \text{ where } d_i = x_i - y_i
-        
-        \sigma_D = \sqrt{\frac{1}{n-1} \sum_{i=1}^{n} (d_i - \overline{D})^2}
-        
-        \overline{D} = \frac{1}{n} \sum_{i=1}^{n} d_i
-
-        
+        Bias between an observation and a reference:
+        \\overline{D} = \\frac{1}{N} \\sum_{i=1}^{N} (y_i - x_i)
         """
         if isinstance(self._bias, type(None)):
             obs = self._correlant
@@ -480,12 +627,28 @@ class Correlation(object):
         return self._bias
     
     @property
-    def stdofdifference(self):
-        if isinstance(self._stdofdifference, type(None)):
+    def root_mean_square_difference(self):
+        r"""The root-mean-square difference (RMSD)
+        \mathrm{RMSD} = \sqrt{ \frac{1}{N} \sum_{i=1}^{N} (y_i - x_i)^2 }
+
+        """
+        if isinstance(self._rmsd, type(None)):
+            self._rmsd = _np.sqrt(_np.mean((self._correlant - self._data)**2))
+        return self._rmsd
+
+    @property
+    def centered_root_mean_square_difference(self):
+        """The centered, or unbiased, RMSD is the root-mean-square difference after removal 
+        of the mean difference between the two series. It quantifies disagreement in the temporal
+        variability independent of bias.
+          
+        The centered RMSD can be interpreted as the standard deviation of the point-wise differences
+        between the two time series."""
+        if isinstance(self._crmsd, type(None)):
             obs = self._correlant
             ref = self._data
-            self._stdofdifference = (obs-ref).std() * _np.sign(obs.std()-ref.std())
-        return self._stdofdifference
+            self._crmsd = (obs-ref).std()
+        return self._crmsd
     
     def plot_target_diagram(self, ax = None, 
                             normalized = False,
@@ -493,6 +656,8 @@ class Correlation(object):
                             scale_extend = 1.2,
                             force_axes_repoplulation = False,
                             **plot_kwargs):
+
+        """Plots the bias (y) over the standard deviation of the difference (x). Positive standard deviation indicates the reference has a higher standard deviation then the correlant, and the other way around"""
         
         if 'color' not in plot_kwargs:
             plot_kwargs['color'] = None        
@@ -500,15 +665,18 @@ class Correlation(object):
             plot_kwargs['label'] = None        
         if 'marker' not in plot_kwargs:
             plot_kwargs['marker'] = '.'
-            
+        if 'ls' not in plot_kwargs:
+            plot_kwargs['ls'] = ''
+        
+        crmsds = self.centered_root_mean_square_difference  * _np.sign(self._correlant.std()-self._data.std())
         if normalized:
             std = self._data.std()
-            stdofdifference = self.stdofdifference/std
+            stdofdifference = crmsds/std
             bias = self.bias/std
             xlabel = '$\\frac{\\sigma_D}{\\sigma_X}$'
             ylabel = '$\\overline{D}/\\sigma_X$'
         else:
-            stdofdifference = self.stdofdifference
+            stdofdifference = crmsds
             bias = self.bias
             xlabel = '$\\sigma_D$'
             ylabel = '$\\overline{D}$'
@@ -557,16 +725,17 @@ class Correlation(object):
             a.yaxis.set_label_coords(0.5, 1.01)
             
         
-        a.plot(stdofdifference, bias, 
-               marker = plot_kwargs['marker'], 
-               ls = '',
-               color = plot_kwargs['color'],
-               label = plot_kwargs['label'])
+        a.plot(stdofdifference, bias, **plot_kwargs
+            #    marker = plot_kwargs['marker'], 
+            #    ls = '',
+            #    color = plot_kwargs['color'],
+            #    label = plot_kwargs['label'], 
+               )
         return f,a
     
     def plot_taylor_diagram(self, taylor_diagram = None, 
                             relative = False, subplotpos = 111, legend = True,
-                            **add_sample_kwargs):
+                            circle_fraction = 0.5, **add_sample_kwargs):
         # data = self._data
         if relative:
             refstd =  1
@@ -583,7 +752,8 @@ class Correlation(object):
                                 rect=subplotpos, 
                                 # label="Reference",
                                 std_label= std_label,
-                                srange=(0.5, 1.5))
+                                srange=(0.5, 1.5),
+                                circle_fraction=circle_fraction)
         else:
             dia = taylor_diagram
             
