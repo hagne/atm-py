@@ -556,10 +556,47 @@ class Station(object):
                       extent = None,
                       google = ['street',8],
                       **kwargs):
-        
-        projection = 'AlbersEqualArea'
-        projection = getattr(cartopy.crs, projection)(central_longitude=self.lon, central_latitude=self.lat)
-        transform = cartopy.crs.PlateCarree()
+        potential_reasons = []
+        if (not _np.isfinite(self.lon)) or (not _np.isfinite(self.lat)):
+            potential_reasons.append('station lon/lat are not finite')
+        if not (-180 <= self.lon <= 180):
+            potential_reasons.append('lon is outside [-180, 180]')
+        if not (-90 <= self.lat <= 90):
+            potential_reasons.append('lat is outside [-90, 90]')
+        if (ax is not None) and (not hasattr(ax, 'projection')):
+            potential_reasons.append('passed ax is not a cartopy GeoAxes')
+
+        if isinstance(projection, type(None)):
+            # Use the tile CRS by default when imagery is shown to avoid visual offsets
+            if isinstance(background, type(None)) or isinstance(google, list):
+                projection = cartopy.io.img_tiles.GoogleTiles(style='street').crs
+            else:
+                projection = 'AlbersEqualArea'
+
+        if isinstance(projection, str):
+            try:
+                projection = getattr(cartopy.crs, projection)(
+                    central_longitude=self.lon,
+                    central_latitude=self.lat
+                )
+            except AttributeError:
+                potential_reasons.append(f'unknown projection "{projection}"')
+                projection = cartopy.crs.AlbersEqualArea(
+                    central_longitude=self.lon,
+                    central_latitude=self.lat
+                )
+        elif not hasattr(projection, 'transform_points'):
+            potential_reasons.append('projection is neither a cartopy projection name nor a CRS instance')
+            projection = cartopy.crs.AlbersEqualArea(
+                central_longitude=self.lon,
+                central_latitude=self.lat
+            )
+
+        if potential_reasons:
+            warnings.warn(
+                'Potential reasons for misplaced station plotting: ' + '; '.join(potential_reasons)
+            )
+        transform = cartopy.crs.Geodetic()
     
         if not isinstance(extent, (list, tuple)):    
             if isinstance(extent, type(None)):
@@ -580,13 +617,13 @@ class Station(object):
 
         if isinstance(ax, type(None)):
             f,a = matplotlib.pyplot.subplots(subplot_kw={'projection': projection})
-            background = False
+            # background = False
             from_scratch = True
         else:
             a = ax
             f = a.get_figure()
             from_scratch = False
-        
+        print(f'Plotting station {self.name} at lat {self.lat}, lon {self.lon} ')
         a.plot(self.lon, self.lat,linestyle = '', transform = transform, **station_symbol_kwargs)
         if station_label_kwargs != False:
             annodefaults = dict(xytext = (10, -10),
@@ -596,7 +633,7 @@ class Station(object):
                                 textcoords = 'offset points',
                                 bbox = dict(boxstyle="round", fc=[1, 1, 1, 0.5], ec='black'),
                                 zorder = 100,
-                                transform = transform,
+                                xycoords = transform,
                                  )
             if isinstance(station_label_kwargs, type(None)):
                 station_label_kwargs = {}
@@ -624,22 +661,21 @@ class Station(object):
         if from_scratch:
             if isinstance(zoom_level, type(None)):
                 zoom_level = 8
+
+            a.set_extent(extent, crs=transform)
             
             if isinstance(background, type(None)):
-                tiles = cartopy.io.img_tiles.GoogleTiles(style = 'satellite')
+                style = 'satellite'
+                tiles = cartopy.io.img_tiles.GoogleTiles(style = style)
                 a.add_image(tiles, zoom_level, 
                              # alpha = 0.5
                             )
             
-    
-            a.set_extent(extent, crs=transform)
-            
-            if isinstance(google, list):
-                google_terrain = cartopy.io.img_tiles.GoogleTiles(style=google[0])
-                a.add_image(google_terrain, google[1])
+            # if isinstance(google, list):
+            #     google_terrain = cartopy.io.img_tiles.GoogleTiles(style=google[0])
+            #     a.add_image(google_terrain, google[1])
             else:
                 a.add_feature(cartopy.feature.STATES, linewidth=0.5)
-            
             a.gridlines(draw_labels=True, color='gray', alpha=0.5, linestyle='--')
             
             
