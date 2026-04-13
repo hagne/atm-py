@@ -414,7 +414,7 @@ class SolarIrradiation(object):
         else:
             self.site = site
         
-        self._sun_position_variables = ['zenith', 'zenith_geometric', 'apparent_elevation', 'elevation', 'azimuth', 'equation_of_time', 'airmass', 'airmass_absolute', 'sun_earth_distance']
+        self._sun_position_variables = ['zenith', 'zenith_geometric', 'elevation_geometric', 'elevation', 'azimuth', 'equation_of_time', 'airmass', 'airmass_absolute', 'sun_earth_distance']
         self._sun_position = None
         self._solarspectrum = None
         self.path2solar_spectrum = '/Users/htelg/fundgrube/reference_data/solar/spectrum/solar_spectral_irradiance_e490_00a_amo.nc'
@@ -492,7 +492,7 @@ class SolarIrradiation(object):
             sp = self.site.get_sun_position(self.dataset.datetime)
             for v in self._sun_position_variables:
                 self.dataset[v] = sp[v]
-        return self.dataset[self._sun_position_variables]
+        return self.dataset[self._sun_position_variables] #TODO: For some reason this is returning "<property at 0x34ed953a0>" instead of the xarray dataarray, why can that be?
     
     @sun_position.setter
     def sun_position(self, value):
@@ -1798,7 +1798,7 @@ class DirectNormalIrradiation(SolarIrradiation):
         """
 
         sunpos = self.sun_position.copy()
-        direct_normal = self.dataset[self.variable_name_direct_normal].copy()
+        direct_normal = self.dataset['direct_normal'].copy()
         if verbose:
             print('normalize to sun earth dist.')
         # return direct_normal, sunpos

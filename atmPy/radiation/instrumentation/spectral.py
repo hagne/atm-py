@@ -5,6 +5,7 @@ import pathlib as pl
 import atmPy.data_archives.NOAA_ESRL_GMD_GRAD.cal_facility.lab as atmcal
 import atmPy.radiation.retrievals.spectral_irradiance as atmsi
 from .. import solar as atmsol
+import scipy.integrate as spi
 
 
 class Mfr():
@@ -25,10 +26,10 @@ class Mfr():
         else:
             self.head_calibration = head_calibration
         self.cosine_responds = cosine_responds
-        
         self._data_class = atmsi.GlobalHorizontalIrradiation
         
         self._cosine_calibration_diffuse = None
+        self._cosine_responds_pol = None
         
     @property
     def spectral_calibration(self):
@@ -110,6 +111,80 @@ class Mfr():
             raise TypeError(f'Unknown type for cosine_responds: {type(value)}')
             
         return 
+    
+    @property
+    def cosine_responds_polar(self):
+        if self._cosine_responds_pol is None:
+            ds = self.cosine_responds
+
+            # convert cosine correction into polar coordinates
+            dspol = xr.Dataset()
+
+            # Spectral
+            txt = 'At an angle of 0 all responds values of EW and NS have to be 1!!!!'
+            assert(np.all(ds.spectral_EW.sel(Angle = 0) == 1)), txt
+            assert(np.all(ds.spectral_NS.sel(Angle = 0) ==1)), txt
+
+            da = ds.spectral_EW.sel(Angle = slice(-90,0))
+            da = da.assign_coords(Angle = abs(da.Angle)).sortby('Angle')
+            da = da.assign_coords({'azimuth':90})
+            daE = da
+
+            da = ds.spectral_EW.sel(Angle = slice(0,90))
+            da = da.assign_coords(Angle = abs(da.Angle)).sortby('Angle')
+            da = da.assign_coords({'azimuth':270})
+            daW = da
+
+            da = ds.spectral_NS.sel(Angle = slice(-90,0))
+            da = da.assign_coords(Angle = abs(da.Angle)).sortby('Angle')
+            da = da.assign_coords({'azimuth':0})
+            daN = da
+
+            da = ds.spectral_NS.sel(Angle = slice(0,90))
+            da = da.assign_coords(Angle = abs(da.Angle)).sortby('Angle')
+            da = da.assign_coords({'azimuth':180})
+            daS = da
+
+            # make it circular
+            da = xr.concat([daN, daE, daS, daW, daN.assign_coords({'azimuth':360})], 'azimuth')
+
+            da = da.rename({'Angle':'zenith'})
+
+            dspol['spectral'] = da
+
+            # broadband
+            assert(np.all(ds.broadband_EW.sel(Angle = 0) == 1)), txt
+            assert(np.all(ds.broadband_NS.sel(Angle = 0) ==1)), txt
+
+            da = ds.broadband_EW.sel(Angle = slice(-90,0))
+            da = da.assign_coords(Angle = abs(da.Angle)).sortby('Angle')
+            da = da.assign_coords({'azimuth':90})
+            daE = da
+
+            da = ds.broadband_EW.sel(Angle = slice(0,90))
+            da = da.assign_coords(Angle = abs(da.Angle)).sortby('Angle')
+            da = da.assign_coords({'azimuth':270})
+            daW = da
+
+            da = ds.broadband_NS.sel(Angle = slice(-90,0))
+            da = da.assign_coords(Angle = abs(da.Angle)).sortby('Angle')
+            da = da.assign_coords({'azimuth':0})
+            daN = da
+
+            da = ds.broadband_NS.sel(Angle = slice(0,90))
+            da = da.assign_coords(Angle = abs(da.Angle)).sortby('Angle')
+            da = da.assign_coords({'azimuth':180})
+            daS = da
+
+            # make it circular
+            da = xr.concat([daN, daE, daS, daW, daN.assign_coords({'azimuth':360})], 'azimuth')
+
+            da = da.rename({'Angle':'zenith'})
+
+            dspol['broadband'] = da
+
+            self._cosine_responds_pol = dspol
+        return self._cosine_responds_pol
     
     def _apply_calibration_spectral(self, si):
         """
@@ -253,7 +328,7 @@ class Mfr():
             return self._apply_calibration_responsivity(si, calibration)
     
     @property
-    def cosine_calibration_diffuse(self):
+    def deprecated_cosine_calibration_diffuse(self):
         #### for diffuse or global in case of an MFR
         if self._cosine_calibration_diffuse is None:
             cal_angle = 45
@@ -262,6 +337,50 @@ class Mfr():
             cal = (ew + ns) / 2
             self._cosine_calibration_diffuse = 1/cal
         return self._cosine_calibration_diffuse
+    
+    @property
+    def cosine_calibration_diffuse(self):
+        """
+        Calculates the cosine calibration for diffuse radiation. In its current form it assumes an isotropic distribution of the diffuse radiation. 
+        Hodges & Michalsky (2016) — MFRSR Handbook (DOE/SC-ARM-TR-144) - suggests that uncertainties in diffuse from different sky conditions are small (<1%).
+        Values are calculated by integrating the cosine response for the NS and EW derection and taking the average of the two.
+        """
+        # add -90 and 90 if not present
+        # This is only so the integration goes all the way to pi/2 which impoves the normailiztion. The exact values at those angles should be irrelevant as cosine goes to zero, just infinit could be problementatic
+
+        ds = self.cosine_responds
+        if "spectral_diffuse" not in ds:
+
+            if -90 not in ds.Angle:
+                dsother = ds.sel(Angle = -89)
+                dsother.Angle.data = -90
+                ds = xr.concat([dsother,ds], 'Angle')
+            if 90 not in ds.Angle:
+                dsother = ds.sel(Angle = 89)
+                dsother.Angle.data = 90
+                ds = xr.concat([ds, dsother], 'Angle')
+
+            # do the integration
+            ang = np.deg2rad(ds.Angle).data
+            norm = spi.simpson(np.cos(ang), ang)
+            toll = 1e-8
+            test = abs(norm - 2)
+            assert(test < toll), f'Integral over the cos(angle) is expected to be close to 2. It is {norm}, which is larger than the tolerance of {toll}. Check for problems in the cosine responds data or increase tollerance (if you are really sure)'
+
+            # da = ds.spectral_NS
+            resNS = spi.simpson(ds.spectral_NS * np.cos(ang), ang)/norm
+            resEW = spi.simpson(ds.spectral_EW * np.cos(ang), ang)/norm
+            res = (resNS + resEW)/2
+
+            ds['spectral_diffuse'] = ('channel', 1/res)
+
+            resNS = spi.simpson(ds.broadband_NS * np.cos(ang), ang)/norm
+            resEW = spi.simpson(ds.broadband_EW * np.cos(ang), ang)/norm
+
+            res = (resNS + resEW)/2
+
+            ds['broadband_diffuse'] = 1/res
+        return ds.spectral_diffuse
    
     def _apply_calibration_cosine(self, si):
         # if 'clalibration_cosine' in self.dataset.attrs:
@@ -289,43 +408,59 @@ class Mfr():
         None.
 
         """
-        calibration = self.cosine_responds
+        # assert(False), 'Maybe i just need to make the solar position to_panda()'
+        # sunpos = si.sun_position.to_pandas()
+        dspol = self.cosine_responds_polar
+        out = dspol['spectral'].interp({'zenith': np.rad2deg(si.sun_position.zenith), 'azimuth': np.rad2deg(si.sun_position.azimuth)})
+        out = out.drop_vars(['zenith', 'azimuth'])
+        out = 1/out
+        if 0: #DEPRECATED, can be delete, had a design flaw
+            self.tp_si = si
+            calibration = self.cosine_responds
 
-        #### - direct
-        sp = atmsol.SolarPosition(si.sun_position.azimuth, np.pi/2 - si.sun_position.elevation, unit = 'rad')
-        
-        # NS
-        # interpolate the cosine respond with the particular angles resulting from the projetion
-        # This results in :
-        #     * calibration value as a function of time
-        
-        da = calibration.spectral_NS.interp(Angle = np.rad2deg(sp.projectionNS_angle) - 90)
-        cos_cal_NS = da.rename({'Angle': 'datetime'}).assign_coords(datetime = ('datetime', si.sun_position.index))
-        
-        
-        # The calibration value needs to be normalized with the relevant component of the solar radiation
-        # With other words how much light is actually comming this way?
-        cos_cal_NS_norm = cos_cal_NS * xr.DataArray(sp.projectionNS_norm)
-        
-        # Do the same for EW
-        
-        da = calibration.spectral_EW.interp(Angle = np.rad2deg(sp.projectionEW_angle) - 90)
-        cos_cal_EW = da.rename({'Angle': 'datetime'}).assign_coords(datetime = ('datetime', si.sun_position.index))
-        cos_cal_EW_norm = cos_cal_EW * xr.DataArray(sp.projectionEW_norm)
-        
-        # Sum NS and EW
-        cos_cal_sum = cos_cal_EW_norm + cos_cal_NS_norm
-        
-        # Divide by the sum of **norms** (Not the calibration value! As we are dealing with vectors the sum is not automatically num
-        sumofnorm = sp.projectionEW_norm + sp.projectionNS_norm
-        cos_cal_sum_nom = cos_cal_sum / xr.DataArray(sumofnorm)
-        cos_cal_sum_nom = 1/cos_cal_sum_nom
-        return cos_cal_sum_nom
+            #### - direct
+            sp = atmsol.SolarPosition(sunpos.azimuth, np.pi/2 - sunpos.elevation, unit = 'rad')
+            self.tp_sp = sp
+            # NS
+            # interpolate the cosine respond with the particular angles resulting from the projetion
+            # This results in :
+            #     * calibration value as a function of time
+            
+            da = calibration.spectral_NS.interp(Angle = np.rad2deg(sp.projectionNS_angle) - 90)
+            self.tp_da = da.copy()
+            cos_cal_NS = da.rename({'Angle': 'datetime'}).assign_coords(datetime = ('datetime', sunpos.index))
+            
+            
+            # The calibration value needs to be normalized with the relevant component of the solar radiation
+            # With other words how much light is actually comming this way?
+            cos_cal_NS_norm = cos_cal_NS * xr.DataArray(sp.projectionNS_norm)
+            
+            # Do the same for EW
+            
+            da = calibration.spectral_EW.interp(Angle = np.rad2deg(sp.projectionEW_angle) - 90)
+            cos_cal_EW = da.rename({'Angle': 'datetime'}).assign_coords(datetime = ('datetime', sunpos.index))
+            cos_cal_EW_norm = cos_cal_EW * xr.DataArray(sp.projectionEW_norm)
+            
+            # Sum NS and EW
+            cos_cal_sum = cos_cal_EW_norm + cos_cal_NS_norm
+            
+            # Divide by the sum of **norms** (Not the calibration value! As we are dealing with vectors the sum is not automatically num
+            sumofnorm = sp.projectionEW_norm + sp.projectionNS_norm
+            cos_cal_sum_nom = cos_cal_sum / xr.DataArray(sumofnorm)
+            cos_cal_sum_nom = 1/cos_cal_sum_nom
+        return out
         
     
     def raw2calibrated(self, data):
+        """Applies the calibration to the provided data.
+        Parameters
+        ----------
+        data : str, pathlib.Path or xarray.Dataset"""
+        
         if isinstance(data, (str, pl.Path)):
             ds = xr.open_dataset(data)
+        elif isinstance(data, xr.Dataset):
+            ds = data.copy()
         else:
             raise TypeError(f'Unknown type for data: {type(data)}')
         
@@ -357,6 +492,7 @@ class Mfrsr(Mfr):
     def _apply_calibration_cosine(self, si):
         # if 'clalibration_cosine' in self.dataset.attrs:
         #     assert(self.dataset.attrs['clalibration_cosine'] != 'True'), 'Responds calibration already applied'  
+        sunpos = si.sun_position.to_pandas()
         if self.cosine_responds is None:
             return si
         
@@ -368,10 +504,10 @@ class Mfrsr(Mfr):
         cos_cal_dir = self.get_cosine_calibration_direct(si)
         ds['direct_horizontal'] = ds.direct_horizontal * cos_cal_dir
         ds['cosine_calibraion_direct'] = cos_cal_dir
-        # ds['direct_normal'] = ds.direct_horizontal / xr.DataArray(np.sin(si.sun_position.elevation))
+        # ds['direct_normal'] = ds.direct_horizontal / xr.DataArray(np.sin(sunpos.elevation))
         
-        ds['solar_zenith_angle'] = 90 - np.rad2deg(si.sun_position.elevation) 
-        ds['solar_azimuth_angle'] = np.rad2deg(si.sun_position.azimuth)
+        ds['solar_zenith_angle'] = 90 - np.rad2deg(sunpos.elevation) 
+        ds['solar_azimuth_angle'] = np.rad2deg(sunpos.azimuth)
         #### - compose global based on cosine corrected direct and diffuse
         ds['global_horizontal'] = ds.direct_horizontal + ds.diffuse_horizontal
             

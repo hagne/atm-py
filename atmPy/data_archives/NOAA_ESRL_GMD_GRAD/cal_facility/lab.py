@@ -319,7 +319,7 @@ def read_mfrsr_cal(path2file, verbose = False):
     ds.attrs['product_name'] = 'mfr_grad_spectral_calibration'
     return ds
 
-def read_mfrsr_cal_cos(p2f, broadband_col_name = 'Thermopile', test = None):
+def read_mfrsr_cal_cos(p2f, broadband_col_name = 'Thermopile', reversed_EW = False, reversed_NS = False, test = None, verbose = False):
     """
     Reads cosine corrections commonly used in GRAD.
 
@@ -327,7 +327,12 @@ def read_mfrsr_cal_cos(p2f, broadband_col_name = 'Thermopile', test = None):
     ----------
     p2f : TYPE
         DESCRIPTION.
-        
+
+    reversed_EW : bool, optional
+        If True, the order of the EW scan sections is reversed. EW suggests a east-west scan. In some cases this has not been the case. The default is False.
+    reversed_NS : bool, optional
+        If True, the order of the NS scan sections is reversed. NS suggests a north-south scan. In some cases this has not been the case. The default is False.
+
     test: 'str'
         'datadict': returns the parsed data, useful to find out if a columname
             is unusual (typically the thermopile)
@@ -342,7 +347,6 @@ def read_mfrsr_cal_cos(p2f, broadband_col_name = 'Thermopile', test = None):
         # pass
         lines = rein.readlines()
     
-    verbose = True
     header = []
     header_done = False
     data1 = []
@@ -380,27 +384,38 @@ def read_mfrsr_cal_cos(p2f, broadband_col_name = 'Thermopile', test = None):
         df = pd.read_csv(io.StringIO(data),sep = '\t' )
         df.index = df.Angle
         # test if NS (north-south) or EW (...)
+
+        scan_direction = None
         if 'NS' in df.columns[2]:
             scan_direction = 'NS'
         elif 'EW' in df.columns[2]:
             scan_direction = 'EW'
         else:
-            ValueError('Charlse probably parsed this file differently ... get in there and fix it')
+            raise ValueError(
+                f"scan direction could not be inferred from column {df.columns[2]!r}; "
+                "expected to find 'NS' or 'EW'"
+            )
         
+        if scan_direction not in ['NS', 'EW']:
+            raise ValueError(f'scan direction not recognized, got {scan_direction}, should be either NS or EW')
         
     
         # get & format only relevant colums, consider getting the other ones at some point too?
+        # print(f'original columns: {df.columns}')
         cols = [col for col in df.columns if f'{scan_direction}_Corr' in col]
         df_cc = df.loc[:, cols]
+        # print(f'columns before dropping nans: {df_cc.columns}')
         df_cc = df_cc.dropna(axis = 1) #there are placeholder collums for the UV MFRSRs, this gets rid of them ... or the other way aroudn
+        # print(f'columns after dropping nans: {df_cc.columns}')
         cols = [col.strip(f'{scan_direction}_Corr_') for col in df_cc.columns]
         cols = [col.strip('nm') for col in cols]
         df_cc.columns = cols
     
         # 90 and -90 degrees are singularities ==> remove
-        for i in [-90, 90]:
-            if (idx:= i) in df.index:
-                df_cc.drop(idx, inplace=True)
+        if 1:
+            for i in [-90, 90]:
+                if (idx:= i) in df.index:
+                    df_cc.drop(idx, inplace=True)
     
         # other stuff
         df_cc.columns.name = 'channel'
@@ -409,6 +424,8 @@ def read_mfrsr_cal_cos(p2f, broadband_col_name = 'Thermopile', test = None):
         # variations = ['Termopile']
         # for var in variations:
         #     if var in df_cc.columns:
+        if broadband_col_name not in df_cc.columns:
+            raise ValueError(f'{broadband_col_name} not found in columns, found {df_cc.columns}')
         df_cc.rename({broadband_col_name: 'Thermopile'}, axis = 1, inplace = True)
         return dict(data = df_cc, scan_direction = scan_direction)
     
@@ -423,12 +440,22 @@ def read_mfrsr_cal_cos(p2f, broadband_col_name = 'Thermopile', test = None):
     ds = xr.Dataset()
     
     scand = data1dict['scan_direction']
+    # print(f'scan direction: {scand}')
     # return data1dict['data']
+    # check if certain columns are in the data
+    # doubleckecklist = ['Thermopile'] + list(wl_nominal.astype(str))
+    # for c in doubleckecklist:
+    #     if c not in data1dict['data'].columns:
+    #         raise ValueError(f'{c} not found in data, found {data1dict["data"].columns}')
+
     ds[f'broadband_{scand}'] = data1dict['data'].Thermopile
     
     df = data1dict['data'].drop('Thermopile', axis = 1)
     # return df
     df.rename({col: wl_nominal[abs(wl_nominal - int(col)).argmin()] for col in df.columns}, axis = 1, inplace = True)
+    if np.any(df.columns.duplicated()):
+        raise ValueError(f'after renaming columns to nominal wavelengths, duplicated columns are present: {df.columns}. There is probably an issue in the original columns, check the original columns: {data1dict["data"].columns}.')
+
     ds[f'spectral_{scand}'] = df
     
     scand = data2dict['scan_direction']
@@ -436,9 +463,23 @@ def read_mfrsr_cal_cos(p2f, broadband_col_name = 'Thermopile', test = None):
     df = data2dict['data'].drop('Thermopile', axis = 1)
     df.rename({col: wl_nominal[abs(wl_nominal - int(col)).argmin()] for col in df.columns}, axis = 1, inplace = True)
     ds[f'spectral_{scand}'] = df
+
     
     ds.attrs['header'] = '\n'.join(header)
     ds.attrs['product_name'] = 'mfr_grad_cosine_responds'
+
+    if reversed_NS:
+        for v in ds.data_vars:
+            if "NS" in v and "Angle" in ds[v].dims:
+                axis = ds[v].get_axis_num("Angle")
+                ds[v].data = np.flip(ds[v].data, axis=axis)
+
+    if reversed_EW:
+        for v in ds.data_vars:
+            if "EW" in v and "Angle" in ds[v].dims:
+                axis = ds[v].get_axis_num("Angle")
+                ds[v].data = np.flip(ds[v].data, axis=axis)
+
     return ds
 
 def read_mfrsr_cal_responsivity(p2f):

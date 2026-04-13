@@ -198,8 +198,12 @@ def get_sun_position_pvlib(lat, lon, alt, date):
     for cn in ['apparent_zenith', 'zenith', 'azimuth', 'apparent_elevation', 'elevation']:
         sp[cn] = sp.apply(lambda row: _np.deg2rad(row[cn]), axis = 1)
     # for legacy reasons rename zenith to zenith_geometric and apperent_zenith to zenith
+    print(f'original columns: {list(sp.columns)}')
     sp = sp.rename(columns={'zenith': 'zenith_geometric',
-                            'apparent_zenith': 'zenith',})
+                            'apparent_zenith': 'zenith',
+                            'elevation': 'elevation_geometric',
+                            'apparent_elevation': 'elevation',
+                            })
     
     am = loc.get_airmass(date)
     am = am.rename(columns={'airmass_relative': 'airmass',})
@@ -291,6 +295,11 @@ def get_sun_position_deprecated(lat, lon, datetime_UTC, elevation=0):
 class SolarPosition:
     def __init__(self, azimuth, zenith, radiance = 1, unit = 'deg'):
         """
+        ----------
+        DEPRECATED: can be removed savely, is and should not be used anymore. This has a grave design flaw!!
+        -----------
+
+
         This was designed particularly for cosine corrections. It takes the 
         azimuth and zenith angle, projects it on the NS and EW planes and 
         provieds the norm of those vectors. 
@@ -314,6 +323,7 @@ class SolarPosition:
         None.
 
         """
+        assert(False), 'This class is deprecated and should not be used. '
         self.radiance = radiance
         if unit == 'deg':
             self.azimuth = _np.deg2rad(azimuth)
@@ -324,7 +334,7 @@ class SolarPosition:
         else:
             assert(False)
 
-        assert(False), 'make sure the ney solar position function is implemented'
+        # assert(False), 'make sure the new solar position function is implemented'
 
     @property
     def projectionNS_angle(self):
