@@ -10,8 +10,132 @@ import pandas as pd
 import numpy as np
 import pathlib as pl
 import io
+import re
+import pathlib as pl
 
 wl_nominal = np.array([415,500,1625, 615, 670, 870, 940])
+SECTION_RE = re.compile(r"^(SN|WE)\s*(\d+)\s*$")
+NM_RE = re.compile(r"([0-9]+(?:\.[0-9]+)?)\s*nm$", re.IGNORECASE)
+
+
+def read_factory_cal_sol(path: str | pl.Path) -> xr.Dataset:
+    """Read a SURFRAD/MFRSR .sol cosine file into an xarray Dataset.
+
+    Returns a dataset with:
+    - variables: `SN(channel, angle)`, `WE(channel, angle)`
+    - coordinate: `channel` from the numeric suffix in section names (e.g. SN1 -> 1)
+    - coordinate: `angle` from -90 to 90 degrees
+    - variable: `wavelength_nm(channel)` parsed from the LAMBDAS header block
+    """
+    path = pl.Path(path)
+    lines = path.read_text(encoding="utf-8", errors="replace").splitlines()
+
+    lambda_start = None
+    lambda_end = None
+    for i, line in enumerate(lines):
+        tag = line.strip().upper()
+        if tag == "LAMBDAS":
+            lambda_start = i
+        elif lambda_start is not None and tag == "END":
+            lambda_end = i
+            break
+
+    if lambda_start is None or lambda_end is None:
+        raise ValueError(f"Could not find complete LAMBDAS header block in {path}")
+
+    header_rows: list[tuple[str, float]] = []
+    for line in lines[lambda_start + 1 : lambda_end]:
+        parts = line.split()
+        if len(parts) < 2:
+            continue
+        label = parts[0]
+        table_tag = parts[-1].upper()
+        if not table_tag.startswith("TABLE"):
+            continue
+        m = NM_RE.search(label)
+        nm = float(m.group(1)) if m else np.nan
+        header_rows.append((label, nm))
+
+    section_values: dict[str, dict[int, list[float]]] = {"SN": {}, "WE": {}}
+    i = lambda_end + 1
+    while i < len(lines):
+        m = SECTION_RE.match(lines[i].strip())
+        if not m:
+            i += 1
+            continue
+
+        var, channel_s = m.groups()
+        channel = int(channel_s)
+        i += 1
+        values: list[float] = []
+
+        while i < len(lines) and lines[i].strip().upper() != "END":
+            for token in lines[i].split():
+                values.append(float(token))
+            i += 1
+
+        section_values[var][channel] = values
+        i += 1
+
+    channels = sorted(set(section_values["SN"]) | set(section_values["WE"]))
+    if not channels:
+        raise ValueError(f"No SN/WE channel sections found in {path}")
+
+    max_samples = max(
+        [len(v) for v in section_values["SN"].values()] +
+        [len(v) for v in section_values["WE"].values()]
+    )
+    angle = np.linspace(-90.0, 90.0, max_samples, dtype=float)
+
+    def to_2d(var: str) -> np.ndarray:
+        arr = np.full((len(channels), max_samples), np.nan, dtype=float)
+        for row, ch in enumerate(channels):
+            vals = section_values[var].get(ch, [])
+            if vals:
+                arr[row, : len(vals)] = vals
+        return arr
+
+    ds = xr.Dataset(
+        data_vars={
+            "SN": (("channel", "angle"), to_2d("SN")),
+            "WE": (("channel", "angle"), to_2d("WE")),
+        },
+        coords={
+            "channel": np.asarray(channels, dtype=int),
+            "angle": angle,
+        },
+        attrs={"source_file": str(path)},
+    )
+
+    wavelength_nm = np.full(len(channels), np.nan, dtype=float)
+    for row, ch in enumerate(channels):
+        idx = ch - 1
+        if 0 <= idx < len(header_rows):
+            wavelength_nm[row] = header_rows[idx][1]
+    ds["wavelength"] = ("channel", wavelength_nm)
+    ds.wavelength.attrs["unit"] = "nm"
+    ds.wavelength.attrs["long_name"] = "Channel center wavelength."
+
+    # unify variable names and scan directions.
+    ds['broadband_SN'] = ds.SN.isel(channel = 0, drop = True)
+    ds['broadband_NS'] = ('angle',ds.broadband_SN.data[::-1])
+    ds['broadband_WE'] = ds.WE.isel(channel = 0, drop = True)
+    ds['broadband_EW'] = ('angle',ds.broadband_WE.data[::-1])
+
+    ds = ds.sel(channel = ds.channel.data[1:], drop = True)
+    ds = ds.rename_vars({'WE': 'spectral_WE', 'SN': 'spectral_SN'})
+    ds['spectral_EW'] = (('channel','angle'),ds.spectral_WE.data[::-1])
+    ds['spectral_NS'] = (('channel','angle'),ds.spectral_SN.data[::-1])
+
+    ds = ds.drop_vars(['broadband_WE', 'broadband_SN', 'spectral_WE', 'spectral_SN'])
+
+    wlnom = [int(wl_nominal[abs(float(wl) - wl_nominal).argmin()]) for wl in ds.wavelength]
+    assert(all((wlnom - ds.wavelength) < 10)), f'Somthing went wrong with the assignment of the nominal wavelength. original: {ds.wavelength.data}, assigned: {wlnom}'
+    assert(len(np.unique(wlnom)) == 6), f'Somthing went wrong with the assignment of the nominal wavelength. original: {ds.wavelength.data}, assigned: {wlnom}'
+    ds = ds.assign_coords({'channel': wlnom})
+
+    return ds
+
 
 def read_factory_cal(path2file):
     """
@@ -215,12 +339,30 @@ def read_mfrsr_cal(path2file, verbose = False):
     ds.attrs['header'] = header_txt
     
     #### read the channel statistics
-    df = pd.read_csv(path2file, 
-                skiprows=skiprowsstats,
-                nrows = skiprows-skiprowsstats-3,
-                # encoding='unicode_escape', 
-                encoding = 'ISO-8859-1',
-                sep = '\t')
+    # verbose = True
+    if verbose:
+        print(f'skiprows before header: {skiprows}')
+        print(f'skiprows before stats: {skiprowsstats}')
+        print(f'open file: {path2file}')
+
+    encodings = ["utf-8", "cp1252", "ISO-8859-1"]
+    for enc in encodings:
+        try:
+            df = pd.read_csv(path2file, 
+                             index_col = False,
+                             usecols=[0,1,2,3,4],
+                        skiprows=skiprowsstats,
+                        nrows = skiprows-skiprowsstats-3,
+                        # encoding='unicode_escape', 
+                        encoding = enc,
+                        # sep = "\t",
+                        sep = r"\s+",
+                        # dtype={'channel': str},
+                        )
+        except UnicodeDecodeError:
+            pass
+    if verbose:
+        print(f'encoding {enc}')
     
     df.index = df.Band
     df.index.name = 'channel'
@@ -233,11 +375,11 @@ def read_mfrsr_cal(path2file, verbose = False):
     elif 'Thermop' in df.index: # for some reason the name of this row varies
         df.drop('Thermop', inplace = True)
     else:
-        assert(False), 'what else?'
+        assert(False), f'I need to drop the broadband channel from the Dataframe, but could not find it, add what it is here, options are {df.index}. The dataframe looks like this:\n{df}'
      
     #### rename stats channels to nominal channels
     
-    df.rename({col: wl_nominal[abs(wl_nominal - int(col)).argmin()] for col in df.index}, axis = 0, inplace = True)   
+    df.rename({col: wl_nominal[abs(wl_nominal - int(float(col))).argmin()] for col in df.index}, axis = 0, inplace = True)   
     # df.index = df.index.astype(int)
     df.columns.name = 'stats'
     ds['statistics'] = df
@@ -245,6 +387,7 @@ def read_mfrsr_cal(path2file, verbose = False):
     #### read the data
     if verbose:
         print(f'skiprows before data: {skiprows}')
+        print(f'open file: {path2file}')
     df = pd.read_csv(path2file, 
                 skiprows=skiprows,
                 # encoding='unicode_escape', 
@@ -317,6 +460,7 @@ def read_mfrsr_cal(path2file, verbose = False):
     df_err.columns.name = 'channel'
     ds['responds_error'] = df_res
     ds.attrs['product_name'] = 'mfr_grad_spectral_calibration'
+    ds.attrs['source_file'] = str(path2file)
     return ds
 
 def read_mfrsr_cal_cos(p2f, broadband_col_name = 'Thermopile', reversed_EW = False, reversed_NS = False, test = None, verbose = False):
@@ -382,7 +526,8 @@ def read_mfrsr_cal_cos(p2f, broadband_col_name = 'Thermopile', reversed_EW = Fal
     
         data = '\n'.join(data)
         df = pd.read_csv(io.StringIO(data),sep = '\t' )
-        df.index = df.Angle
+        df.rename({'Angle': 'angle'}, axis = 1, inplace = True)
+        df.index = df.angle
         # test if NS (north-south) or EW (...)
 
         scan_direction = None
@@ -461,7 +606,15 @@ def read_mfrsr_cal_cos(p2f, broadband_col_name = 'Thermopile', reversed_EW = Fal
     scand = data2dict['scan_direction']
     ds[f'broadband_{scand}'] = data2dict['data'].Thermopile
     df = data2dict['data'].drop('Thermopile', axis = 1)
-    df.rename({col: wl_nominal[abs(wl_nominal - int(col)).argmin()] for col in df.columns}, axis = 1, inplace = True)
+    colrenames = {col: wl_nominal[abs(wl_nominal - int(col)).argmin()] for col in df.columns}
+    if np.any(np.array([abs(float(k)-v) for k,v in colrenames.items()]) > 20):
+        txt = f'''I believe there is a parsing error in the channels when parsing {p2f}. Channels are parsed with Current matching table:
+        {colrenames}
+        Check not only the first table! Scroll down if the problem is in the labels of the second table!
+        '''
+        raise ValueError(txt)
+
+    df.rename(colrenames, axis = 1, inplace = True)
     ds[f'spectral_{scand}'] = df
 
     
@@ -470,16 +623,17 @@ def read_mfrsr_cal_cos(p2f, broadband_col_name = 'Thermopile', reversed_EW = Fal
 
     if reversed_NS:
         for v in ds.data_vars:
-            if "NS" in v and "Angle" in ds[v].dims:
-                axis = ds[v].get_axis_num("Angle")
+            if "NS" in v and "angle" in ds[v].dims:
+                axis = ds[v].get_axis_num("angle")
                 ds[v].data = np.flip(ds[v].data, axis=axis)
 
     if reversed_EW:
         for v in ds.data_vars:
-            if "EW" in v and "Angle" in ds[v].dims:
-                axis = ds[v].get_axis_num("Angle")
+            if "EW" in v and "angle" in ds[v].dims:
+                axis = ds[v].get_axis_num("angle")
                 ds[v].data = np.flip(ds[v].data, axis=axis)
-
+                
+    ds.attrs['source_file'] = str(p2f)
     return ds
 
 def read_mfrsr_cal_responsivity(p2f):

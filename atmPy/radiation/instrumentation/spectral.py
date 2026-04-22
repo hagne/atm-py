@@ -40,10 +40,13 @@ class Mfr():
         if isinstance(value, xr.Dataset):
             self._spectral_calibration = value
         elif isinstance(value, (str, pl.Path)):
-            self._spectral_calibration = atmcal.read_mfrsr_cal(value)
+            if value.suffix.lower() ==  '.sol':
+                self._spectral_calibration = atmcal.read_factory_cal_sol(value)
+            elif value.suffix.lower() == '.spr':
+                self._spectral_calibration = atmcal.read_mfrsr_cal(value)
         else:
             raise TypeError(f'Unknown type for spectral_calibration: {type(value)}')
-        assert('statistics' in self._spectral_calibration.variables), "I don't think the calibration file is a spectral calibration file for an MFR(SR). 'statistics' varible is missing"
+        # assert('statistics' in self._spectral_calibration.variables), "I don't think the calibration file is a spectral calibration file for an MFR(SR). 'statistics' varible is missing"
         return 
     
     @property
@@ -92,6 +95,10 @@ class Mfr():
         if isinstance(value, xr.Dataset):
             self._cosine_responds = value
         elif isinstance(value, (str, pl.Path)):
+            if str(value) == self.spectral_calibration.source_file:
+                self._cosine_responds = self.spectral_calibration
+                return 
+            
             try:
                 self._cosine_responds = atmcal.read_mfrsr_cal_cos(value)
             except AttributeError:
@@ -122,64 +129,64 @@ class Mfr():
 
             # Spectral
             txt = 'At an angle of 0 all responds values of EW and NS have to be 1!!!!'
-            assert(np.all(ds.spectral_EW.sel(Angle = 0) == 1)), txt
-            assert(np.all(ds.spectral_NS.sel(Angle = 0) ==1)), txt
+            assert(np.all(ds.spectral_EW.sel(angle = 0) == 1)), txt
+            assert(np.all(ds.spectral_NS.sel(angle = 0) ==1)), txt
 
-            da = ds.spectral_EW.sel(Angle = slice(-90,0))
-            da = da.assign_coords(Angle = abs(da.Angle)).sortby('Angle')
+            da = ds.spectral_EW.sel(angle = slice(-90,0))
+            da = da.assign_coords(angle = abs(da.angle)).sortby('angle')
             da = da.assign_coords({'azimuth':90})
             daE = da
 
-            da = ds.spectral_EW.sel(Angle = slice(0,90))
-            da = da.assign_coords(Angle = abs(da.Angle)).sortby('Angle')
+            da = ds.spectral_EW.sel(angle = slice(0,90))
+            da = da.assign_coords(angle = abs(da.angle)).sortby('angle')
             da = da.assign_coords({'azimuth':270})
             daW = da
 
-            da = ds.spectral_NS.sel(Angle = slice(-90,0))
-            da = da.assign_coords(Angle = abs(da.Angle)).sortby('Angle')
+            da = ds.spectral_NS.sel(angle = slice(-90,0))
+            da = da.assign_coords(angle = abs(da.angle)).sortby('angle')
             da = da.assign_coords({'azimuth':0})
             daN = da
 
-            da = ds.spectral_NS.sel(Angle = slice(0,90))
-            da = da.assign_coords(Angle = abs(da.Angle)).sortby('Angle')
+            da = ds.spectral_NS.sel(angle = slice(0,90))
+            da = da.assign_coords(angle = abs(da.angle)).sortby('angle')
             da = da.assign_coords({'azimuth':180})
             daS = da
 
             # make it circular
             da = xr.concat([daN, daE, daS, daW, daN.assign_coords({'azimuth':360})], 'azimuth')
 
-            da = da.rename({'Angle':'zenith'})
+            da = da.rename({'angle':'zenith'})
 
             dspol['spectral'] = da
 
             # broadband
-            assert(np.all(ds.broadband_EW.sel(Angle = 0) == 1)), txt
-            assert(np.all(ds.broadband_NS.sel(Angle = 0) ==1)), txt
+            assert(np.all(ds.broadband_EW.sel(angle = 0) == 1)), txt
+            assert(np.all(ds.broadband_NS.sel(angle = 0) ==1)), txt
 
-            da = ds.broadband_EW.sel(Angle = slice(-90,0))
-            da = da.assign_coords(Angle = abs(da.Angle)).sortby('Angle')
+            da = ds.broadband_EW.sel(angle = slice(-90,0))
+            da = da.assign_coords(angle = abs(da.angle)).sortby('angle')
             da = da.assign_coords({'azimuth':90})
             daE = da
 
-            da = ds.broadband_EW.sel(Angle = slice(0,90))
-            da = da.assign_coords(Angle = abs(da.Angle)).sortby('Angle')
+            da = ds.broadband_EW.sel(angle = slice(0,90))
+            da = da.assign_coords(angle = abs(da.angle)).sortby('angle')
             da = da.assign_coords({'azimuth':270})
             daW = da
 
-            da = ds.broadband_NS.sel(Angle = slice(-90,0))
-            da = da.assign_coords(Angle = abs(da.Angle)).sortby('Angle')
+            da = ds.broadband_NS.sel(angle = slice(-90,0))
+            da = da.assign_coords(angle = abs(da.angle)).sortby('angle')
             da = da.assign_coords({'azimuth':0})
             daN = da
 
-            da = ds.broadband_NS.sel(Angle = slice(0,90))
-            da = da.assign_coords(Angle = abs(da.Angle)).sortby('Angle')
+            da = ds.broadband_NS.sel(angle = slice(0,90))
+            da = da.assign_coords(angle = abs(da.angle)).sortby('angle')
             da = da.assign_coords({'azimuth':180})
             daS = da
 
             # make it circular
             da = xr.concat([daN, daE, daS, daW, daN.assign_coords({'azimuth':360})], 'azimuth')
 
-            da = da.rename({'Angle':'zenith'})
+            da = da.rename({'angle':'zenith'})
 
             dspol['broadband'] = da
 
@@ -217,7 +224,13 @@ class Mfr():
         
         
         ds['channel'] = calibration.channel
-        ds['channel_wavelength'] = calibration.statistics.sel(stats = 'CENT', drop=True)
+        if calibration.source_file[-3:] == 'sol':
+            wl = calibration.wavelength
+        elif calibration.source_file[-3:] == 'spr':
+            wl = calibration.statistics.sel(stats = 'CENT', drop=True)
+        else:
+            assert(False), 'should not happen'
+        ds['channel_wavelength'] = wl
         ds.attrs['calibrated_spectral'] = 'True'
         ds = ds.sortby('channel')
         return self._data_class(ds) #returns the same class, allows for application to all subclasses
@@ -332,8 +345,8 @@ class Mfr():
         #### for diffuse or global in case of an MFR
         if self._cosine_calibration_diffuse is None:
             cal_angle = 45
-            ew = self.cosine_responds.spectral_EW.interp(Angle = [cal_angle, -cal_angle]).sum(dim = 'Angle') / 2 
-            ns = self.cosine_responds.spectral_NS.interp(Angle = [cal_angle, -cal_angle]).sum(dim = 'Angle') / 2 
+            ew = self.cosine_responds.spectral_EW.interp(angle = [cal_angle, -cal_angle]).sum(dim = 'angle') / 2 
+            ns = self.cosine_responds.spectral_NS.interp(angle = [cal_angle, -cal_angle]).sum(dim = 'angle') / 2 
             cal = (ew + ns) / 2
             self._cosine_calibration_diffuse = 1/cal
         return self._cosine_calibration_diffuse
@@ -351,17 +364,17 @@ class Mfr():
         ds = self.cosine_responds
         if "spectral_diffuse" not in ds:
 
-            if -90 not in ds.Angle:
-                dsother = ds.sel(Angle = -89)
-                dsother.Angle.data = -90
-                ds = xr.concat([dsother,ds], 'Angle')
-            if 90 not in ds.Angle:
-                dsother = ds.sel(Angle = 89)
-                dsother.Angle.data = 90
-                ds = xr.concat([ds, dsother], 'Angle')
+            if -90 not in ds.angle:
+                dsother = ds.sel(angle = -89)
+                dsother.angle.data = -90
+                ds = xr.concat([dsother,ds], 'angle')
+            if 90 not in ds.angle:
+                dsother = ds.sel(angle = 89)
+                dsother.angle.data = 90
+                ds = xr.concat([ds, dsother], 'angle')
 
             # do the integration
-            ang = np.deg2rad(ds.Angle).data
+            ang = np.deg2rad(ds.angle).data
             norm = spi.simpson(np.cos(ang), ang)
             toll = 1e-8
             test = abs(norm - 2)
@@ -389,7 +402,7 @@ class Mfr():
             return si
         ds = si.dataset.copy()
         ds['global_horizontal'] = ds.global_horizontal * self.cosine_calibration_diffuse
-        ds['cosine_cal_coeff_diffuse'] = self.cosine_calibration_diffuse
+        ds['cosine_calibration_diffuse'] = self.cosine_calibration_diffuse
         return self._data_class(ds)
         
     def get_cosine_calibration_direct(self, si):
@@ -414,40 +427,6 @@ class Mfr():
         out = dspol['spectral'].interp({'zenith': np.rad2deg(si.sun_position.zenith), 'azimuth': np.rad2deg(si.sun_position.azimuth)})
         out = out.drop_vars(['zenith', 'azimuth'])
         out = 1/out
-        if 0: #DEPRECATED, can be delete, had a design flaw
-            self.tp_si = si
-            calibration = self.cosine_responds
-
-            #### - direct
-            sp = atmsol.SolarPosition(sunpos.azimuth, np.pi/2 - sunpos.elevation, unit = 'rad')
-            self.tp_sp = sp
-            # NS
-            # interpolate the cosine respond with the particular angles resulting from the projetion
-            # This results in :
-            #     * calibration value as a function of time
-            
-            da = calibration.spectral_NS.interp(Angle = np.rad2deg(sp.projectionNS_angle) - 90)
-            self.tp_da = da.copy()
-            cos_cal_NS = da.rename({'Angle': 'datetime'}).assign_coords(datetime = ('datetime', sunpos.index))
-            
-            
-            # The calibration value needs to be normalized with the relevant component of the solar radiation
-            # With other words how much light is actually comming this way?
-            cos_cal_NS_norm = cos_cal_NS * xr.DataArray(sp.projectionNS_norm)
-            
-            # Do the same for EW
-            
-            da = calibration.spectral_EW.interp(Angle = np.rad2deg(sp.projectionEW_angle) - 90)
-            cos_cal_EW = da.rename({'Angle': 'datetime'}).assign_coords(datetime = ('datetime', sunpos.index))
-            cos_cal_EW_norm = cos_cal_EW * xr.DataArray(sp.projectionEW_norm)
-            
-            # Sum NS and EW
-            cos_cal_sum = cos_cal_EW_norm + cos_cal_NS_norm
-            
-            # Divide by the sum of **norms** (Not the calibration value! As we are dealing with vectors the sum is not automatically num
-            sumofnorm = sp.projectionEW_norm + sp.projectionNS_norm
-            cos_cal_sum_nom = cos_cal_sum / xr.DataArray(sumofnorm)
-            cos_cal_sum_nom = 1/cos_cal_sum_nom
         return out
         
     
@@ -456,7 +435,7 @@ class Mfr():
         Parameters
         ----------
         data : str, pathlib.Path or xarray.Dataset"""
-        
+
         if isinstance(data, (str, pl.Path)):
             ds = xr.open_dataset(data)
         elif isinstance(data, xr.Dataset):
@@ -518,6 +497,7 @@ class Mfrsr(Mfr):
         #     out.tp_cos_cal_EW_norm = cos_cal_EW_norm
         #     out.tp_cos_cal_NS_norm = cos_cal_NS_norm
         #     out.tp_cos_cal_sum_nom = cos_cal_sum_nom
+        ds['cosine_calibration_diffuse'] = self.cosine_calibration_diffuse
         return out
     
     def raw2calibrated(self, data):

@@ -669,8 +669,8 @@ class SolarIrradiation(object):
         
         #### for diffuse or global in case of an MFR
         cal_angle = 45
-        ew = calibration.spectral_EW.interp(Angle = [cal_angle, -cal_angle]).sum(dim = 'Angle') / 2 
-        ns = calibration.spectral_NS.interp(Angle = [cal_angle, -cal_angle]).sum(dim = 'Angle') / 2 
+        ew = calibration.spectral_EW.interp(angle = [cal_angle, -cal_angle]).sum(dim = 'angle') / 2 
+        ns = calibration.spectral_NS.interp(angle = [cal_angle, -cal_angle]).sum(dim = 'angle') / 2 
         cal = (ew + ns) / 2
         
         # The following should only happen when no global and direct is measured, ideally only for upwelling
@@ -694,8 +694,8 @@ class SolarIrradiation(object):
             # This results in :
             #     * calibration value as a function of time
             
-            da = calibration.spectral_NS.interp(Angle = np.rad2deg(sp.projectionNS_angle) - 90)
-            cos_cal_NS = da.rename({'Angle': 'datetime'}).assign_coords(datetime = ('datetime', self.sun_position.index))
+            da = calibration.spectral_NS.interp(angle = np.rad2deg(sp.projectionNS_angle) - 90)
+            cos_cal_NS = da.rename({'angle': 'datetime'}).assign_coords(datetime = ('datetime', self.sun_position.index))
             
             
             # The calibration value needs to be normalized with the relevant component of the solar radiation
@@ -704,8 +704,8 @@ class SolarIrradiation(object):
             
             # Do the same for EW
             
-            da = calibration.spectral_EW.interp(Angle = np.rad2deg(sp.projectionEW_angle) - 90)
-            cos_cal_EW = da.rename({'Angle': 'datetime'}).assign_coords(datetime = ('datetime', self.sun_position.index))
+            da = calibration.spectral_EW.interp(angle = np.rad2deg(sp.projectionEW_angle) - 90)
+            cos_cal_EW = da.rename({'angle': 'datetime'}).assign_coords(datetime = ('datetime', self.sun_position.index))
             cos_cal_EW_norm = cos_cal_EW * xr.DataArray(sp.projectionEW_norm)
             
             # Sum NS and EW
