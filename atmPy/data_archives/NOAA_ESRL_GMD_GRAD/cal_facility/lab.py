@@ -117,35 +117,19 @@ def read_factory_cal_sol(path: str | pl.Path) -> xr.Dataset:
     ds.wavelength.attrs["long_name"] = "Channel center wavelength."
 
     # unify variable names and scan directions.
-    if 0:
-        ds['broadband_SN'] = ds.SN.isel(channel = 0, drop = True)
-        ds['broadband_NS'] = ('angle',ds.broadband_SN.data[::-1])
-        ds['broadband_WE'] = ds.WE.isel(channel = 0, drop = True)
-        ds['broadband_EW'] = ('angle',ds.broadband_WE.data[::-1])
-    
 
-        ds = ds.sel(channel = ds.channel.data[1:], drop = True)
-        ds = ds.rename_vars({'WE': 'spectral_WE', 'SN': 'spectral_SN'})
-        ds['spectral_EW'] = (('channel','angle'),ds.spectral_WE.data[::-1])
-        ds['spectral_NS'] = (('channel','angle'),ds.spectral_SN.data[::-1])
+    ds['broadband_SN'] = ds.SN.isel(channel = 0, drop = True)
+    ds['broadband_NS'] = ('angle',ds.broadband_SN.data[::-1])
+    ds['broadband_WE'] = ds.WE.isel(channel = 0, drop = True)
+    ds['broadband_EW'] = ('angle',ds.broadband_WE.data[::-1])
 
+
+    ds = ds.sel(channel = ds.channel.data[1:], drop = True)
+    ds = ds.rename_vars({'WE': 'spectral_WE', 'SN': 'spectral_SN'})
+    ds['spectral_EW'] = (('channel','angle'),ds.spectral_WE.data[:,::-1])
+    ds['spectral_NS'] = (('channel','angle'),ds.spectral_SN.data[:,::-1])
+    if 1:
         ds = ds.drop_vars(['broadband_WE', 'broadband_SN', 'spectral_WE', 'spectral_SN'])
-    else:
-        ds['broadband_SN'] = ds.SN.isel(channel = 0, drop = True)
-        ds['broadband_NS'] = ('angle',ds.broadband_SN.data[::-1])
-        ds['broadband_EW'] = ds.WE.isel(channel = 0, drop = True)
-        # ds['broadband_EW'] = ('angle',ds.broadband_WE.data[::-1])
-    
-
-        ds = ds.sel(channel = ds.channel.data[1:], drop = True)
-        ds = ds.rename_vars({'WE': 'spectral_EW', 'SN': 'spectral_SN'})
-        # ds['spectral_EW'] = (('channel','angle'),ds.spectral_WE.data[::-1])
-        ds['spectral_NS'] = (('channel','angle'),ds.spectral_SN.data[::-1])
-
-        ds = ds.drop_vars([#'broadband_WE', 
-                           'broadband_SN', 
-                          # 'spectral_WE', 
-                           'spectral_SN'])
 
     wlnom = [int(wl_nominal[abs(float(wl) - wl_nominal).argmin()]) for wl in ds.wavelength]
     assert(all((wlnom - ds.wavelength) < 10)), f'Somthing went wrong with the assignment of the nominal wavelength. original: {ds.wavelength.data}, assigned: {wlnom}'
