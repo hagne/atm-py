@@ -10,6 +10,8 @@ or use the OptionalImport class directly:
 from atmPy.opt_imports import OptionalImport
 matplotlib = OptionalImport('matplotlib', submodules=['pyplot', 'colors']) 
 """
+import importlib
+
 class OptionalImport:
     def __init__(self, name, submodules = None):
         self.module_available = False
@@ -29,12 +31,12 @@ class OptionalImport:
                 submodules = [submodules,]
                 
             for mod in submodules:
-                __import__(f'{self.name}.{mod}')
+                importlib.import_module(f'{self.name}.{mod}')
             
 
     def _attempt_import(self):
         try:
-            self.module = __import__(self.name)
+            self.module = importlib.import_module(self.name)
             self.module_available = True
         except ImportError:
             self.module_available = False
@@ -72,6 +74,8 @@ numba = OptionalImport('numba')
 pvlib = OptionalImport('pvlib')
 
 matplotlib = OptionalImport('matplotlib', submodules='pyplot') #The following will replace the import of plt: from atmPy.opt_imports import matplotlib as mpl; mpl.pyplot.plot(...)
+plt = OptionalImport('matplotlib.pyplot')
+
 
 pytz = OptionalImport('pytz')
 

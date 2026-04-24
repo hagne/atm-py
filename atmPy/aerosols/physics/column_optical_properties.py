@@ -7,7 +7,8 @@ import atmPy.aerosols.physics.optical_properties as _atmop
 import atmPy.aerosols.size_distribution.sizedistribution as _atmsd
 # import multiprocessing as _mp
 import xarray as _xr
-import matplotlib.pyplot as _plt
+# import matplotlib.pyplot as _plt
+from atmPy.opt_imports import plt as _plt
 import scipy as _sp
 #import pathlib as _pl
 import xarray as xr
@@ -15,7 +16,6 @@ import xarray as xr
 from atmPy.opt_imports import statsmodels
 import warnings
 
-_colors = _plt.rcParams['axes.prop_cycle'].by_key()['color']
 
 class AOD_AOT(object):
     def __init__(self,
@@ -786,6 +786,8 @@ class CloudDetection(object):
         None.
 
         """
+        _colors = _plt.rcParams['axes.prop_cycle'].by_key()['color']
+
         if classifyer == 'AOD':
             parameter = self.cloud_classifyiers_AOD
             settings = self._setting_AOD
@@ -933,6 +935,8 @@ class CloudDetection(object):
         None.
 
         """
+        _colors = _plt.rcParams['axes.prop_cycle'].by_key()['color']
+
         if isinstance(ax, type(channel_discriminate)):
             channel_discriminate = channel_plot
             
@@ -1621,6 +1625,8 @@ class AerosolAndCloudDetection(object):
         None.
 
         """
+        _colors = _plt.rcParams['axes.prop_cycle'].by_key()['color']
+
         if classifyer == 'AOD':
             parameter = self.cloud_classifyiers_AOD
             settings = self._setting_AOD
@@ -1763,6 +1769,8 @@ class AerosolAndCloudDetection(object):
         None.
 
         """
+        _colors = _plt.rcParams['axes.prop_cycle'].by_key()['color']
+
         if isinstance(ax, type(channel_discriminate)):
             channel_discriminate = channel_plot
             

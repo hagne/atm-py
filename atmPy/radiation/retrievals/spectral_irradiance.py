@@ -17,7 +17,8 @@ import atmPy.data_archives.NOAA_ESRL_GMD_GRAD.surfrad.surfrad as atmsrf
 import atmPy.data_archives.NOAA_ESRL_GMD_GRAD.baseline.baseline as atmbl
 
 import sqlite3
-import matplotlib.pyplot as _plt
+# import matplotlib.pyplot as _plt
+from atmPy.opt_imports import plt as _plt
 import copy
 import types
 from .. import solar as atmsol

@@ -14,7 +14,7 @@ import numpy as np
 import pathlib
 import xarray as xr
 import datetime
-import matplotlib.pyplot as plt
+from atmPy.opt_imports import plt
 # import pptx
 import io
 # import statsmodels.api as sm
@@ -24,13 +24,13 @@ import pathlib as pl
 # from pygam import f as pgf
 import scipy.interpolate as scint
 import scipy.stats
-import matplotlib.dates as pltdates
+# import matplotlib.dates as pltdates
 
 from atmPy.opt_imports import pptx
 from atmPy.opt_imports import statsmodels
+import atmPy.opt_imports as opt_imports
+pltdates = opt_imports.OptionalImport('matplotlib.dates')
 
-
-colors = plt.rcParams['axes.prop_cycle'].by_key()['color']
 
 def weighted_mean_dt(dft, center_datetime, order_stderr = 1, oder_dt = 1, minperiods = 1, stderr_threshold = 0.02, dt_window = 60, approach = 1):
     """I tried several approaches and to me the more suffisticated approaches did not yield the result that I would have hoped.
@@ -1072,6 +1072,8 @@ class Calibration_SP02(object):
     
     def plot_good_enough(self, best=None, col = 'A', std_error_goal = [2, 2e-4, 2e-3, 1e-1]):
         # col = 'A'
+        colors = plt.rcParams['axes.prop_cycle'].by_key()['color']
+
         df = self.langley_fitres.langley_fitres.sel(wavelength = col).to_pandas()
         df_corr = self.langley_fitres.correlation_matrix_properties.to_pandas()
         # ['intercept_stderr'].langley_fitres.sel(wavelength = col).to_pandas()
@@ -1309,6 +1311,8 @@ class CalibrationsOverTime_SP02(object):
             DESCRIPTION.
 
         """
+        colors = plt.rcParams['axes.prop_cycle'].by_key()['color']
+
         out = {}
         df_v0_ts = self.results['mean'].sort_index()
         df_v0_ts_error = self.results['std'].sort_index()

@@ -1,5 +1,6 @@
 from . import sizedistribution
-import matplotlib.pylab as plt
+# import matplotlib.pylab as plt
+from atmPy.opt_imports import plt
 import numpy as np
 import pandas as pd
 from scipy import signal

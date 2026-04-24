@@ -1,10 +1,13 @@
 from copy import deepcopy
 
 import numpy as _np
-import matplotlib
-import matplotlib.pylab as _plt
-from matplotlib.colors import LogNorm
-from matplotlib.ticker import MaxNLocator as _MaxNLocator
+import atmPy.opt_imports as opt_imports
+mpl = opt_imports.OptionalImport('matplotlib', submodules=['colors', 'ticker','gridspec'])
+from atmPy.opt_imports import plt as _plt
+# import matplotlib
+# import matplotlib.pylab as _plt
+# from matplotlib.colors import LogNorm
+# from matplotlib.ticker import MaxNLocator as _MaxNLocator
 
 from atmPy.tools import plt_tools, math_functions, array_tools
 from atmPy.tools import pandas_tools as _panda_tools
@@ -29,7 +32,7 @@ try:
 except ModuleNotFoundError:
     _warnings.warn('xarray not installed. You might encounter some functionality limitations.')
 # from matplotlib.ticker import MultipleLocator
-from matplotlib import gridspec
+# from matplotlib import gridspec
 # from atmPy import atmosphere
 
 
@@ -44,7 +47,6 @@ from matplotlib import gridspec
 
 _axes_types = ('AxesSubplot', 'AxesHostAxes')
 
-_colors = _plt.rcParams['axes.prop_cycle'].by_key()['color']
 
 def align2sizedist(sizedist, other):
     if type(other).__name__ in ('int', 'float'):
@@ -822,6 +824,8 @@ class _NormalDistributionFitRes_VP(_vertical_profile.VerticalProfile):
         amp: bool.
             if the amplitude is to be plotted
         """
+        _colors = _plt.rcParams['axes.prop_cycle'].by_key()['color']
+
         if ax == None:
             f, a = _plt.subplots()
         else:
@@ -1589,7 +1593,7 @@ class SizeDist(object):
 
         """
         # if type(ax).__name__ in _axes_types:
-        if isinstance(ax, matplotlib.axes._axes.Axes):
+        if isinstance(ax, mpl.axes._axes.Axes):
             a = ax
             f = a.get_figure()
         else:
@@ -2403,7 +2407,7 @@ class SizeDist_TS(SizeDist):
              # removeTickLabels=["700", "900"],
              ax=None,
              fit_pos=False,
-             cmap=plt_tools.get_colorMap_intensity(),
+             cmap=None,
              colorbar=True):
 
         """ plots an intensity plot of all data
@@ -2436,7 +2440,7 @@ class SizeDist_TS(SizeDist):
             f.autofmt_xdate()
 
         if norm == 'log':
-            norm = LogNorm()
+            norm = mpl.colors.LogNorm()
         elif norm == 'linear':
             norm = None
 
@@ -3087,7 +3091,7 @@ class SizeDist_LS(SizeDist):
     def plot(self, vmax=None, vmin=None, scale='linear', show_minor_tickLabels=True,
              removeTickLabels=["500", "700", "800", "900"],
              plotOnTheseAxes=False,
-             cmap=plt_tools.get_colorMap_intensity(),
+             cmap=None,
              fit_pos=False,
              ax=None,
              colorbar = True):
@@ -3115,7 +3119,7 @@ class SizeDist_LS(SizeDist):
             # f.autofmt_xdate()
 
         if scale == 'log':
-            scale = LogNorm()
+            scale = mpl.colors.LogNorm()
         elif scale == 'linear':
             scale = None
 
@@ -3179,7 +3183,7 @@ class SizeDist_LS(SizeDist):
         smallx = 3
         smally = 3
 
-        gs = gridspec.GridSpec(num_g, num_g)
+        gs = mpl.gridspec.GridSpec(num_g, num_g)
         gs.update(hspace=0.0)
         gs.update(wspace=0.0)
         f = _plt.figure()
@@ -3226,7 +3230,7 @@ class SizeDist_LS(SizeDist):
         _plt.setp(a_right.get_yticklabels(), visible=False)
         # ma_loc = MultipleLocator(20)
         # mi_loc = MultipleLocator(10)
-        a_right.xaxis.set_major_locator(_MaxNLocator(4, prune='both'))
+        a_right.xaxis.set_major_locator(mpl.ticker.MaxNLocator(4, prune='both'))
         # a_right.xaxis.set_major_locator(ma_loc)
         # a_right.xaxis.set_minor_locator(mi_loc)
         a_right.set_xlabel('Concentration (cm$^{-3}$)')

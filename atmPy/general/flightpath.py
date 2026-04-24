@@ -1,21 +1,9 @@
-from mpl_toolkits.mplot3d import Axes3D
+import atmPy.opt_imports as opt_imports
+mpltkm3d = opt_imports.OptionalImport('mpl_toolkits.mplot3d')
 import numpy as np
-import warnings
-# try:
-#     from mpl_toolkits.basemap import Basemap
-# except KeyError:
-#     warnings.warn("An error accured while trying to import mpl_toolkits.basemap.Basemap. Plotting of maps will not work!")
-# try:
-#     # from geopy.distance import vincenty
-#     import geopy
-# except ModuleNotFoundError:
-#     warnings.warn('geopy not installed. You might encounter some functionality limitations.')
-# import matplotlib.pylab as plt
-# import pandas as pd
-# import atmPy.general.timeseries as timeseries
-# from functools import wraps as _wraps
 from atmPy.opt_imports import mpl_toolkits_basemap as Basemap
 from atmPy.opt_imports import geopy
+from atmPy.opt_imports import plt
 
 
 
@@ -188,7 +176,7 @@ class FlightPath(object):
 
         else:
             fig = plt.figure()
-            ax = Axes3D(fig)
+            ax = mpltkm3d.Axes3D(fig)
             ax.add_collection3d(bmap.drawcoastlines())
             x, y = bmap(self.data.Lon.values, self.data.Lat.values)
             # ax.plot(x, y,self.data.Altitude.values,

@@ -7,7 +7,8 @@ import atmPy.general.timeseries as _timeseries
 import warnings as _warnings
 from atmPy.tools import math_functions as _math_functions
 from atmPy.tools import plt_tools as _plt_tools
-import matplotlib.pylab as _plt
+# import matplotlib.pylab as _plt
+from atmPy.opt_imports import plt as _plt
 from  atmPy.aerosols.size_distribution import sizedistribution as _sizedistribution
 
 
