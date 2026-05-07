@@ -144,7 +144,7 @@ class Network(object):
                     #     station['abbreviation'] = station['abbreviation'][0]
                     # else:
                     #     abb = station['abbreviation']
-                    station['name'] = station['name']#.replace(' ', '_').replace('.', '')
+                    # station['name'] = station['name']#.replace(' ', '_').replace('.', '')
                     # site = Station(lat=station['lat'],
                     #                lon=station['lon'],
                     #                alt=station['alt'],
@@ -398,7 +398,11 @@ class Station(object):
         self._attributes = {**attributes, **kwargs}
         
         self._time_zone = None
-        
+
+    def __dir__(self):
+    # Include both standard attributes and those in _attributes
+        return list(super().__dir__()) + list(self._attributes.keys())
+ 
     def __getitem__(self, key):
         # Allow dictionary-style access
         return self._attributes[key]
@@ -408,7 +412,23 @@ class Station(object):
         self._attributes[key] = value
     
     def __repr__(self):
-        return f"Station({self.name})"
+        return str(self)
+
+    def __str__(self):
+        attributes = self._attributes
+        fields = (
+            ('name', attributes.get('name')),
+            ('abbreviation', attributes.get('abb')),
+            ('lat', attributes.get('lat')),
+            ('lon', attributes.get('lon')),
+            ('alt', attributes.get('alt')),
+            ('state', attributes.get('state')),
+            ('country', attributes.get('country')),
+        )
+        return 'Station(' + ', '.join(
+            f'{key}={value}' for key, value in fields
+            if value is not None and value != ''
+        ) + ')'
 
     # Optional: Add a way to access attributes using dot notation as well
     def __getattr__(self, name):
@@ -422,6 +442,7 @@ class Station(object):
     
     @property
     def time_zone(self, date ='now'):
+        # todo: add tz_name_standard to the output, where the 
         # get timezone
         tz = _tzf.TimezoneFinder()
         tz_str = tz.timezone_at(lng = self.lon, lat = self.lat)
@@ -429,9 +450,9 @@ class Station(object):
         # now = _datetime.datetime.now(_pytz.timezone(tz_str))
         # tz_hr = now.utcoffset() / _datetime.timedelta(hours = 1)
         if date == 'now':
-            now = _pd.Timestamp.now(_pytz.timezone(tz_str))
+            now = _pd.Timestamp.now(tz_str)
         else:
-            now = _pd.to_datetime(date).tz_localize(_pytz.timezone(tz_str))
+            now = _pd.to_datetime(date).tz_localize(tz_str)
         out = {}
         out['tz_str'] = tz_str
         out['tz_name'] = now.tzname()
