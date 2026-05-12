@@ -105,7 +105,15 @@ class Surfrad_Data(object):
 class FilterFunctionError(Exception):
     pass
     
-_locations = [{'name': 'Bondville',
+_locations = [{'name': 'Idaho Falls',
+              'state' :'ID',
+              'abbreviation': ['INL', 'inl'],
+              'lon': -112.928561,
+              'lat': 43.594919,
+              'alt' :1496.5,
+              'timezone': -7,
+              },
+              {'name': 'Bondville',
               'state' :'IL',
               'abbreviation': ['bnd', 'bon', 'BND', 'BON'],
               'lon': -88.37309,

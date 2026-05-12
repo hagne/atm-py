@@ -189,7 +189,7 @@ def get_sun_position_pysolar(lat, lon, date, elevation=0):
     
     return pos.to_xarray() 
 
-def get_sun_position_pvlib(lat, lon, alt, date):
+def get_sun_position_pvlib(lat, lon, alt, date, verbose = False):
     loc = pvlib.location.Location(lat, lon,
                                   # tz=tz, 
                                   altitude=alt)  # altitude optional but useful
@@ -198,7 +198,8 @@ def get_sun_position_pvlib(lat, lon, alt, date):
     for cn in ['apparent_zenith', 'zenith', 'azimuth', 'apparent_elevation', 'elevation']:
         sp[cn] = sp.apply(lambda row: _np.deg2rad(row[cn]), axis = 1)
     # for legacy reasons rename zenith to zenith_geometric and apperent_zenith to zenith
-    print(f'original columns: {list(sp.columns)}')
+    if verbose:
+        print(f'original columns: {list(sp.columns)}')
     sp = sp.rename(columns={'zenith': 'zenith_geometric',
                             'apparent_zenith': 'zenith',
                             'elevation': 'elevation_geometric',

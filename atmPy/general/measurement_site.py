@@ -1,28 +1,14 @@
 import warnings
-# try:
-#     from mpl_toolkits.basemap import Basemap as _Basemap
-# except:
-#     warnings.warn('There seams to be an issue with importing mpl_toolkits.basemap. Make sure it is installed and working (try: "from mpl_toolkits.basemap import Basemap as _Basemap"). For now plotting on map will not be possible')
 import os as _os
 import numpy as _np
 import pandas as _pd
 import xarray as _xr
 from atmPy.radiation import solar as _solar
-# import datetime as _datetime
-# import timezonefinder as _tzf
-# The following is to ensure that one can use as large of an image as one desires
 try:
     from PIL import Image as _image
     _image.MAX_IMAGE_PIXELS = None
 except ModuleNotFoundError:
     warnings.warn('PIL not installed. This is needed to plot images of arbitrary resolution, e.g. when plotting satellite images.')
-# from matplotlib import path as _path
-# try:
-#     import geopy as _geopy
-#     # import geopy.distance as _gd #otherwise distance will not be available
-# except ModuleNotFoundError:
-#     warnings.warn('geopy not installed. You might encounter some functionality limitations.')
-# import plt_tools as _plt_tools
 import atmPy.tools.plt_tool_kit as _plt_tools
 
 
@@ -32,8 +18,6 @@ from atmPy.opt_imports import geopy as _geopy
 from atmPy.opt_imports import cartopy
 from atmPy.opt_imports import matplotlib
 from atmPy.opt_imports import pytz as _pytz
-
-# import cartopy.io.img_tiles as cimgt
 
 
 class NetworkStations(object):
@@ -346,19 +330,7 @@ class Station(object):
         operation_period
         info
         kwargs
-        """
- 
-        # self.lat = lat
-        # self.lon = lon
-        # self.alt = alt
-        # self.name = name
-        # if isinstance(abbreviation, list):
-        #     self.abb = abbreviation[0]
-        #     self.abb_alternative = abbreviation
-        # else:
-        #     self.abb = abbreviation
-        #     self.abb_alternative = [abbreviation]
-        
+        """        
         if isinstance(abbreviation, list):
             abb = abbreviation[0]
             abb_alternative = abbreviation
@@ -441,15 +413,33 @@ class Station(object):
         raise AttributeError(f"'MyClass' object has no attribute '{name}'")
     
     @property
-    def time_zone(self, date ='now'):
-        # todo: add tz_name_standard to the output, where the 
-        # get timezone
+    def time_zone(self):
+        """Get timezone info for the current date (now)."""
+        return self.get_time_zone_for_date('now')
+    
+    def get_time_zone_for_date(self, date='now'):
+        """
+        Get timezone information for the station at a given date.
+        
+        Parameters
+        ----------
+        date : str, optional
+            The date for which to get timezone info. Can be 'now' or a date string.
+            Default is 'now'.
+        
+        Returns
+        -------
+        dict
+            Dictionary containing:
+            - 'tz_str': Timezone string (e.g., 'America/New_York')
+            - 'tz_name': Timezone name
+            - 'diff2UTC': Difference to UTC in hours
+            - 'diff2UTC_of_standard_time': Standard time offset from UTC in hours
+        """
         tz = _tzf.TimezoneFinder()
         tz_str = tz.timezone_at(lng = self.lon, lat = self.lat)
         
-        # now = _datetime.datetime.now(_pytz.timezone(tz_str))
-        # tz_hr = now.utcoffset() / _datetime.timedelta(hours = 1)
-        if date == 'now':
+        if isinstance(date, str) and date == 'now':
             now = _pd.Timestamp.now(tz_str)
         else:
             now = _pd.to_datetime(date).tz_localize(tz_str)
@@ -461,7 +451,7 @@ class Station(object):
         return out
         
     
-    def get_sun_position(self, datetime, method = 'pvlib', return_type = 'dataset') -> '_xr.Dataset or _pd.DataFrame':
+    def get_sun_position(self, datetime, method = 'pvlib', return_type = 'dataset'):
         """ Provides the solar position for the station at given datetime(s)
 
         Parameters
@@ -831,22 +821,6 @@ class Station(object):
 
         xpt ,ypt = bmap(lon ,lat)
         p, = bmap.plot(xpt ,ypt ,linestyle = '',**station_symbol_kwargs)
-        # if site_label_color == 'auto':
-        #     col = colors[1]
-        # else:
-        #     col = site_label_color
-
-        # p.set_color(station_symbol_kwargs['color'])
-        # p.set_markersize()
-
-        # if station_label == 'abbr':
-        #     label = self.abb
-        # elif station_label == 'name':
-        #     label = self.name
-        # elif station_label == 'label':
-        #     label = self.label
-        # else:
-        #     raise ValueError('{} is not an option for station_label'.format(station_label))
 
 
     # Station Label
@@ -1020,3 +994,273 @@ class Station(object):
                                                        bbox=False
                                                        )
         return g, txt, fbp
+
+
+class MovingPlatform(Station):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        # self._coordinates_at_datetime = None        
+        assert(isinstance(self.lat, _xr.DataArray) and self.lat.dims == ('datetime',)), 'lat must be an xarray DataArray with a datetime coordinate'
+        assert(isinstance(self.lon, _xr.DataArray) and self.lon.dims == ('datetime',)), 'lon must be an xarray DataArray with a datetime coordinate'
+        assert(isinstance(self.alt, _xr.DataArray) and self.alt.dims == ('datetime',)), 'alt must be an xarray DataArray with a datetime coordinate'
+        ds = _xr.Dataset(
+            data_vars={
+                'lat': self.lat,
+                'lon': self.lon,
+                'alt': self.alt,
+            },
+        )
+
+        # ds.attrs.update(_attrs_for_dataset(self._attributes))
+        self.data = ds
+        self._sun_position = None
+        self._time_zone = None
+        return 
+
+    def __str__(self):
+        attributes = self._attributes
+        fields = (
+            ('name', attributes.get('name')),
+            ('abbreviation', attributes.get('abb')),
+            ('lat', attributes.get('lat')),
+            ('lon', attributes.get('lon')),
+            ('alt', attributes.get('alt')),
+            ('state', attributes.get('state')),
+            ('country', attributes.get('country')),
+        )
+        return 'MovingPlatform(' + ', '.join(
+            f'{key}={value}' for key, value in fields
+            if value is not None and value != ''
+        ) + ')'
+
+
+    @property
+    def time_zone(self):
+        """
+        Get timezone information for the moving platform at the requested date(s).
+
+        Returns a dict for a scalar date and a pandas DataFrame for multiple dates.
+        """
+        if self._time_zone is not None:
+            return self._time_zone
+        tz = _tzf.TimezoneFinder()
+        records = []
+        for timestamp in self.data.datetime.values:
+            lat = self.data.lat.sel(datetime=timestamp).values
+            lon = self.data.lon.sel(datetime=timestamp).values
+            tz_str = tz.timezone_at(lng=float(lon), lat=float(lat))
+            if tz_str is None:
+                raise ValueError(f'No timezone found for lat={lat}, lon={lon}')
+
+            now = _pd.Timestamp(timestamp)
+            if now.tzinfo is None:
+                now = now.tz_localize(tz_str)
+            else:
+                now = now.tz_convert(tz_str)
+
+            records.append({
+                'tz_str': tz_str,
+                'tz_name': now.tzname(),
+                'diff2UTC': now.utcoffset() / _pd.to_timedelta(1, unit='h'),
+                'diff2UTC_of_standard_time': (
+                    now.utcoffset() / _pd.to_timedelta(1, 'h')
+                ) - (now.dst() / _pd.to_timedelta(1, 'h')),
+            })
+        records = _pd.DataFrame.from_records(records, index=self.data.datetime.values)
+        records.index.name = 'datetime'
+        # self.data['time_zone'] = records# ('datetime', records)
+        self._time_zone = records.to_xarray()
+        return self._time_zone
+        # return self.data.time_zone
+    
+
+    @property
+    def sun_position(self) -> '_xr.Dataset':
+        """Provides solar position along the moving platform path."""
+        if self._sun_position is not None:
+            return self._sun_position
+        datasets = []
+        for timestamp in self.data.datetime.values:
+            lat = self.data.lat.sel(datetime=timestamp).values
+            lon = self.data.lon.sel(datetime=timestamp).values
+            alt = self.data.alt.sel(datetime=timestamp).values
+            datasets.append(_solar.get_sun_position_pvlib(
+                float(lat),
+                float(lon),
+                float(alt),
+                _pd.DatetimeIndex([timestamp]),
+            ))
+        ds = _xr.concat(datasets, dim='datetime')
+        self._sun_position = ds
+        return self._sun_position
+
+    def plot_path(self,
+                  datetime=None,
+                  ax=None,
+                  projection=None,
+                  extent=None,
+                  extent_pad=0.5,
+                  path_kwargs=None,
+                  marker_kwargs=None,
+                  start_marker_kwargs=None,
+                  end_marker_kwargs=None,
+                  label_kwargs=None,
+                  label_format='{name}',
+                  background='features',
+                  zoom_level=8,
+                  verbose = False,):
+        """
+        Plot the moving platform path on a cartopy map.
+
+        Parameters
+        ----------
+        datetime : datetime-like, optional
+            Times at which the path coordinates should be evaluated. If omitted,
+            the datetime index from the time-dependent coordinates is used.
+        ax : cartopy GeoAxes, optional
+            Existing cartopy axes to draw into.
+        projection : str or cartopy CRS, optional
+            Projection for new axes. Defaults to AlbersEqualArea centered on the path.
+        extent : list, tuple, or None
+            Map extent as [lon_min, lon_max, lat_min, lat_max]. If None, the
+            extent is derived from the path and padded by extent_pad degrees.
+        extent_pad : float
+            Padding in degrees around the path-derived extent.
+        path_kwargs, marker_kwargs, start_marker_kwargs, end_marker_kwargs : dict, optional
+            Matplotlib styling dictionaries for the line, path points, start
+            marker, and end marker.
+        label_kwargs : dict, False, or None
+            Annotation styling. False disables the label.
+        label_format : str
+            Format string for the label. Supports name and abb.
+        background : {'features', None}
+            Add cartopy map features when set to 'features'. No remote image
+            tiles are requested by default.
+        zoom_level : int
+            Kept for API compatibility; currently only used by callers that add
+            tile imagery on the returned axes.
+
+        Returns
+        -------
+        figure, axes
+        """
+
+        coords = self.data
+        lons = _np.asarray(coords.lon.to_numpy(), dtype=float)
+        lats = _np.asarray(coords.lat.to_numpy(), dtype=float)
+
+        if lons.size == 0:
+            raise ValueError('No coordinates available to plot')
+
+        finite = _np.isfinite(lons) & _np.isfinite(lats)
+        if not finite.any():
+            raise ValueError('No finite coordinates available to plot')
+        if not finite.all():
+            warnings.warn('Non-finite path coordinates were ignored')
+            lons = lons[finite]
+            lats = lats[finite]
+
+        center_lon = (float(lons.min()) + float(lons.max())) / 2
+        center_lat = (float(lats.min()) + float(lats.max())) / 2
+
+        if projection is None:
+            projection = cartopy.crs.AlbersEqualArea(
+                central_longitude=center_lon,
+                central_latitude=center_lat,
+            )
+        elif isinstance(projection, str):
+            projection = getattr(cartopy.crs, projection)(
+                central_longitude=center_lon,
+                central_latitude=center_lat,
+            )
+
+        transform = cartopy.crs.Geodetic()
+
+        if ax is None:
+            f, a = matplotlib.pyplot.subplots(subplot_kw={'projection': projection})
+            from_scratch = True
+        else:
+            a = ax
+            f = a.get_figure()
+            from_scratch = False
+
+        if path_kwargs is None:
+            path_kwargs = {}
+        if 'linewidth' not in path_kwargs:
+            path_kwargs['linewidth'] = 2
+        if 'color' not in path_kwargs:
+            path_kwargs['color'] = matplotlib.pyplot.rcParams['axes.prop_cycle'].by_key()['color'][0]
+        if 'zorder' not in path_kwargs:
+            path_kwargs['zorder'] = 90
+
+        if marker_kwargs is None:
+            marker_kwargs = {}
+        marker_kwargs = marker_kwargs.copy()
+        marker_kwargs.setdefault('linestyle', '')
+        marker_kwargs.setdefault('marker', 'o')
+        marker_kwargs.setdefault('markersize', 3)
+        marker_kwargs.setdefault('color', path_kwargs['color'])
+        marker_kwargs.setdefault('zorder', path_kwargs['zorder'] + 1)
+
+        a.plot(lons, lats, transform=transform, **path_kwargs)
+        a.plot(lons, lats, transform=transform, **marker_kwargs)
+
+        if start_marker_kwargs is None:
+            start_marker_kwargs = {}
+        start_marker_kwargs = start_marker_kwargs.copy()
+        start_marker_kwargs.setdefault('linestyle', '')
+        start_marker_kwargs.setdefault('marker', 'o')
+        start_marker_kwargs.setdefault('markersize', 7)
+        start_marker_kwargs.setdefault('color', 'green')
+        start_marker_kwargs.setdefault('zorder', path_kwargs['zorder'] + 2)
+        a.plot(lons[0], lats[0], transform=transform, **start_marker_kwargs)
+
+        if end_marker_kwargs is None:
+            end_marker_kwargs = {}
+        end_marker_kwargs = end_marker_kwargs.copy()
+        end_marker_kwargs.setdefault('linestyle', '')
+        end_marker_kwargs.setdefault('marker', 's')
+        end_marker_kwargs.setdefault('markersize', 7)
+        end_marker_kwargs.setdefault('color', 'red')
+        end_marker_kwargs.setdefault('zorder', path_kwargs['zorder'] + 2)
+        a.plot(lons[-1], lats[-1], transform=transform, **end_marker_kwargs)
+
+        if label_kwargs != False:
+            if label_kwargs is None:
+                label_kwargs = {}
+            annodefaults = dict(
+                xytext=(10, -10),
+                size=10,
+                ha='left',
+                va='top',
+                textcoords='offset points',
+                bbox=dict(boxstyle='round', fc=[1, 1, 1, 0.5], ec='black'),
+                zorder=100,
+                xycoords=transform,
+            )
+            for key in annodefaults:
+                label_kwargs.setdefault(key, annodefaults[key])
+            label = label_format.format(abb=self.abb, name=self.name)
+            a.annotate(label, xy=(lons[0], lats[0]), **label_kwargs)
+
+        if from_scratch:
+            if extent is None:
+                lon_pad = extent_pad if lons.max() != lons.min() else max(extent_pad, 0.5)
+                lat_pad = extent_pad if lats.max() != lats.min() else max(extent_pad, 0.5)
+                extent = [
+                    float(lons.min()) - lon_pad,
+                    float(lons.max()) + lon_pad,
+                    float(lats.min()) - lat_pad,
+                    float(lats.max()) + lat_pad,
+                ]
+            a.set_extent(extent, crs=transform)
+
+            if background == 'features':
+                a.add_feature(cartopy.feature.LAND, facecolor='0.95')
+                a.add_feature(cartopy.feature.OCEAN, facecolor='0.9')
+                a.add_feature(cartopy.feature.COASTLINE, linewidth=0.6)
+                a.add_feature(cartopy.feature.BORDERS, linewidth=0.5)
+                a.add_feature(cartopy.feature.STATES, linewidth=0.4)
+            a.gridlines(draw_labels=True, color='gray', alpha=0.5, linestyle='--')
+
+        return f, a
