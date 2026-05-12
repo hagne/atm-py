@@ -40,12 +40,24 @@ Future work should keep this in xarray so dask chunks remain lazy.
 ## Python And Imports
 
 - Target the Python baseline in `pyproject.toml` (`>=3.11`). New code may use modern typing such as `list[str]`, `str | None`, and `typing.Self`.
-- Match repo-local scientific aliases in `atmPy` modules:
+- Match the import style already used in the file being edited. Do not introduce repo-wide import alias changes unless explicitly asked.
+- Prefer keeping imported submodules in their parent package namespace.
+
+Prefer:
 
 ```python
-import numpy as _np
-import pandas as _pd
-import xarray as _xr
+import matplotlib as mpl
+import matplotlib.colors
+
+norm = mpl.colors.Normalize(vmin=0, vmax=1)
+```
+
+Avoid:
+
+```python
+from matplotlib import colors
+
+norm = colors.Normalize(vmin=0, vmax=1)
 ```
 
 - Prefer `pathlib.Path` for new path handling. Use `os` when it is the right interface, for example `os.environ`.
@@ -106,14 +118,35 @@ out = _xr.apply_ufunc(
 
 ## Optional Dependencies
 
-- Use `atmPy.opt_imports` for optional scientific packages so imports fail only when the feature is used.
+- Follow the project’s existing optional-dependency pattern.
+- If the project has an `opt_imports` module, use it for optional scientific packages so imports fail only when the feature is used.
+- When optional dependencies need submodules, load them through the optional-import mechanism rather than importing submodules directly.
 - For new optional feature groups, add a matching `pyproject.toml` optional dependency group when appropriate.
 
-Prefer:
+Prefer predefined optional imports when they already exist:
 
 ```python
-from atmPy.opt_imports import pvlib
 from atmPy.opt_imports import plt
+
+plt.plot(x, y)
+```
+
+Prefer explicit OptionalImport objects for optional packages or submodules that do not yet have predefined imports:
+
+```python
+from atmPy import opt_imports
+
+geopy = opt_imports.OptionalImport("geopy", submodules="distance")
+
+d = geopy.distance.distance(point_a, point_b)
+```
+
+Avoid direct submodule imports for optional dependencies:
+
+```python
+from geopy import distance
+
+d = distance.distance(point_a, point_b)
 ```
 
 ## Cached Data
