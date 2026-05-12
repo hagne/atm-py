@@ -11,7 +11,7 @@ description = "This package contains atmospheric science tools"
 license = { file = "LICENSE" }
 #keywords = ["atmospheric science", "tools"]
 #urls = { Homepage = "https://github.com/hagne/atm-py" }
-requires-python = ">=3.7"  # Python version compatibility
+requires-python = ">=3.11"  # Python version compatibility
 dynamic = ["version"]
 #packages = [
 #    { include : "atm-py" },
