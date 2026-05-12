@@ -2,6 +2,28 @@
 
 Guidance for future edits in `atmPy`.
 
+## Local Style First
+
+Before editing, inspect nearby code and follow the dominant local pattern.
+
+Prefer direct, idiomatic xarray expressions over generic helper functions.
+
+Prefer:
+
+```python
+aod = ds.aod.sel(datetime=time, wavelength=wl)
+```
+
+Avoid:
+
+```python
+aod = get_aod(ds, time=time, wavelength=wl)
+```
+
+unless the helper already exists or the operation is reused and nontrivial.
+
+Do not add new abstractions, wrappers, compatibility layers, or broad refactors unless explicitly requested.
+
 ## Edit Scope
 
 - Keep changes local to the requested module or behavior.
@@ -32,8 +54,9 @@ import xarray as _xr
 ## Data Model
 
 - Store, operate on, and return scientific data as `xarray.Dataset` or `xarray.DataArray`.
+- Prefer direct xarray access and selection over helper accessors.
 - Preserve dims, coords, attrs, units, and dask-backed laziness.
-- Use `pandas` only when `xarray` lacks the operation or is clearly slower for that exact operation.
+- Use `pandas` only when `xarray` lacks the operation or when a measured performance issue justifies the conversion.
 - Use raw `numpy` arrays only for low-level kernels or library APIs that require `ndarray`; wrap kernels with `xarray.apply_ufunc` or `xarray.map_blocks` when possible.
 
 Prefer:
@@ -90,20 +113,34 @@ Prefer:
 
 ```python
 from atmPy.opt_imports import pvlib
-from atmPy.opt_imports import matplotlib as mpl
+from atmPy.opt_imports import plt
 ```
 
 ## Cached Data
 
 - Keep expensive loads/calculations cached behind properties.
 - Invalidate cached data in setters that change inputs.
+- Cache private intermediate objects on private attributes.
+- Cache derived scientific variables in the `xarray.Dataset` when they belong with the dataset.
+
+Prefer private-attribute caching for loaded objects:
 
 ```python
 @property
 def aod(self):
-    if isinstance(self._aod, type(None)):
+    if self._aod is None:
         self._aod = self.load_data(param="aod")
     return self._aod
+```
+
+Prefer dataset caching for derived scientific variables:
+
+```python
+@property
+def angstrom_exponent(self):
+    if "angstrom_exponent" not in self.ds:
+        self.ds["angstrom_exponent"] = self._calc_angstrom_exponent()
+    return self.ds.angstrom_exponent
 ```
 
 ## Tests
@@ -112,6 +149,7 @@ def aod(self):
 - Treat expected numerical values as regression baselines. Do not update expected numbers just to make tests pass after a code change.
 - Change established expected values only when the scientific/algorithmic change is deliberate, documented, and approved by the maintainer.
 - Prioritize tests that verify scientific results and numerical data values over tests that only verify structure, metadata, or implementation details.
+- Do not add many trivial asserts. Prefer a few meaningful assertions that test the scientific result, numerical behavior, and key coordinates/metadata only when relevant.
 - Run:
 
 ```bash
@@ -119,3 +157,10 @@ def aod(self):
 ```
 
 - Stub optional dependencies in tests when a unit test does not need the real package.
+
+## Final Response
+
+Keep final responses concise:
+- summarize what changed
+- mention tests run
+- flag nearby outdated patterns only when relevant
