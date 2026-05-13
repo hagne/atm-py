@@ -497,7 +497,30 @@ def _PeakFileArray2dataFrame(data,fname,time_shift, BBBtype = 0, log = True, sin
     return dataTable
 
 def _cleanPeaksArray(PeakArray):
-    """tries to remove data points where obviously something went wrong. Returns the cleaned array."""
+    """Clean obvious corrupt peak records and return a repair report.
+
+    Parameters
+    ----------
+    PeakArray : numpy.ndarray
+        Raw peak records with time in seconds in the first column.
+
+    Returns
+    -------
+    tuple[numpy.ndarray, str]
+        A tuple containing the cleaned peak array and a text report.
+
+    Notes
+    -----
+    The cleaning removes rows with:
+    - invalid timestamps (>= 1e6 seconds)
+    - amplitude values outside the ADC range (<= 0 or >= 32)
+    - invalid "use" flags (not 0 or 1)
+    - width values outside the expected range (<= 1 or >= 1000)
+    - backward timestamps
+    - excessive gaps in time (time jump > 1.1 * median interval)
+
+    This function does not attempt to remove points that are too close in time (satellite peaks).
+    """
     BarrayClean = PeakArray.copy()
     startShape = BarrayClean.shape
     startstartShape = BarrayClean.shape
