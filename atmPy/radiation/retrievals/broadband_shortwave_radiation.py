@@ -6,7 +6,10 @@ import pandas as pd
 import atmPy.radiation.retrievals.clearsky as atmcsk
 # import matplotlib.pyplot as _plt
 from atmPy.opt_imports import matplotlib as mpl
+import atmPy.general.measurement_site as atmgms
 import warnings
+from atmPy.radiation.retrievals import tiltcorrection
+
 
 
 
@@ -36,14 +39,48 @@ class _DatasetRef(object):
 
 class SolarIrradiation(object):
     def __init__(self, dataset, site = None, verbose = False, _dataset_ref = None):
+        """Base class for solar irradiation datasets. Provides shared functionality and properties for global horizontal, diffuse horizontal, and direct normal irradiation.
+        Parameters
+        ----------
+        dataset : xr.Dataset
+            A dataset that contains the relevant irradiation variable(s) and the coordinates 'datetime'.
+        site : atmPy.general.measurement_sites.Station, atmPy.general.measurement_sites.MovingPlatform, optional
+            A measurement site object that can be used to calculate sun position and other site-specific parameters. 
+            """
         self.verbose = verbose  
         self._dataset_ref = _dataset_ref if _dataset_ref is not None else _DatasetRef(dataset)
         if _dataset_ref is None:
             self.dataset = dataset
-        self.site = site
-        self._sun_position_variables = ['zenith', 'zenith_geometric', 'apparent_elevation', 'elevation', 'azimuth', 'equation_of_time', 'airmass', 'airmass_absolute', 'sun_earth_distance']
-        assert('datetime' in dataset), 'Time coordinate has to be called datetime .... sorry, i know that is an unconventional choise for the time cooridinate name.'
+        self._site = site
+        self._sun_position_variables = ['zenith', 'zenith_geometric', 'elevation_geometric', 'elevation', 'azimuth', 'equation_of_time', 'airmass', 'airmass_absolute', 'sun_earth_distance']
+        self._sun_position_variables_ds = [f'solar_{v}' for v in self._sun_position_variables] # for internal use, to avoid name clashes with potential variables in the dataset.
+        assert('datetime' in dataset or 'datetime' in dataset.dims), 'Time coordinate has to be called datetime .... sorry, i know that is an unconventional choise for the time cooridinate name.'
 
+    @property
+    def site(self):
+        if isinstance(self._site, type(None)):
+            if 'latitude' in self.dataset.attrs and 'longitude' in self.dataset.attrs:
+                if 'altitude' in self.dataset.attrs:
+                    alt = self.dataset.attrs['altitude']
+                else:
+                    alt = 0
+                self._site = atmgms.Station(lat = self.dataset.attrs['latitude'], lon = self.dataset.attrs['longitude'], alt = alt)
+            elif 'latitude' in self.dataset and 'longitude' in self.dataset:
+                if 'altitude' in self.dataset:
+                    alt = self.dataset.altitude
+                else:
+                    alt = 0
+                if 'datetime' in self.dataset.latitude.dims:
+                    self._site = atmgms.MovingPlatform(lat = self.dataset['latitude'], lon = self.dataset['longitude'], alt = alt)
+                else:
+                    self._site = atmgms.Station(lat = self.dataset['latitude'], lon = self.dataset['longitude'], alt = alt)
+
+            else:
+                raise ValueError('No site information found. Set site keyword or provide latitude and longitude in dataset attributes or variables. Note, time dependent latitude and longitude will be interpreted as a moving platform.')
+        return self._site
+
+            
+            
     @property
     def dataset(self):
         return self._dataset_ref.dataset
@@ -72,18 +109,19 @@ class SolarIrradiation(object):
     
     @property
     def sun_position(self):
-        if not np.all([v in self.dataset for v in self._sun_position_variables]):
+        if not np.all([v in self.dataset for v in self._sun_position_variables_ds]):
         # if isinstance(self._sun_position, type(None)):
             sp = self.site.get_sun_position(self.dataset.datetime)
+            self.tp_sp = sp
             for v in self._sun_position_variables:
-                self.dataset[v] = sp[v]
-        return self.dataset[self._sun_position_variables]
+                self.dataset[f'solar_{v}'] = sp[v]
+        return self.dataset[self._sun_position_variables_ds]
     
     @sun_position.setter
     def sun_position(self, value):
         self.dataset.datetime.identical(value.datetime)
         for v in self._sun_position_variables:
-            self.dataset[v] = value[v]
+            self.dataset[f'solar_{v}'] = value[v]
 
 
 
@@ -154,7 +192,9 @@ class DirectNormalIrradiation(SolarIrradiation):
         """Converts direct horizontal irradiance to direct normal irradiance. 'direct_normal' will be added to the dataset if it is not already present. """
         if 'direct_normal' not in self.dataset:
             ds = self.dataset
-            ds['direct_normal'] = ds.direct_horizontal / xr.DataArray(np.cos(self.sun_position.zenith))
+            ds['direct_normal'] = ds.direct_horizontal / xr.DataArray(np.cos(self.sun_position.solar_zenith))
+            ds.direct_normal.attrs.update(ds.direct_horizontal.attrs)
+            ds.direct_normal.attrs["long_name"] += ' (calculated from direct_horizontal and solar zenith angle)'
         return ds['direct_normal']
     
 
@@ -494,3 +534,12 @@ class CombinedGlobalDiffuseDirect(SolarIrradiation):
             print(f'\tndr_std_max: {self.dataset.ndr_std_max_estimated:0.4f} (is: {self.get_attr('ndr_std_max')})')
 
         self.dataset.attrs['clear_sky_params_optimized'] = 'True'
+
+
+    def apply_tilt_correction(self):
+        # call irradiance properties to make sure they are initialized and data is present in the dataset
+        self.direct_normal_irradiation
+        self.sun_position
+        self.dataset = tiltcorrection.apply_tilt_correction(self.dataset)
+        out = CombinedGlobalDiffuseDirect(self.dataset)
+        return out

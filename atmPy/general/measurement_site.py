@@ -353,6 +353,13 @@ class Station(object):
         for key in kwargs:
             setattr(self, key, kwargs[key])
 
+        if name is None:
+            if abb is not None:
+                name = abb
+            else:
+                name = 'unnamed_station'
+        if abbreviation is None:
+            abb = 'abb'
         name = name.strip().replace(',','_').replace('(','_').replace(')','_').strip('_')
         
         
@@ -1000,9 +1007,9 @@ class MovingPlatform(Station):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         # self._coordinates_at_datetime = None        
-        assert(isinstance(self.lat, _xr.DataArray) and self.lat.dims == ('datetime',)), 'lat must be an xarray DataArray with a datetime coordinate'
-        assert(isinstance(self.lon, _xr.DataArray) and self.lon.dims == ('datetime',)), 'lon must be an xarray DataArray with a datetime coordinate'
-        assert(isinstance(self.alt, _xr.DataArray) and self.alt.dims == ('datetime',)), 'alt must be an xarray DataArray with a datetime coordinate'
+        assert(isinstance(self.lat, _xr.DataArray) and self.lat.dims == ('datetime',)), f'lat must be an xarray DataArray with a datetime coordinate. Got {type(self.lat)} with dims {getattr(self.lat, "dims", None)}'
+        assert(isinstance(self.lon, _xr.DataArray) and self.lon.dims == ('datetime',)), f'lon must be an xarray DataArray with a datetime coordinate. Got {type(self.lon)} with dims {getattr(self.lon, "dims", None)}'
+        assert(isinstance(self.alt, _xr.DataArray) and self.alt.dims == ('datetime',)), f'alt must be an xarray DataArray with a datetime coordinate. Got {type(self.alt)} with dims {getattr(self.alt, "dims", None)}'
         ds = _xr.Dataset(
             data_vars={
                 'lat': self.lat,
@@ -1022,11 +1029,11 @@ class MovingPlatform(Station):
         fields = (
             ('name', attributes.get('name')),
             ('abbreviation', attributes.get('abb')),
-            ('lat', attributes.get('lat')),
-            ('lon', attributes.get('lon')),
-            ('alt', attributes.get('alt')),
-            ('state', attributes.get('state')),
-            ('country', attributes.get('country')),
+            # ('lat', attributes.get('lat')),
+            # ('lon', attributes.get('lon')),
+            # ('alt', attributes.get('alt')),
+            # ('state', attributes.get('state')),
+            # ('country', attributes.get('country')),
         )
         return 'MovingPlatform(' + ', '.join(
             f'{key}={value}' for key, value in fields

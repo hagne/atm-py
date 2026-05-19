@@ -68,6 +68,8 @@ norm = colors.Normalize(vmin=0, vmax=1)
 - Store, operate on, and return scientific data as `xarray.Dataset` or `xarray.DataArray`.
 - Prefer direct xarray access and selection over helper accessors.
 - Preserve dims, coords, attrs, units, and dask-backed laziness.
+- Do not add flexible variable-name helpers or functions that accept alternate names for the same scientific variable. Use the exact expected variable names in the dataset.
+- Validate units attributes explicitly. If a variable exists but its `units` attribute does not match the expected units, raise an error rather than converting between units.
 - Use `pandas` only when `xarray` lacks the operation or when a measured performance issue justifies the conversion.
 - Use raw `numpy` arrays only for low-level kernels or library APIs that require `ndarray`; wrap kernels with `xarray.apply_ufunc` or `xarray.map_blocks` when possible.
 
