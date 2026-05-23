@@ -59,20 +59,30 @@ class SolarIrradiation(object):
     @property
     def site(self):
         if isinstance(self._site, type(None)):
+            if self.verbose:
+                print('No site provided, trying to infer site information from dataset.')
             if 'latitude' in self.dataset.attrs and 'longitude' in self.dataset.attrs:
+                if self.verbose:
+                    print('Found latitude and longitude in dataset attributes. Assuming fixed station.')
                 if 'altitude' in self.dataset.attrs:
                     alt = self.dataset.attrs['altitude']
                 else:
                     alt = 0
                 self._site = atmgms.Station(lat = self.dataset.attrs['latitude'], lon = self.dataset.attrs['longitude'], alt = alt)
             elif 'latitude' in self.dataset and 'longitude' in self.dataset:
+                if self.verbose:
+                    print('Found latitude and longitude in dataset variables. ', end = '')
                 if 'altitude' in self.dataset:
                     alt = self.dataset.altitude
                 else:
                     alt = 0
                 if 'datetime' in self.dataset.latitude.dims:
+                    if self.verbose:
+                        print('Latitude and longitude are time dependent. Assuming moving platform.')
                     self._site = atmgms.MovingPlatform(lat = self.dataset['latitude'], lon = self.dataset['longitude'], alt = alt)
                 else:
+                    if self.verbose:
+                        print('Latitude and longitude are not time dependent. Assuming fixed station.')
                     self._site = atmgms.Station(lat = self.dataset['latitude'], lon = self.dataset['longitude'], alt = alt)
 
             else:
@@ -538,7 +548,7 @@ class CombinedGlobalDiffuseDirect(SolarIrradiation):
 
     def apply_tilt_correction(self):
         # call irradiance properties to make sure they are initialized and data is present in the dataset
-        self.direct_normal_irradiation
+        # self.direct_normal_irradiation  
         self.sun_position
         self.dataset = tiltcorrection.apply_tilt_correction(self.dataset)
         out = CombinedGlobalDiffuseDirect(self.dataset)
