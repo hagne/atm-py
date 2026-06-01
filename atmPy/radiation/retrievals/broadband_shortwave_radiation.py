@@ -546,10 +546,12 @@ class CombinedGlobalDiffuseDirect(SolarIrradiation):
         self.dataset.attrs['clear_sky_params_optimized'] = 'True'
 
 
-    def apply_tilt_correction(self):
+    def apply_tilt_correction(self, sensor_response_time=None):
         # call irradiance properties to make sure they are initialized and data is present in the dataset
         # self.direct_normal_irradiation  
         self.sun_position
-        self.dataset = tiltcorrection.apply_tilt_correction(self.dataset)
-        out = CombinedGlobalDiffuseDirect(self.dataset)
+        ds = tiltcorrection.apply_tilt_correction(self.dataset, sensor_response_time=sensor_response_time)
+        out = CombinedGlobalDiffuseDirect(ds)
         return out
+
+    apply_tilt_correction.__doc__ = tiltcorrection.apply_tilt_correction.__doc__

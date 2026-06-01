@@ -70,3 +70,4 @@ examples/instruments_ARM-ceilm.ipynb
 build/*
 docs/_build/
 .vscode/settings.json
+examples/radiation/archive/*
