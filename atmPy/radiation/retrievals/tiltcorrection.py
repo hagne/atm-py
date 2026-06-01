@@ -1,9 +1,10 @@
 import numpy as np
 import xarray as xr
 from scipy.signal import lfilter
+import pandas as pd
 
 
-def effective_mu(mut: xr.DataArray, tau: float) -> xr.DataArray:
+def _effective_mu(mut: xr.DataArray, tau: float) -> xr.DataArray:
     def _first_order_lowpass_1d(x, time, dt, tau):
         x = np.asarray(x, dtype=float)
         out = np.full_like(x, np.nan)
@@ -61,7 +62,7 @@ def effective_mu(mut: xr.DataArray, tau: float) -> xr.DataArray:
 
     return mu_eff
 
-def solar_incidence_angle(zenith, azimuth, pitch, roll, heading):
+def _solar_incidence_angle(zenith, azimuth, pitch, roll, heading):
     """
     Calculate solar incidence angle on a tilted hemispheric detector.
 
@@ -172,7 +173,7 @@ def apply_tilt_correction(dataset: xr.Dataset,
 
     # out = dataset.copy()
     mu0 = np.cos(dataset.solar_zenith)
-    incangle = solar_incidence_angle(dataset.solar_zenith, dataset.solar_azimuth, dataset.platform_pitch, dataset.platform_roll, dataset.platform_heading)
+    incangle = _solar_incidence_angle(dataset.solar_zenith, dataset.solar_azimuth, dataset.platform_pitch, dataset.platform_roll, dataset.platform_heading)
     dataset["solar_incidence_angle"] = incangle
     dataset.solar_incidence_angle.attrs["units"] = "radian"
     dataset.solar_incidence_angle.attrs["long_name"] = "Solar incidence angle on tilted irradiance sensor"
@@ -180,7 +181,7 @@ def apply_tilt_correction(dataset: xr.Dataset,
 
     if sensor_response_time is not None:
         tau= -sensor_response_time/np.log(0.05)
-        mut = effective_mu(mut, tau)
+        mut = _effective_mu(mut, tau)
 
     Gt = dataset.global_horizontal
 
@@ -213,7 +214,7 @@ def apply_tilt_correction(dataset: xr.Dataset,
 
 from scipy.optimize import minimize
 
-def minthis(ds, dr, dp, dh, sensor_response_time=0.2, poly_order=3, verbose=False):
+def _minthis(ds, dr, dp, dh, sensor_response_time=0.2, poly_order=3, verbose=False):
     dst = ds.copy()
     dst['platform_roll'] = dst.platform_roll + dr
     dst['platform_pitch'] = dst.platform_pitch + dp
@@ -241,7 +242,7 @@ def minthis(ds, dr, dp, dh, sensor_response_time=0.2, poly_order=3, verbose=Fals
     residual = yfit[mask] - design_matrix @ coef
     return float(np.std(residual))
 
-def find_offset(ds, dr=None, dp=None, dh=None):
+def find_offsets(ds, dr=None, dp=None, dh=None):
     """ Very experimental! Find installation offsets that minimize direct-normal irradiance variability.
     Note, this only works for moving platforms and mostly clearsky days. You will actuall
     need roll, pitch and heading to permanently change to get a result. 
@@ -278,7 +279,7 @@ def find_offset(ds, dr=None, dp=None, dh=None):
 
     def objective(x):
         offsets = build_offsets(x)
-        value = minthis(
+        value = _minthis(
             ds,
             offsets['dr'],
             offsets['dp'],

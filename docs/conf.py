@@ -3,6 +3,14 @@
 # For the full list of built-in configuration values, see the documentation:
 # https://www.sphinx-doc.org/en/master/usage/configuration.html
 
+import os
+import pathlib
+import sys
+
+os.environ.setdefault('NUMBA_DISABLE_JIT', '1')
+
+sys.path.insert(0, str(pathlib.Path("..").resolve()))
+
 # -- Project information -----------------------------------------------------
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#project-information
 
@@ -14,7 +22,16 @@ author = 'Hagen Telg'
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#general-configuration
 
 extensions = ['sphinx.ext.autodoc',
+              'sphinx.ext.napoleon',
               'nbsphinx']
+
+autodoc_mock_imports = [
+    'atmPy.data_archives.NOAA_ESRL_GMD_GRAD.cal_facility',
+    'atmPy.data_archives.NOAA_ESRL_GMD_GRAD.cal_facility.lab',
+    'netCDF4',
+]
+
+nbsphinx_execute = 'never'
 
 templates_path = ['_templates']
 exclude_patterns = ['_build', 'Thumbs.db', '.DS_Store']

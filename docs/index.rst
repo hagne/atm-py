@@ -13,6 +13,12 @@ atmPy -- a collection of modules for atmospheric research
    
    aerosols_sizedistribution.rst
 
+.. toctree::
+   :maxdepth: 2
+   :caption: radiation
+
+   radiation.rst
+
 Indices and tables
 ==================
 

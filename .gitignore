@@ -71,3 +71,8 @@ build/*
 docs/_build/
 .vscode/settings.json
 examples/radiation/archive/*
+examples/radiation/tilt_correction_saildrone_checkfortimedelay.ipynb
+examples/radiation/tilt_correction_saildrone_find_days.ipynb
+examples/radiation/tilt_correction_saildrone.ipynb
+docs/notebooks/radiation/tilt_illustration.svg
+examples/radiation/tiltcorr_SPN1.m
