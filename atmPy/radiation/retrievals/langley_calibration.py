@@ -739,12 +739,19 @@ class Langley(object):
 
     
     def to_xarray_dataset(self):
+        if "sn_mfrsr" in self.parent.dataset.attrs:
+            serialnoattr = 'sn_mfrsr'
+        elif "serial_no" in self.parent.dataset.attrs:
+            serialnoattr = 'serial_no'
+        else:
+            raise KeyError('No serial number found in dataset attributes. Expected either "sn_mfrsr" or "serial_no".')
+        serialno = self.parent.dataset.attrs[serialnoattr]
         try:
-            serialno = self.parent.dataset.serial_no.values[0]
+            serialno = serialno.values[0]
         except IndexError:
-            serialno = self.parent.dataset.serial_no.values
+            serialno = serialno.values
         except AttributeError:
-            serialno = self.parent.dataset.serial_no
+            serialno = serialno
         ds = xr.Dataset({'langleys': self.langleys,
                          'langley_fit_residual': self.langley_fit_residual,
                          'langley_fitres': self.langley_fitres,

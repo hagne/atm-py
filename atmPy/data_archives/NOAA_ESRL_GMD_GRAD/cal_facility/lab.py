@@ -370,14 +370,19 @@ def read_mfrsr_cal(path2file, verbose = False):
     df.index.name = 'channel'
     df.drop('Band', axis = 1, inplace=True)
     df = df.loc[:,[c for c in df.columns if not 'Unnamed' in c]]
-    if 'Open' in df.index:
-        df.drop('Open', inplace = True)
-    elif 'Thermopile' in df.index:
-        df.drop('Thermopile', inplace = True)
-    elif 'Thermop' in df.index: # for some reason the name of this row varies
-        df.drop('Thermop', inplace = True)
-    else:
-        assert(False), f'I need to drop the broadband channel from the Dataframe, but could not find it, add what it is here, options are {df.index}. The dataframe looks like this:\n{df}'
+    tp_varname = 'Thermopile'
+    try:
+        df.drop(tp_varname, inplace = True)
+    except KeyError as e:
+        raise KeyError(f'could not find {tp_varname} in the channel statistics, found {df.index}. The dataframe looks like this:\n{df}') from e
+    # if 'Open' in df.index:
+    #     df.drop('Open', inplace = True)
+    # elif 'Thermopile' in df.index:
+    #     df.drop('Thermopile', inplace = True)
+    # elif 'Thermop' in df.index: # for some reason the name of this row varies
+    #     df.drop('Thermop', inplace = True)
+    # else:
+    #     assert(False), f'I need to drop the broadband channel from the Dataframe, but could not find it, add what it is here, options are {df.index}. The dataframe looks like this:\n{df}'
      
     #### rename stats channels to nominal channels
     

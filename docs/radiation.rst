@@ -34,7 +34,7 @@ horizontal projection factor :math:`\mu_0`, and tilted projection factor
 where :math:`G_0` is corrected global horizontal irradiance, :math:`N` is
 direct normal irradiance, and :math:`D` is diffuse horizontal irradiance.
 
-The input dataset must contain the exact variables used by the retrieval:
+The input dataset must contain the exact variables used by the retrieval -- NOTE: solar position variables are provided by radiation objects when tilt correction is applied in the wrapper approach (first code block below):
 
 .. list-table::
    :header-rows: 1
