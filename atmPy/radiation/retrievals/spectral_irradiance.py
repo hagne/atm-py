@@ -847,7 +847,7 @@ class DirectNormalIrradiation(SolarIrradiation):
         assert(('direct_normal' in dataset) or ('direct_horizontal' in dataset)), f'direct_normal or alternatively direct_horizontal variable is missing.'
         if 'direct_horizontal' in dataset and 'direct_normal' not in dataset:
             self.direct_normal_from_direct_horizontal()
-
+        assert('channel_wavelength' in dataset), 'channel_wavelength variable is missing. These are the actual channel wavelengths (center wavelengths of the filters). They are typically set by the spectral calibration process. Check if you mistakenly used wavelength center.'
         # i would like to get away from those hardcoded variable name alternatives, just change it before using it
         # remove the below in the future unless it breaks too much
         if 0:
@@ -1113,9 +1113,9 @@ class DirectNormalIrradiation(SolarIrradiation):
     def od_rayleigh(self):
         if 'od_rayleigh' not in self.dataset:
             if self.settings_rayleigh == 'john':
-                odr = xr.concat([atmraylab.rayleigh_od_johnsmethod(self.met_data.pressure, chan.values) for chan in self.dataset[self.variable_name_channel_wavelength]], 'channel')
+                odr = xr.concat([atmraylab.rayleigh_od_johnsmethod(self.met_data.pressure, chan.values) for chan in self.dataset['channel_wavelength']], 'channel')
             elif self.settings_rayleigh == 'firstprinciple':
-                odr = xr.concat([atmraylab.rayleigh_od_first_principles(chan.values, pressure = self.met_data.pressure) for chan in self.dataset[self.variable_name_channel_wavelength]], 'channel')
+                odr = xr.concat([atmraylab.rayleigh_od_first_principles(chan.values, pressure = self.met_data.pressure) for chan in self.dataset['channel_wavelength']], 'channel')
             self._od_rayleigh = odr
             self.tp_odr = odr
             self.dataset['od_rayleigh'] = odr
@@ -1165,7 +1165,7 @@ class DirectNormalIrradiation(SolarIrradiation):
     @property
     def ozone_absorption_by_channel(self):
         if 'ozon_absoption_by_channel' not in self.dataset:
-            ozon2bychannel = self.ozone_absorption_spectrum.interp(wavelength = self.dataset[self.variable_name_channel_wavelength])
+            ozon2bychannel = self.ozone_absorption_spectrum.interp(wavelength = self.dataset['channel_wavelength'])
             self.tp_ozon2bychannel = ozon2bychannel.copy()
             ozon2bychannel = ozon2bychannel.drop('wavelength')
 
