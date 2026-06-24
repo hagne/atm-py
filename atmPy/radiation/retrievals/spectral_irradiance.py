@@ -435,10 +435,8 @@ class SolarIrradiation(object):
         if "toa_spectral_irradiance" not in self.dataset:
             ds_solar = self.toa_solarspectrum_1AU# xr.open_dataset(self.path2solar_spectrum)
             rad_top = ds_solar.interp(wavelength=self.dataset.channel_wavelength, method='linear')# 
-            self.tp_rad_topI = rad_top.copy()
             rad_top = rad_top / self.sun_position.sun_earth_distance**2
             rad_top = rad_top.drop_vars('wavelength')
-            # self.tp_rad_topII = rad_top.copy()
             self.dataset['toa_spectral_irradiance'] = rad_top.irradiance
         return self.dataset.toa_spectral_irradiance
             
@@ -1350,9 +1348,9 @@ class DirectNormalIrradiation(SolarIrradiation):
         ang = - np.log(t1/t2)/np.log(l1/l2)
         l3 = 940
         t3 = t1 * (l3/l1)**-ang
+        # subptract the extrapolated optical depth from the measured optical depth at 940nm to get the water vapor optical depth
         tpwvaod = self.aod.sel(channel = l3)
         tpwv = tpwvaod - t3
-
 
         ammin = ds_pwdlut.air_mass.min()
         ammax = ds_pwdlut.air_mass.max()
@@ -1368,7 +1366,7 @@ class DirectNormalIrradiation(SolarIrradiation):
             else:
                 pwv = np.nan
             return pwv
-        df = self.sun_position.apply(row2pwv, axis = 1)
+        df = self.sun_position.to_pandas().apply(row2pwv, axis = 1)
         da = df.to_xarray().rename('precipitable_water')
         da.attrs = dict(long_name = "Precipitable water",
                         units     = "cm",
@@ -1565,11 +1563,15 @@ class DirectNormalIrradiation(SolarIrradiation):
             # get the 1625 filter info based on the MFRSR instrument serial no
             if 1625 in self.dataset.channel:
                 #### TODO: this file should be stored somewhere more meaning full
+                #### In fact this is way to surfrad specific to be here! This should be done in the context of surfrad data processing
                 if not isinstance(self.mfrsr_history, type(None)):
                     # fn = '/home/grad/htelg/projects/AOD_redesign/MFRSR_History.xlsx'
                     mfrsr_info = pd.read_excel(self.mfrsr_history, sheet_name='Overview')
-                    inst_info = mfrsr_info[mfrsr_info.Instrument == self.dataset.serial_no]
-                    assert(len(inst_info) == 1), f'Could not find unique MFRSR instrument info for serial no {self.dataset.serial_no} in MFRSR history file {self.mfrsr_history}. Make sure the correct serial number is stored in dataset.attrs["serial_no"]'
+                    # print(self.dataset.serial_no)
+                    # print(type(self.dataset.serial_no))
+                    inst_info = mfrsr_info[mfrsr_info.Instrument == int(self.dataset.serial_no)]
+                    # print(mfrsr_info.Instrument)
+                    assert(len(inst_info) == 1), f'Could not find unique MFRSR instrument info for serial no {self.dataset.serial_no} in MFRSR history file {self.mfrsr_history} (found {len(inst_info)} matches). Make sure the correct serial number is stored in dataset.attrs["serial_no"]'
                     self.tp_inst_info = inst_info.copy()
                     fab = inst_info.Filter_1625nm.iloc[0]
                     self.tp_fab = fab
@@ -1678,12 +1680,128 @@ class DirectNormalIrradiation(SolarIrradiation):
             odozone = self.od_ozone
             aod -= odozone
             attrs['corrected_for_ozone'] = "True"
+
+            if self.skip_1625_channel:
+                aod = aod.where(aod.channel != 1625, drop = True) 
             # aod = odt - odr - odch4 - odco2 - odh2o - odozone
             # self._aod = aod
             self.dataset['aod'] = aod
             self.dataset.aod.attrs = attrs
         return self.dataset.aod
+
+    @property
+    def aod_uncertainty(self):
+        self.aod  # Ensure aod is calculated and stored
+        return self.dataset.aod_uncertainty
         
+    @property
+    def angstrom_exponent(self):
+        if 'angstrom_exponent' not in self.dataset:
+            def get_ang(self, lambda1, lambda2):
+                tau =  lambda lam:  self.aod.sel(channel = lam)
+                cw =  lambda lam:  self.dataset.channel_wavelength.sel(channel = lam)
+                alpha = - np.log(tau(lambda1) / tau(lambda2)) / np.log(cw(lambda1) / cw(lambda2))
+                beta = tau(lambda1) * (cw(lambda1) * 1e-3)**alpha
+                return alpha,beta
+            
+            def get_ang_uncertainty(self, lambda1, lambda2):
+                tau =  lambda lam:  self.aod.sel(channel = lam)
+                sig = lambda lam: self.aod_uncertainty.sel(channel = lam)
+                cw =  lambda lam:  self.dataset.channel_wavelength.sel(channel = lam)
+                D = np.log(cw(lambda2) / cw(lambda1))
+                rho = 0# correlation coefficient between the two channels, assumed to be 0 for now. This could be improved.
+                sigma_alpha = (1 / D) * np.sqrt(
+                    (sig(lambda1) / tau(lambda1)) ** 2
+                    + (sig(lambda2) / tau(lambda2)) ** 2
+                    - 2 * rho * (sig(lambda1) / tau(lambda1)) * (sig(lambda2) / tau(lambda2))
+                )
+                return sigma_alpha
+
+
+            angpairs = [[415,870],[500,670],[500, 870], [500,1625], [870,1625]]
+            angs = []
+            betas = []
+            anguncs = []
+            for ap in angpairs:
+                
+                coords = {'angstrom_exponent_pair':[f'{ap[0]}_{ap[1]}']}
+
+                angt,betat = get_ang(self, ap[0], ap[1])
+                angt = angt.expand_dims(coords)
+                angs.append(angt)
+
+                betat = betat.expand_dims(coords)
+                betas.append(betat)
+
+                angt_unc = get_ang_uncertainty(self, ap[0], ap[1])
+                angt_unc = angt_unc.expand_dims(coords)
+                anguncs.append(angt_unc)
+
+            # angs
+            da = xr.concat(angs, 'angstrom_exponent_pair')
+            da.attrs = {
+                "long_name": "aerosol Ångström exponent",
+                "units": "1",
+                "ancillary_variables": "aod cloud_flag",
+                "comment": (
+                    "Aerosol Ångström exponent calculated from pairs of retrieved aerosol "
+                    "optical depth channels."
+                ),
+            }
+            
+            self.dataset['angstrom_exponent'] = da
+            
+            #beta
+            da = xr.concat(betas, 'angstrom_exponent_pair')
+            da.attrs = {
+                "long_name": "Ångström turbidity coefficient",
+                "units": "1",
+                "ancillary_variables": "aod angstrom_exponent",
+                "comment": (
+                    "Ångström turbidity coefficient beta calculated from retrieved aerosol "
+                    "optical depth and Ångström exponent using tau_a(lambda) = beta * "
+                    "lambda^(-alpha), with wavelength lambda expressed in micrometers. "
+                    "Beta is therefore the aerosol optical depth extrapolated to 1 µm."
+                ),
+            }
+            self.dataset["angstrom_turbidity_coefficient"] = da
+
+            # uncertaintys
+            da = xr.concat(anguncs, 'angstrom_exponent_pair')
+            da.attrs = {
+                "long_name": "standard uncertainty of aerosol Ångström exponent",
+                "units": "1",
+                "comment": (
+                    "One-sigma uncertainty propagated from the absolute one-sigma AOD "
+                    "uncertainties of the two wavelength channels used for each Ångström "
+                    "exponent."
+                ),
+            }
+            self.dataset['angstrom_exponent_uncertainty'] = da
+
+            # the coordinage
+            self.dataset["angstrom_exponent_pair"].attrs = {
+                "long_name": "Ångström exponent wavelength pair",
+                "comment": (
+                    "Labels identify the two nominal AOD wavelengths used to calculate each "
+                    "Ångström exponent."
+                ),
+            }
+
+        return self.dataset.angstrom_exponent
+
+
+    @property
+    def angstrom_exponent_uncertainty(self):
+        self.angstrom_exponent  # Ensure angstrom_exponent is calculated and stored
+        return self.dataset.angstrom_exponent_uncertainty
+
+    @property
+    def angstrom_turbidity_coefficient(self):
+        self.angstrom_exponent  # Ensure angstrom_exponent is calculated and stored
+        return self.dataset.angstrom_turbidity_coefficient
+
+
 
     # This is now split up in the SolarIrradiatin instance and here somewhere
     def _transmission_from_toa_radiation(self):
@@ -1696,6 +1814,8 @@ class DirectNormalIrradiation(SolarIrradiation):
         None.
 
         """
+        if self.verbose:
+            print('Calculating transmission using the provided top of atmosphere spectral irradiance.')
         #### get solar spectrum at top of atmosphere
         if 'toa_spectral_irradiance' in self.dataset:
 
@@ -1717,14 +1837,16 @@ class DirectNormalIrradiation(SolarIrradiation):
     def transmission(self):
         # if isinstance(self._transmission, type(None)):
         if 'transmission' not in self.dataset:
+            if self.verbose:
+                print('Calculating transmission.')
             if self.dataset.attrs.get('calibrated_langley', False) and self.dataset.global_horizontal.attrs.get('unit', 'bla') == 'W/m^2/nm':
                 self._transmission_from_toa_radiation()
             # elif self.settings_calibration == 'johns':
             #     self._apply_calibration_johns()
             elif self.settings_calibration == 'atm_gam':
                 self._apply_calibration_atm_gam()
-            elif self.settings_calibration == 'sp02':
-                self._apply_calibration_sp02()
+            # elif self.settings_calibration == 'sp02':
+            #     self._apply_calibration_sp02()
             elif self.settings_calibration == 'toa_radiation':
                 self._transmission_from_toa_radiation()
             else:

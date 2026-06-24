@@ -76,3 +76,8 @@ examples/radiation/tilt_correction_saildrone_find_days.ipynb
 examples/radiation/tilt_correction_saildrone.ipynb
 docs/notebooks/radiation/tilt_illustration.svg
 examples/radiation/tiltcorr_SPN1.m
+examples/radiation/tiltcorrection/racoro.20090527.175738.cdf
+examples/radiation/tiltcorrection/tilt_correction_saildrone_checkfortimedelay.ipynb
+examples/radiation/tiltcorrection/tilt_correction_saildrone_find_days.ipynb
+examples/radiation/tiltcorrection/tiltcorr_SPN1.m
+examples/radiation/tiltcorrection/archive/tilt_correction_saildrone_20260528.ipynb

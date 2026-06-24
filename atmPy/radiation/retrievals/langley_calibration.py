@@ -12,6 +12,7 @@ import pandas as pd
 import scipy as sp
 import numpy as np
 import pathlib
+from typing import Union
 import xarray as xr
 import datetime
 from atmPy.opt_imports import plt
@@ -181,17 +182,40 @@ def read_langley_params(p2f = '/home/grad/surfrad/aod/tbl_mfrhead', verbose = Fa
         dsses.append(ds)
     return xr.concat(dsses, dim = 'datetime')
 
-def open_langleys(p2fld):
-    "This function is designed to open all langleys within a folder. Here the langleys "
-    "are those generated and saved in the Langley class (with Langley.save2netcdf()"
-    p2fld = pl.Path(p2fld)
-    p2flist = list(p2fld.glob('*'))
+def open_langleys(p2fld: Union[str, pl.Path, list], pattern = '*.nc'):
+    """This function is designed to open all langleys within a folder. Here the langleys 
+    are those generated and saved in the Langley class (with Langley.save2netcdf()
+    Parameters
+    ----------
+    p2fld : Union[str, pl.Path, list]
+        This can be either a path to a folder containing the langley files or a list of paths 
+        to the langley files or a list of already opened langley datasets.
+    """
+
+    if  isinstance(p2fld, (str, pl.Path)):
+        p2fld = pl.Path(p2fld)
+        p2flist = list(p2fld.glob(pattern))
+    elif isinstance(p2fld, list):
+        if all([isinstance(p, xr.Dataset) for p in p2fld]):
+            p2flist = p2fld
+        else:
+            p2flist = [pl.Path(p) for p in p2fld]
+
     p2flist.sort()
     dslist = []
     for p2f in p2flist:
-        ds = xr.open_dataset(p2f)
-        dt = pd.to_datetime(p2f.name.split('_')[-1].split('.')[0])
-        ampm = p2f.name.split('_')[1]
+        if isinstance(p2f, xr.Dataset):
+            ds = p2f
+        else:
+            ds = xr.open_dataset(p2f)
+        if 'date' in ds.attrs:
+            dt = pd.to_datetime(ds.attrs['date'])
+        else:
+            dt = pd.to_datetime(p2f.name.split('_')[-1].split('.')[0])
+        if 'when' in ds.attrs:
+            ampm = ds.attrs['when']
+        else:
+            ampm = p2f.name.split('_')[1]
         if ampm == 'pm':
             dt += pd.to_timedelta(6, 'h')
         ds = ds.expand_dims(datetime = [dt])
@@ -573,8 +597,8 @@ class Langley_Timeseries(object):
             osub = np.sqrt((n-1)/chi2val) # this is the one-sided upper bound factor with a 95% confidence
             osubs.append(osub)
             
-        dsout['no_langleys'] = ('wavelength', ns)
-        dsout.no_langleys.attrs['description'] = 'Number of langleys used.'
+        dsout['number_of_cals'] = ('wavelength', ns)
+        dsout.number_of_cals.attrs['description'] = 'Number of langleys used.'
         dsout['one_sided_upper_bound_factor_95conf'] = ('wavelength', osubs)
         dsout.one_sided_upper_bound_factor_95conf.attrs['description'] = r'one-sided upper bound factor with a 95% confidence, mostly relevant for small number of langleys.'
 
@@ -583,6 +607,7 @@ class Langley_Timeseries(object):
         dsout['OD_uncertainty'] = (dsout['one_sided_upper_bound_factor_95conf'] * dsout['V0_std'] / dsout['V0']) + additional_uncertainty
         dsout.OD_uncertainty.attrs['description'] = r'(V0_std / V0 * osub) + 0.005. osub: one-sided upper bound factor with a 95% confidence, mostly relevant for small number of langleys. This still needs to be multiplide by 1/AMF to get the uncertainty in (A)OD. Michalsky 2001.'
         dsout['V0_stderr'] = self.dataset.langley_fitres.sel(fit_results = 'intercept_stderr', drop = True).mean('datetime')
+        # dsout = dsout.drop_vars('quantile')
         return dsout
 
     @property
@@ -864,6 +889,9 @@ class Langley(object):
                 # converged = True
                 status = 'converged'
                 break
+
+            self.tp_where = where
+            self.tp_langley = langley.langleys.copy()
             try:
                 langley.langleys = langley.langleys[where]
             except:
@@ -886,7 +914,7 @@ class Langley(object):
             fit_index = self.langleys.index.append(pd.Index([0])).sort_values()
             fit = pd.DataFrame(res.intercept + (res.slope * fit_index), index = fit_index)#, columns=['fit'])
             fit.columns = ['fit',]
-            if not isinstance(self.langley_pre_clean, type(None)) and show_pre_clean: # if there was a cleaning step, plot the original data as well
+            if not isinstance(self.langley_pre_clean, (type(None), bool)) and show_pre_clean: # if there was a cleaning step, plot the original data as well
                 self.langley_pre_clean.langleys[wl].plot(ax = a, marker = '.', ls = '', markersize = 3, 
                                                          color = 'red', 
                                                         #  alpha = 0.5
