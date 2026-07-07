@@ -114,7 +114,7 @@ class SolarIrradiation(object):
     @property
     def mu0(self):
         if 'mu0' not in self.dataset:
-            self.dataset['mu0'] = np.cos(self.sun_position.zenith) 
+            self.dataset['mu0'] = np.cos(self.sun_position.solar_zenith) 
         return self.dataset['mu0']
     
     @property
@@ -228,6 +228,20 @@ class CombinedGlobalDiffuseDirect(SolarIrradiation):
         self._kwargs = kwargs
 
     @property
+    def clearsky_global_horizontal(self):
+        if 'clearsky_global_horizontal' not in self.dataset:
+            params = self.clearsky_global_irradiation_powerlow_fit_params
+            
+            A = params.to_pandas().a
+            b = params.to_pandas().b
+            fit = A * np.power(self.mu0, b)
+            self.dataset['clearsky_global_horizontal'] = fit
+            self.dataset.clearsky_global_horizontal.attrs = {}
+            self.dataset.clearsky_global_horizontal.attrs['long_name'] = 'Clear sky global horizontal irradiance (empirical power law fit)'
+            self.dataset.clearsky_global_horizontal.attrs['unit'] = 'W m-2'
+        return self.dataset['clearsky_global_horizontal']
+    
+    @property
     def clearsky_global_irradiation_powerlow_fit_params(self):
         """Performes a empirical power law fit to the clear sky global irradiance
         and returns the fit parameters."""
@@ -243,26 +257,56 @@ class CombinedGlobalDiffuseDirect(SolarIrradiation):
                 
             self.dataset['clearsky_global_irradiation_powerlow_fit_params'] = params
         return self.dataset['clearsky_global_irradiation_powerlow_fit_params']
-        # return params
-        #     def fit_func(mu0_values):
-        # return A * np.power(mu0_values, b)
 
-    def plot_clearsky_global_irradiation_powerlow_fit(self, ax = None):
-        params = self.clearsky_global_irradiation_powerlow_fit_params
-        if params.isnull():
-            print('Not enough clearsky points for valid fit.')
-            return None, None
-        if isinstance(ax, type(None)):
-            f, a= mpl.pyplot.subplots()    
-        else:
-            a = ax
-            f = a.get_figure()
+    @property
+    def clearsky_diffuse_irradiation_powerlow_fit_params(self):
+        """Performes a empirical power law fit to the clear sky diffuse irradiance
+        and returns the fit parameters."""
+
+        if 'clearsky_diffuse_irradiation_powerlow_fit_params' not in self.dataset:
+            if self.verbose:
+                print('performing powerlow fit for clear sky diffuse irradiance')
+            dt_in_m = np.median(self.dataset.datetime.values[1:]-self.dataset.datetime.values[:-1])/pd.to_timedelta(1,'m')
+
+            params = atmcsk.fit_global_powerlaw_mu0(self.mu0, self.dataset.diffuse_horizontal, self.mask_clear_sky_radflux, 
+                                                        mu0_min = self.get_attr('mu0_min'),
+                                                        min_points = dt_in_m * 100)
+            if isinstance(params, type(None)) and self.verbose:
+                print('fit failed, probably not enough clear sky points')
+                
+            self.dataset['clearsky_diffuse_irradiation_powerlow_fit_params'] = params
+        return self.dataset['clearsky_diffuse_irradiation_powerlow_fit_params']
+    
+    @property
+    def clearsky_diffuse_horizontal(self):
+        if 'clearsky_diffuse_horizontal' not in self.dataset:
+            params = self.clearsky_diffuse_irradiation_powerlow_fit_params
+            
+            A = params.to_pandas().a
+            b = params.to_pandas().b
+            fit = A * np.power(self.mu0, b)
+            self.dataset['clearsky_diffuse_horizontal'] = fit
+            self.dataset.clearsky_diffuse_horizontal.attrs = {}
+            self.dataset.clearsky_diffuse_horizontal.attrs['long_name'] = 'Clear sky diffuse horizontal irradiance (empirical power law fit)'
+            self.dataset.clearsky_diffuse_horizontal.attrs['unit'] = 'W m-2'
+        return self.dataset['clearsky_diffuse_horizontal']
+
+    # def plot_clearsky_global_irradiation_powerlow_fit(self, ax = None):
+    #     params = self.clearsky_global_irradiation_powerlow_fit_params
+    #     if any(params.isnull()):
+    #         print('Not enough clearsky points for valid fit.')
+    #         return None, None
+    #     if isinstance(ax, type(None)):
+    #         f, a= mpl.pyplot.subplots()    
+    #     else:
+    #         a = ax
+    #         f = a.get_figure()
         
-        A = params.to_pandas().a
-        b = params.to_pandas().b
-        fit = A * np.power(self.mu0, b)
-        fit.plot(ax = a, label = 'fit')
-        return f,a
+    #     A = params.to_pandas().a
+    #     b = params.to_pandas().b
+    #     fit = A * np.power(self.mu0, b)
+    #     fit.plot(ax = a, label = 'fit')
+    #     return f,a
 
     @property
     def clearsky_parameters(self):
@@ -277,6 +321,10 @@ class CombinedGlobalDiffuseDirect(SolarIrradiation):
                                                'mask_diffuse_magnitude',
                                                'mask_global_irradiance_variability'], errors= 'ignore')
         for k,v in cs_params.items():
+            if k== 'ndr_window':
+                if self.verbose:
+                    print('casting ndr_window to int')
+                v = int(v)
             self.dataset.attrs[k] = v
 
     def _get_clearsky_parameters(self, include_estimates = True):
@@ -530,7 +578,7 @@ class CombinedGlobalDiffuseDirect(SolarIrradiation):
         self.dataset.attrs['diffuse_max_coeff_estimated'] = float(dcswd.to_pandas().a * 1.2)
         self.dataset.attrs['diffuse_max_exp_estimated'] = float(dcswd.to_pandas().b)
 
-        dsw_dt = self.dataset.global_horizontal.where(self.mask_clear_sky_radflux).differentiate('datetime') 
+        dsw_dt = self.dataset.global_horizontal.where(self.mask_clear_sky_radflux).compute().differentiate('datetime') #compute is required as otherwise you will run into chunksize issues.
         ns_per_minute = np.float64(60 * 1e9)
         dsw_dt_per_min = dsw_dt * ns_per_minute
         dsw_dt_abs = np.abs(dsw_dt_per_min)
