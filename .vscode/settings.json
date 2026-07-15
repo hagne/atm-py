@@ -4,5 +4,12 @@
     "python.analysis.extraPaths": [
         "../productomator",
         "../atm-py"
+    ],
+    "python-envs.pythonProjects": [
+        {
+            "path": "atmPy/radiation/radflux/radflux_db.py",
+            "envManager": "ms-python.python:conda",
+            "packageManager": "ms-python.python:conda"
+        }
     ]
 }

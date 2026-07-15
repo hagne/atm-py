@@ -296,6 +296,7 @@ def fit_global_powerlaw_mu0(
         Labeled output with:
         - tcswd_a: coefficient
         - tcswd_b: exponent
+        - r_squared: coefficient of determination in log space
         None if not enough valid points.
     """
     cond = (
@@ -321,13 +322,28 @@ def fit_global_powerlaw_mu0(
     z = np.log(y_sel[valid])
 
     # Simple least-squares fit: z = log(A) + b * x
-    b, logA = np.polyfit(x, z, 1)
+    n = x.size
+    x_sum = x.sum()
+    z_sum = z.sum()
+    x_mean = x_sum / n
+    z_mean = z_sum / n
+    sxx = np.dot(x, x) - x_sum * x_mean
+    sxz = np.dot(x, z) - x_sum * z_mean
+    szz = np.dot(z, z) - z_sum * z_mean
+    if sxx <= 0:
+        return None
+
+    b = sxz / sxx
+    logA = z_mean - b * x_mean
     A = np.exp(logA)
+    r2 = np.nan
+    if szz > 0:
+        r2 = float(np.clip((sxz * sxz) / (sxx * szz), 0.0, 1.0))
 
     da =  xr.DataArray(
-        np.array((A, b), dtype=np.float64),
+        np.array((A, b, r2), dtype=np.float64),
         dims=("fit_params_tcswd",),
-        coords={"fit_params_tcswd": np.array(("a", "b"), dtype=object)},
+        coords={"fit_params_tcswd": np.array(("a", "b", "r2"), dtype=object)},
         name="global_powerlaw_mu0_fit",
     )
     da.attrs['info'] = 'Fit result for global_irradiance = a * mu0^b under clearsky conditions.'
@@ -407,12 +423,14 @@ def fit_diffuse_mu0_powerlaw(
     mu0_min: float,
     min_points: int = 100,) -> xr.DataArray | None:
     """
-    Fit a simple power law for `global_irradiance`:
-    global_irradiance = A * mu0^b
+    Fit a simple power law for `diffuse_irradiance`:
+    diffuse_irradiance = A * mu0^b
     using a linear regression in log space:
-    log(global_irradiance) = log(A) + b * log(mu0)
+    log(diffuse_irradiance) = log(A) + b * log(mu0)
     over points where `mask_clearsky` is True, mu0 >= mu0_min, and
-    global_irradiance > 0.
+    diffuse_irradiance > 0.
+
+    This is in principle the same as fit_global_powerlaw_mu0, but is kept separate to allow independent development.
 
     Returns
     -------
@@ -446,16 +464,35 @@ def fit_diffuse_mu0_powerlaw(
     z = np.log(y_sel[valid])
 
     # Simple least-squares fit: z = log(A) + b * x
-    b, logA = np.polyfit(x, z, 1)
+    # b, logA = np.polyfit(x, z, 1)
+    # A = np.exp(logA)
+    n = x.size
+    x_sum = x.sum()
+    z_sum = z.sum()
+    x_mean = x_sum / n
+    z_mean = z_sum / n
+    sxx = np.dot(x, x) - x_sum * x_mean
+    sxz = np.dot(x, z) - x_sum * z_mean
+    szz = np.dot(z, z) - z_sum * z_mean
+    if sxx <= 0:
+        return None
+
+    b = sxz / sxx
+    logA = z_mean - b * x_mean
     A = np.exp(logA)
+    r2 = np.nan
+    if szz > 0:
+        r2 = float(np.clip((sxz * sxz) / (sxx * szz), 0.0, 1.0))
+
 
     da =  xr.DataArray(
-        np.array((A, b), dtype=np.float64),
+        np.array((A, b, r2), dtype=np.float64),
         dims=("fit_params_dcswd",),
-        coords={"fit_params_dcswd": np.array(("a", "b"), dtype=object)},
+        coords={"fit_params_dcswd": np.array(("a", "b", "r2"), dtype=object)},
         name="fit_diffuse_mu0_powerlaw",
     )
-    da.attrs['info'] = '''Fit result for diffuce_irradiance = a * mu0^b under clearsky conditions.
+
+    da.attrs['info'] = '''Fit result for diffuse_irradiance = a * mu0^b under clearsky conditions.
     Here a is the infered value for diffuse_max_coeff minus a margin of 10-20%. 
     b is the infered value for diffuse_max_exp and should be close to 0.5'''
     # da.attrs['infert_diffuse_max_coeff'] = A * 1.2

@@ -30,7 +30,7 @@ def set_shared_label(a, label, axis='x', labelpad=0.01):
         for at in a:
             at.set_ylabel('')  # just to make sure we don't and up with multiple labels
             # bboxes, _ = at.yaxis.get_ticklabel_extents(f.canvas.renderer) # get_ticklabl_extents is deprecated
-            bboxes = [label.get_window_extent() for label in at.get_xticklabels()][0]
+            bboxes = [label.get_window_extent() for label in at.get_yticklabels()][0]
             # bboxes = bboxes.inverse_transformed(f.transFigure) #deprecated
             bboxes = bboxes.transformed(f.transFigure.inverted())
             xt = bboxes.x0
