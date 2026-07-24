@@ -33,8 +33,8 @@ Repository = "https://github.com/hagne/atm-py"
 [tool.setuptools]
 packages = ["atmPy"]
 
-#[project.optional-dependencies]
-#plotting = ["matplotlib"]
+[project.optional-dependencies]
+nasa = ["earthaccess", "harmony-py"]
 
 #[tool.setuptools]
 #find-packages = { where = "." }

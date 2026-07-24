@@ -34,6 +34,7 @@ default_config = dict(# General filters
 
 class _DatasetRef(object):
     def __init__(self, dataset):
+        """A simple class to hold a reference to a dataset. This is used to allow multiple classes to share the same dataset without having to pass it around explicitly."""
         self.dataset = dataset
 
 
