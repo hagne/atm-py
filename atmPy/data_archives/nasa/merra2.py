@@ -1,9 +1,37 @@
-"""Download MERRA-2 data from NASA Earthdata."""
+"""Download current MERRA-2-related data from NASA Earthdata.
+
+The catalog is not hard-coded. :meth:`Merra2.available_products` queries NASA's
+Common Metadata Repository (CMR) and returns the current version, title, native
+format, and exact GES DISC dataset URL for every collection that NASA identifies
+with a MERRA-2 project or platform tag. This includes the standard reanalysis,
+climate-statistics, gridded-observation (GIO), and M2-SCREAM collections.
+
+NASA documentation and catalogs:
+
+* MERRA-2 project and data access:
+  https://disc.gsfc.nasa.gov/information/mission-project?title=MERRA-2
+* GMAO MERRA-2 documentation and file specifications:
+  https://gmao.gsfc.nasa.gov/gmao-products/merra-2/documentation_merra-2/
+* GES DISC collection catalog:
+  https://cmr.earthdata.nasa.gov/search/site/collections/directory/GES_DISC/gov.nasa.eosdis
+* Most standard collection pages use:
+  https://disc.gsfc.nasa.gov/datacollection/{SHORT_NAME}_{VERSION}.html
+
+For example, the single-level hourly collection is documented at
+https://disc.gsfc.nasa.gov/datacollection/M2T1NXSLV_5.12.4.html, the current
+monthly extremes collection at
+https://disc.gsfc.nasa.gov/datacollection/M2SMNXEDI_2.html, a GIO collection at
+https://disc.gsfc.nasa.gov/datasets/M2_MHS_METOP-B_1/summary, and M2-SCREAM at
+https://disc.gsfc.nasa.gov/datasets/GMAO_M2SCREAM_INST3_CHEM_1/summary.
+Use ``Merra2.available_products().dataset_url`` for the corresponding URL of
+each dataset in the live catalog.
+"""
 
 import configparser
 import hashlib
 import json
 import os
+import re
 import warnings
 from datetime import date, datetime, timezone
 from pathlib import Path
@@ -28,12 +56,52 @@ DownloadBackend = Literal["harmony", "earthaccess"]
 
 
 class Merra2:
-    """Access and subset a MERRA-2 collection using NASA Earthdata."""
+    """Access a current MERRA-2-related collection using NASA Earthdata.
+
+    Parameters
+    ----------
+    short_name
+        NASA collection short name, for example ``"M2T1NXSLV"`` for hourly
+        single-level diagnostics, ``"M2T1NXAER"`` for hourly aerosol
+        diagnostics, or ``"M2I3NPASM"`` for three-hourly pressure-level
+        assimilated meteorology.
+    version
+        Collection version. The default, ``None``, resolves the current version
+        from NASA CMR. An explicitly requested older version is rejected so an
+        outdated collection cannot be downloaded accidentally.
+    backend
+        ``"harmony"`` requests variable and spatial subsetting before download.
+        Not every MERRA-2-related collection offers a Harmony service; use
+        ``"earthaccess"`` to download its original files.
+
+    Notes
+    -----
+    Dataset titles, versions, formats, and exact landing-page URLs are available
+    from :meth:`available_products`. The authoritative general documentation is
+    https://gmao.gsfc.nasa.gov/gmao-products/merra-2/documentation_merra-2/.
+    Each product's NASA website is also exposed as ``dataset_url`` after
+    :meth:`resolve_product` or :meth:`download` is called.
+    """
 
     short_name = "M2T1NXSLV"
-    version = "5.12.4"
+    version = None
     ozone_variable = "TO3"
     ozone_units = "Dobsons"
+    collection_provider = "GES_DISC"
+    current_collection_states = frozenset({"ACTIVE", "COMPLETE"})
+    merra2_projects = frozenset({"MERRA-2", "MERRA-2 Observation"})
+    merra2_platform = "MERRA-2"
+    project_url = (
+        "https://disc.gsfc.nasa.gov/information/mission-project?title=MERRA-2"
+    )
+    documentation_url = (
+        "https://gmao.gsfc.nasa.gov/gmao-products/merra-2/"
+        "documentation_merra-2/"
+    )
+    collection_catalog_url = (
+        "https://cmr.earthdata.nasa.gov/search/site/collections/"
+        "directory/GES_DISC/gov.nasa.eosdis"
+    )
     earthdata_eula_url = (
         "https://urs.earthdata.nasa.gov/users/{username}/unaccepted_eulas"
     )
@@ -51,14 +119,21 @@ password = YOUR_PASSWORD
         chunks: str | dict[str, int] | None = "auto",
         auth_strategy: AuthStrategy = "settings",
         short_name: str = "M2T1NXSLV",
-        version: str = "5.12.4",
+        version: str | None = None,
         backend: DownloadBackend = "harmony",
     ):
         if backend not in ("harmony", "earthaccess"):
             raise ValueError("backend must be 'harmony' or 'earthaccess'")
+        if not isinstance(short_name, str) or not short_name.strip():
+            raise ValueError("short_name must be a NASA collection short name")
+        if version is not None and (
+            not isinstance(version, str) or not version.strip()
+        ):
+            raise ValueError("version must be a non-empty string or None")
 
-        self.short_name = short_name
-        self.version = version
+        self.short_name = short_name.strip()
+        self.requested_version = version.strip() if version is not None else None
+        self.version = self.requested_version
         self.backend = backend
 
         if settings_path is None:
@@ -79,6 +154,12 @@ password = YOUR_PASSWORD
         self.auth = None
         self.collection = None
         self.concept_id: str | None = None
+        self.collection_status: str | None = None
+        self.product_title: str | None = None
+        self.native_format: str | None = None
+        self.dataset_url: str | None = None
+        self.data_url: str | None = None
+        self.product_metadata: dict[str, str | bool] | None = None
         self.harmony_client = None
         self.harmony_request = None
         self.harmony_job_id: str | None = None
@@ -229,24 +310,262 @@ password = YOUR_PASSWORD
         username = self.username or "earthaccess"
         return self.earthdata_eula_url.format(username=username)
 
-    def _find_collection(self) -> None:
-        collections = earthaccess.search_datasets(
-            short_name=self.short_name,
-            version=self.version,
+    @staticmethod
+    def _collection_umm(collection) -> dict:
+        return collection.get("umm", {})
+
+    @classmethod
+    def _is_merra2_collection(cls, collection) -> bool:
+        umm = cls._collection_umm(collection)
+        projects = {
+            project.get("ShortName")
+            for project in umm.get("Projects", [])
+        }
+        platforms = {
+            platform.get("ShortName")
+            for platform in umm.get("Platforms", [])
+        }
+        return bool(
+            projects.intersection(cls.merra2_projects)
+            or cls.merra2_platform in platforms
         )
-        if not collections:
-            raise FileNotFoundError(
-                f"No MERRA-2 collection found for {self.short_name} "
-                f"version {self.version}"
+
+    @classmethod
+    def _version_key(cls, collection) -> tuple[int, ...]:
+        version = cls._collection_umm(collection).get("Version", "")
+        return tuple(int(part) for part in re.findall(r"\d+", version))
+
+    @classmethod
+    def _current_collection(cls, collections: list):
+        candidates = [
+            collection
+            for collection in collections
+            if cls._is_merra2_collection(collection)
+            and cls._collection_umm(collection).get("CollectionProgress")
+            in cls.current_collection_states
+        ]
+        if not candidates:
+            return None
+
+        return max(
+            candidates,
+            key=lambda collection: (
+                cls._version_key(collection),
+                cls._collection_umm(collection).get("CollectionProgress")
+                == "ACTIVE",
+                collection.get("meta", {}).get("revision-date", ""),
+            ),
+        )
+
+    @classmethod
+    def _collection_url(cls, collection, url_type: str) -> str | None:
+        related_urls = cls._collection_umm(collection).get(
+            "RelatedUrls",
+            [],
+        )
+        for related_url in related_urls:
+            if related_url.get("Type") == url_type:
+                return related_url.get("URL")
+        return None
+
+    @classmethod
+    def _metadata_from_collection(
+        cls,
+        collection,
+    ) -> dict[str, str | bool]:
+        umm = cls._collection_umm(collection)
+        meta = collection.get("meta", {})
+        short_name = umm.get("ShortName", "")
+        version = umm.get("Version", "")
+        dataset_url = cls._collection_url(
+            collection,
+            "DATA SET LANDING PAGE",
+        )
+        if dataset_url is None:
+            dataset_url = (
+                "https://disc.gsfc.nasa.gov/datacollection/"
+                f"{short_name}_{version}.html"
             )
 
-        self.collection = collections[0]
-        concept_id = self.collection.concept_id
-        if callable(concept_id):
-            with warnings.catch_warnings():
-                warnings.simplefilter("ignore", FutureWarning)
-                concept_id = concept_id()
-        self.concept_id = concept_id
+        formats = {
+            file_information.get("Format")
+            for file_information in umm.get(
+                "ArchiveAndDistributionInformation",
+                {},
+            ).get("FileArchiveInformation", [])
+            if file_information.get("Format")
+        }
+        associations = meta.get("associations", {})
+        return {
+            "short_name": short_name,
+            "version": version,
+            "status": umm.get("CollectionProgress", ""),
+            "title": umm.get("EntryTitle", ""),
+            "native_format": ", ".join(sorted(formats)),
+            "concept_id": meta.get("concept-id", ""),
+            "dataset_url": dataset_url,
+            "data_url": cls._collection_url(collection, "GET DATA") or "",
+            "associated_services": bool(associations.get("services")),
+        }
+
+    @classmethod
+    def available_products(cls) -> xr.Dataset:
+        """Return NASA's current MERRA-2-related product catalog.
+
+        The returned dataset has one ``short_name`` coordinate per current
+        collection and includes ``version``, ``title``, ``native_format``,
+        ``status``, ``concept_id``, ``dataset_url``, ``data_url``, and
+        ``associated_services``. ``dataset_url`` contains the exact NASA GES
+        DISC website for each product.
+
+        CMR uses several metadata routes for the MERRA-2 product families.
+        This method combines the standard MERRA-2 project, the MERRA-2 platform,
+        and the MERRA-2 Observation project searches, then retains only the
+        newest ``ACTIVE`` or ``COMPLETE`` version of each short name.
+
+        See also
+        --------
+        NASA MERRA-2 documentation:
+        https://gmao.gsfc.nasa.gov/gmao-products/merra-2/documentation_merra-2/
+        NASA GES DISC catalog:
+        https://cmr.earthdata.nasa.gov/search/site/collections/directory/GES_DISC/gov.nasa.eosdis
+        """
+        searches = (
+            {"project": "MERRA-2"},
+            {"platform": cls.merra2_platform},
+            {"project": "MERRA-2 Observation"},
+        )
+        collections_by_concept_id = {}
+        for search in searches:
+            collections = earthaccess.search_datasets(
+                provider=cls.collection_provider,
+                count=-1,
+                **search,
+            )
+            for collection in collections:
+                concept_id = collection.get("meta", {}).get("concept-id")
+                if concept_id:
+                    collections_by_concept_id[concept_id] = collection
+
+        collections_by_short_name: dict[str, list] = {}
+        for collection in collections_by_concept_id.values():
+            if not cls._is_merra2_collection(collection):
+                continue
+            short_name = cls._collection_umm(collection).get("ShortName")
+            if short_name:
+                collections_by_short_name.setdefault(short_name, []).append(
+                    collection
+                )
+
+        current_collections = [
+            cls._current_collection(collection_versions)
+            for collection_versions in collections_by_short_name.values()
+        ]
+        metadata = sorted(
+            (
+                cls._metadata_from_collection(collection)
+                for collection in current_collections
+                if collection is not None
+            ),
+            key=lambda product: product["short_name"],
+        )
+        if not metadata:
+            raise FileNotFoundError(
+                "NASA CMR did not return any current MERRA-2 collections"
+            )
+
+        fields = (
+            "version",
+            "status",
+            "title",
+            "native_format",
+            "concept_id",
+            "dataset_url",
+            "data_url",
+            "associated_services",
+        )
+        return xr.Dataset(
+            data_vars={
+                field: (
+                    "short_name",
+                    [product[field] for product in metadata],
+                )
+                for field in fields
+            },
+            coords={
+                "short_name": [
+                    product["short_name"] for product in metadata
+                ]
+            },
+            attrs={
+                "source": "NASA Common Metadata Repository",
+                "project_url": cls.project_url,
+                "documentation_url": cls.documentation_url,
+                "collection_catalog_url": cls.collection_catalog_url,
+                "selection": (
+                    "Newest ACTIVE or COMPLETE version for each short name"
+                ),
+            },
+        )
+
+    def resolve_product(self) -> dict[str, str | bool]:
+        """Resolve and return metadata for the current requested product.
+
+        ``dataset_url`` in the returned dictionary is the product's exact NASA
+        GES DISC website. If ``version`` was omitted during construction, the
+        resolved current version is stored on :attr:`version`.
+        """
+        self._find_collection()
+        return dict(self.product_metadata)
+
+    def _find_collection(self) -> None:
+        if self.collection is not None:
+            return
+
+        collections = earthaccess.search_datasets(
+            short_name=self.short_name,
+            provider=self.collection_provider,
+            count=-1,
+        )
+        current_collection = self._current_collection(collections)
+        if current_collection is None:
+            raise FileNotFoundError(
+                f"No current MERRA-2-related collection found for "
+                f"{self.short_name!r}. Use Merra2.available_products() to "
+                "inspect valid short names, versions, descriptions, and NASA "
+                "dataset URLs."
+            )
+
+        current_version = self._collection_umm(current_collection).get("Version")
+        if (
+            self.requested_version is not None
+            and self.requested_version != current_version
+        ):
+            metadata = self._metadata_from_collection(current_collection)
+            raise ValueError(
+                f"{self.short_name} version {self.requested_version} is not "
+                f"current. The current NASA version is {current_version}: "
+                f"{metadata['dataset_url']}"
+            )
+
+        self.collection = current_collection
+        self.version = current_version
+        self.product_metadata = self._metadata_from_collection(self.collection)
+        self.concept_id = self.product_metadata["concept_id"]
+        if not self.concept_id:
+            concept_id = self.collection.concept_id
+            if callable(concept_id):
+                with warnings.catch_warnings():
+                    warnings.simplefilter("ignore", FutureWarning)
+                    concept_id = concept_id()
+            self.concept_id = concept_id
+            self.product_metadata["concept_id"] = concept_id
+
+        self.collection_status = self.product_metadata["status"]
+        self.product_title = self.product_metadata["title"]
+        self.native_format = self.product_metadata["native_format"]
+        self.dataset_url = self.product_metadata["dataset_url"]
+        self.data_url = self.product_metadata["data_url"]
 
     def _harmony_download_dir(
         self,
@@ -357,6 +676,7 @@ password = YOUR_PASSWORD
         start: datetime,
         end: datetime,
     ) -> None:
+        self._find_collection()
         temporal = (
             f"{start.isoformat()}Z",
             f"{end.isoformat()}Z",
@@ -422,6 +742,10 @@ password = YOUR_PASSWORD
         maps dimension names to inclusive minimum and maximum values. Harmony
         performs these subsets before download. Use ``backend="earthaccess"``
         to download complete granules and subset them locally instead.
+
+        ``short_name`` and the current product version are configured on the
+        :class:`Merra2` instance. Call :meth:`available_products` for current
+        short names, product descriptions, and NASA dataset URLs.
         """
         start_datetime = self._as_utc_naive(start)
         end_datetime = self._as_utc_naive(end, end_of_day=True)
@@ -523,6 +847,19 @@ password = YOUR_PASSWORD
                 )
 
         self.dataset = ds.sel(datetime=slice(start_datetime, end_datetime))
+        product_attributes = {
+            "merra2_short_name": self.short_name,
+            "merra2_version": self.version,
+            "merra2_product_title": self.product_title,
+            "merra2_dataset_url": self.dataset_url,
+        }
+        self.dataset.attrs.update(
+            {
+                name: value
+                for name, value in product_attributes.items()
+                if value is not None
+            }
+        )
         return self.dataset
 
     def download_total_column_ozone(

@@ -26,12 +26,14 @@ from atmPy.data_archives.nasa import merra2
 
 
 class EarthaccessStub:
-    def __init__(self):
+    def __init__(self, collections=None):
         self.login_kwargs = None
         self.login_environment = None
         self.search_kwargs = None
         self.dataset_search_kwargs = None
+        self.dataset_searches = []
         self.download_args = None
+        self.collections = collections
 
     def login(self, **kwargs):
         self.login_kwargs = kwargs
@@ -43,7 +45,14 @@ class EarthaccessStub:
 
     def search_datasets(self, **kwargs):
         self.dataset_search_kwargs = kwargs
-        return [CollectionResultStub()]
+        self.dataset_searches.append(kwargs)
+        if self.collections is not None:
+            return self.collections
+        return [
+            CollectionResultStub(
+                short_name=kwargs.get("short_name", "M2T1NXSLV"),
+            )
+        ]
 
     def search_data(self, **kwargs):
         self.search_kwargs = kwargs
@@ -54,9 +63,63 @@ class EarthaccessStub:
         return [download_dir / "day-1.nc4", download_dir / "day-2.nc4"]
 
 
-class CollectionResultStub:
+class CollectionResultStub(dict):
+    def __init__(
+        self,
+        *,
+        short_name="M2T1NXSLV",
+        version="5.12.4",
+        status="ACTIVE",
+        concept_id="C123456789-GES_DISC",
+        projects=("MERRA-2",),
+        platforms=("MERRA-2",),
+        dataset_url=None,
+        native_format="NetCDF",
+    ):
+        if dataset_url is None:
+            dataset_url = (
+                "https://disc.gsfc.nasa.gov/datacollection/"
+                f"{short_name}_{version}.html"
+            )
+        super().__init__(
+            meta={
+                "concept-id": concept_id,
+                "provider-id": "GES_DISC",
+                "revision-date": "2026-01-01T00:00:00Z",
+                "associations": {"services": ["S1-GES_DISC"]},
+            },
+            umm={
+                "ShortName": short_name,
+                "Version": version,
+                "CollectionProgress": status,
+                "EntryTitle": f"Description of {short_name}",
+                "Projects": [
+                    {"ShortName": project} for project in projects
+                ],
+                "Platforms": [
+                    {"ShortName": platform} for platform in platforms
+                ],
+                "RelatedUrls": [
+                    {
+                        "Type": "DATA SET LANDING PAGE",
+                        "URL": dataset_url,
+                    },
+                    {
+                        "Type": "GET DATA",
+                        "URL": f"https://example.nasa.gov/{short_name}/",
+                    },
+                ],
+                "ArchiveAndDistributionInformation": {
+                    "FileArchiveInformation": [
+                        {"Format": native_format}
+                    ]
+                },
+            },
+        )
+        self._concept_id = concept_id
+
     def concept_id(self):
-        return "C123456789-GES_DISC"
+        return self._concept_id
 
 
 class DownloadFutureStub:
@@ -222,6 +285,12 @@ class DownloadTotalColumnOzoneTests(unittest.TestCase):
         )
         self.assertEqual(list(ds.data_vars), ["TO3"])
         self.assertEqual(ds.TO3.attrs["units"], "Dobsons")
+        self.assertEqual(ds.attrs["merra2_version"], "5.12.4")
+        self.assertEqual(
+            ds.attrs["merra2_dataset_url"],
+            "https://disc.gsfc.nasa.gov/datacollection/"
+            "M2T1NXSLV_5.12.4.html",
+        )
         self.assertEqual(ds.sizes["datetime"], 1)
         self.assertAlmostEqual(float(ds.TO3.isel(datetime=0, lat=0, lon=0)), 281.0)
 
@@ -386,7 +455,11 @@ class DownloadTotalColumnOzoneTests(unittest.TestCase):
         request = harmony.client_instance.submitted_request
         self.assertEqual(
             earthaccess.dataset_search_kwargs,
-            {"short_name": "M2I3NPASM", "version": "5.12.4"},
+            {
+                "short_name": "M2I3NPASM",
+                "provider": "GES_DISC",
+                "count": -1,
+            },
         )
         self.assertEqual(
             harmony.client_instance.auth_kwargs,
@@ -451,6 +524,173 @@ class DownloadTotalColumnOzoneTests(unittest.TestCase):
                         variables="TO3",
                         show_progress=False,
                     )
+
+
+class Merra2ProductCatalogTests(unittest.TestCase):
+    def test_resolves_the_newest_current_product_and_its_nasa_url(self):
+        collections = [
+            CollectionResultStub(
+                short_name="M2SMNXEDI",
+                version="1",
+                status="COMPLETE",
+                concept_id="C-OLD",
+            ),
+            CollectionResultStub(
+                short_name="M2SMNXEDI",
+                version="2",
+                status="ACTIVE",
+                concept_id="C-CURRENT",
+                dataset_url=(
+                    "https://disc.gsfc.nasa.gov/datacollection/"
+                    "M2SMNXEDI_2.html"
+                ),
+            ),
+        ]
+        earthaccess = EarthaccessStub(collections=collections)
+        client = merra2.Merra2(
+            short_name="M2SMNXEDI",
+            backend="earthaccess",
+        )
+
+        with mock.patch.object(merra2, "earthaccess", earthaccess):
+            product = client.resolve_product()
+
+        self.assertEqual(client.version, "2")
+        self.assertEqual(client.concept_id, "C-CURRENT")
+        self.assertEqual(product["status"], "ACTIVE")
+        self.assertEqual(
+            product["dataset_url"],
+            "https://disc.gsfc.nasa.gov/datacollection/M2SMNXEDI_2.html",
+        )
+        self.assertEqual(
+            earthaccess.dataset_search_kwargs,
+            {
+                "short_name": "M2SMNXEDI",
+                "provider": "GES_DISC",
+                "count": -1,
+            },
+        )
+
+    def test_rejects_an_explicit_outdated_version(self):
+        earthaccess = EarthaccessStub(
+            collections=[
+                CollectionResultStub(
+                    short_name="M2SMNXEDI",
+                    version="1",
+                    status="COMPLETE",
+                    concept_id="C-OLD",
+                ),
+                CollectionResultStub(
+                    short_name="M2SMNXEDI",
+                    version="2",
+                    status="ACTIVE",
+                    concept_id="C-CURRENT",
+                ),
+            ]
+        )
+        client = merra2.Merra2(
+            short_name="M2SMNXEDI",
+            version="1",
+        )
+
+        with (
+            mock.patch.object(merra2, "earthaccess", earthaccess),
+            self.assertRaisesRegex(
+                ValueError,
+                "current NASA version is 2",
+            ),
+        ):
+            client.resolve_product()
+
+    def test_catalog_combines_all_current_merra2_metadata_routes(self):
+        collections = [
+            CollectionResultStub(
+                short_name="M2T1NXSLV",
+                concept_id="C-CORE",
+            ),
+            CollectionResultStub(
+                short_name="M2_MHS_METOP-B",
+                version="1",
+                concept_id="C-GIO",
+                projects=("MEaSUREs",),
+                platforms=("MERRA-2",),
+                dataset_url=(
+                    "https://disc.gsfc.nasa.gov/datasets/"
+                    "M2_MHS_METOP-B_1/summary"
+                ),
+            ),
+            CollectionResultStub(
+                short_name="GMAO_M2SCREAM_INST3_CHEM",
+                version="1",
+                status="COMPLETE",
+                concept_id="C-SCREAM",
+                projects=("MERRA-2 Observation",),
+                platforms=("OBSERVATION BASED",),
+                dataset_url=(
+                    "https://disc.gsfc.nasa.gov/datasets/"
+                    "GMAO_M2SCREAM_INST3_CHEM_1/summary"
+                ),
+            ),
+        ]
+        earthaccess = EarthaccessStub(collections=collections)
+
+        with mock.patch.object(merra2, "earthaccess", earthaccess):
+            catalog = merra2.Merra2.available_products()
+
+        self.assertEqual(catalog.sizes["short_name"], 3)
+        self.assertEqual(
+            catalog.sel(short_name="M2_MHS_METOP-B").version.item(),
+            "1",
+        )
+        self.assertEqual(
+            catalog.sel(
+                short_name="GMAO_M2SCREAM_INST3_CHEM"
+            ).dataset_url.item(),
+            "https://disc.gsfc.nasa.gov/datasets/"
+            "GMAO_M2SCREAM_INST3_CHEM_1/summary",
+        )
+        self.assertEqual(
+            earthaccess.dataset_searches,
+            [
+                {
+                    "provider": "GES_DISC",
+                    "count": -1,
+                    "project": "MERRA-2",
+                },
+                {
+                    "provider": "GES_DISC",
+                    "count": -1,
+                    "platform": "MERRA-2",
+                },
+                {
+                    "provider": "GES_DISC",
+                    "count": -1,
+                    "project": "MERRA-2 Observation",
+                },
+            ],
+        )
+
+    def test_rejects_a_collection_not_identified_with_merra2(self):
+        earthaccess = EarthaccessStub(
+            collections=[
+                CollectionResultStub(
+                    short_name="NOT_MERRA2",
+                    concept_id="C-OTHER",
+                    projects=("OTHER",),
+                    platforms=("OTHER",),
+                )
+            ]
+        )
+        client = merra2.Merra2(short_name="NOT_MERRA2")
+
+        with (
+            mock.patch.object(merra2, "earthaccess", earthaccess),
+            self.assertRaisesRegex(
+                FileNotFoundError,
+                "No current MERRA-2-related collection",
+            ),
+        ):
+            client.resolve_product()
 
 
 class EarthdataSettingsTests(unittest.TestCase):
