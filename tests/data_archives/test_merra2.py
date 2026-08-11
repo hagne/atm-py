@@ -22,7 +22,7 @@ class TimezoneFinder:
 timezonefinder_stub.TimezoneFinder = TimezoneFinder
 sys.modules.setdefault("timezonefinder", timezonefinder_stub)
 
-from atmPy.data_archives.nasa import merra2
+from atmPy.data_archives.nasa import earthdata, merra2
 
 
 class EarthaccessStub:
@@ -248,26 +248,30 @@ def make_dataset(units="Dobsons"):
     return ds
 
 
-class DownloadTotalColumnOzoneTests(unittest.TestCase):
+class Merra2DownloadTests(unittest.TestCase):
     def test_downloads_expected_product_and_returns_requested_values(self):
         earthaccess = EarthaccessStub()
         source = make_dataset()
 
         with tempfile.TemporaryDirectory() as tmpdir:
+            client = merra2.Merra2(
+                download_dir=tmpdir,
+                chunks={"time": 24},
+                settings_path=Path(tmpdir) / "earthdata.ini",
+                auth_strategy="auto",
+                backend="earthaccess",
+            )
             with (
                 mock.patch.dict(os.environ, {}, clear=True),
-                mock.patch.object(merra2, "earthaccess", earthaccess),
+                mock.patch.object(earthdata, "earthaccess", earthaccess),
                 mock.patch.object(
                     merra2.xr, "open_mfdataset", return_value=source
                 ) as open_mfdataset,
             ):
-                ds = merra2.download_total_column_ozone(
+                ds = client.download(
                     "2024-01-01T01:00:00Z",
                     "2024-01-01T02:00:00Z",
-                    download_dir=tmpdir,
-                    chunks={"time": 24},
-                    settings_path=Path(tmpdir) / "earthdata.ini",
-                    backend="earthaccess",
+                    variables="TO3",
                 )
 
         self.assertEqual(earthaccess.login_kwargs, {"strategy": "netrc"})
@@ -294,30 +298,31 @@ class DownloadTotalColumnOzoneTests(unittest.TestCase):
         self.assertEqual(ds.sizes["datetime"], 1)
         self.assertAlmostEqual(float(ds.TO3.isel(datetime=0, lat=0, lon=0)), 281.0)
 
-    def test_rejects_unexpected_ozone_units(self):
+    def test_download_without_variables_returns_all_data_variables(self):
         earthaccess = EarthaccessStub()
+        source = make_dataset()
 
         with tempfile.TemporaryDirectory() as tmpdir:
+            client = merra2.Merra2(
+                download_dir=tmpdir,
+                auth_strategy="netrc",
+                backend="earthaccess",
+            )
             with (
-                mock.patch.object(merra2, "earthaccess", earthaccess),
+                mock.patch.object(earthdata, "earthaccess", earthaccess),
                 mock.patch.object(
                     merra2.xr,
                     "open_mfdataset",
-                    return_value=make_dataset(units="kg m-2"),
+                    return_value=source,
                 ),
             ):
-                with self.assertRaisesRegex(ValueError, "TO3 units must be 'Dobsons'"):
-                    merra2.download_total_column_ozone(
-                        "2024-01-01",
-                        "2024-01-02",
-                        download_dir=tmpdir,
-                        settings_path=Path(tmpdir) / "earthdata.ini",
-                        backend="earthaccess",
-                    )
+                ds = client.download("2024-01-01", "2024-01-02")
+
+        self.assertEqual(list(ds.data_vars), ["TO3", "T2M"])
 
     def test_rejects_reversed_time_period(self):
         with self.assertRaisesRegex(ValueError, "end must be on or after start"):
-            merra2.download_total_column_ozone("2024-01-02", "2024-01-01")
+            merra2.Merra2().download("2024-01-02", "2024-01-01")
 
     def test_date_only_end_includes_the_entire_day(self):
         client = merra2.Merra2(backend="earthaccess")
@@ -347,20 +352,20 @@ class DownloadTotalColumnOzoneTests(unittest.TestCase):
         }
 
         with tempfile.TemporaryDirectory() as tmpdir:
+            client = merra2.Merra2(
+                download_dir=tmpdir,
+                settings_path=Path(tmpdir) / "earthdata.ini",
+                auth_strategy="auto",
+                backend="earthaccess",
+            )
             with (
                 mock.patch.dict(os.environ, environment, clear=True),
-                mock.patch.object(merra2, "earthaccess", earthaccess),
+                mock.patch.object(earthdata, "earthaccess", earthaccess),
                 mock.patch.object(
                     merra2.xr, "open_mfdataset", return_value=make_dataset()
                 ),
             ):
-                merra2.download_total_column_ozone(
-                    "2024-01-01",
-                    "2024-01-02",
-                    download_dir=tmpdir,
-                    settings_path=Path(tmpdir) / "earthdata.ini",
-                    backend="earthaccess",
-                )
+                client.download("2024-01-01", "2024-01-02")
 
         self.assertEqual(earthaccess.login_kwargs, {"strategy": "environment"})
 
@@ -370,7 +375,7 @@ class DownloadTotalColumnOzoneTests(unittest.TestCase):
             with (
                 mock.patch.dict(os.environ, {}, clear=True),
                 mock.patch.object(
-                    merra2, "earthaccess", MissingCredentialsEarthaccessStub()
+                    earthdata, "earthaccess", MissingCredentialsEarthaccessStub()
                 ),
             ):
                 with self.assertRaisesRegex(
@@ -392,6 +397,12 @@ class DownloadTotalColumnOzoneTests(unittest.TestCase):
         earthaccess = EulaNotAcceptedEarthaccessStub()
         with tempfile.TemporaryDirectory() as tmpdir:
             settings_path = Path(tmpdir) / "earthdata.ini"
+            client = merra2.Merra2(
+                download_dir=tmpdir,
+                settings_path=settings_path,
+                auth_strategy="auto",
+                backend="earthaccess",
+            )
             with (
                 mock.patch.dict(
                     os.environ,
@@ -401,19 +412,13 @@ class DownloadTotalColumnOzoneTests(unittest.TestCase):
                     },
                     clear=True,
                 ),
-                mock.patch.object(merra2, "earthaccess", earthaccess),
+                mock.patch.object(earthdata, "earthaccess", earthaccess),
             ):
                 with self.assertRaisesRegex(
                     RuntimeError,
                     "users/test-user/unaccepted_eulas",
                 ):
-                    merra2.download_total_column_ozone(
-                        "2024-01-01",
-                        "2024-01-02",
-                        download_dir=tmpdir,
-                        settings_path=settings_path,
-                        backend="earthaccess",
-                    )
+                    client.download("2024-01-01", "2024-01-02")
 
     def test_harmony_subsets_generic_collection_and_variables(self):
         earthaccess = EarthaccessStub()
@@ -435,8 +440,8 @@ class DownloadTotalColumnOzoneTests(unittest.TestCase):
             )
             with (
                 mock.patch.dict(os.environ, {}, clear=True),
-                mock.patch.object(merra2, "earthaccess", earthaccess),
-                mock.patch.object(merra2, "harmony", harmony),
+                mock.patch.object(earthdata, "earthaccess", earthaccess),
+                mock.patch.object(earthdata, "harmony", harmony),
                 mock.patch.object(
                     merra2.xr,
                     "open_mfdataset",
@@ -496,6 +501,32 @@ class DownloadTotalColumnOzoneTests(unittest.TestCase):
             ).is_relative_to(Path(tmpdir) / "harmony")
         )
 
+    def test_harmony_without_variables_requests_and_returns_all(self):
+        earthaccess = EarthaccessStub()
+        harmony = HarmonyStub()
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            client = merra2.Merra2(download_dir=tmpdir)
+            with (
+                mock.patch.object(earthdata, "earthaccess", earthaccess),
+                mock.patch.object(earthdata, "harmony", harmony),
+                mock.patch.object(
+                    merra2.xr,
+                    "open_mfdataset",
+                    return_value=make_dataset(),
+                ),
+            ):
+                ds = client.download(
+                    "2024-01-01T01:00:00Z",
+                    "2024-01-01T02:00:00Z",
+                    login=False,
+                    show_progress=False,
+                )
+
+        request = harmony.client_instance.submitted_request
+        self.assertEqual(request.variables, ["all"])
+        self.assertEqual(list(ds.data_vars), ["TO3", "T2M"])
+
     def test_harmony_403_explains_service_failure_and_full_file_fallback(self):
         earthaccess = EarthaccessStub()
         harmony = HarmonyStub(
@@ -511,8 +542,8 @@ class DownloadTotalColumnOzoneTests(unittest.TestCase):
                 auth_strategy="netrc",
             )
             with (
-                mock.patch.object(merra2, "earthaccess", earthaccess),
-                mock.patch.object(merra2, "harmony", harmony),
+                mock.patch.object(earthdata, "earthaccess", earthaccess),
+                mock.patch.object(earthdata, "harmony", harmony),
             ):
                 with self.assertRaisesRegex(
                     RuntimeError,
@@ -552,7 +583,7 @@ class Merra2ProductCatalogTests(unittest.TestCase):
             backend="earthaccess",
         )
 
-        with mock.patch.object(merra2, "earthaccess", earthaccess):
+        with mock.patch.object(earthdata, "earthaccess", earthaccess):
             product = client.resolve_product()
 
         self.assertEqual(client.version, "2")
@@ -594,7 +625,7 @@ class Merra2ProductCatalogTests(unittest.TestCase):
         )
 
         with (
-            mock.patch.object(merra2, "earthaccess", earthaccess),
+            mock.patch.object(earthdata, "earthaccess", earthaccess),
             self.assertRaisesRegex(
                 ValueError,
                 "current NASA version is 2",
@@ -634,7 +665,7 @@ class Merra2ProductCatalogTests(unittest.TestCase):
         ]
         earthaccess = EarthaccessStub(collections=collections)
 
-        with mock.patch.object(merra2, "earthaccess", earthaccess):
+        with mock.patch.object(earthdata, "earthaccess", earthaccess):
             catalog = merra2.Merra2.available_products()
 
         self.assertEqual(catalog.sizes["short_name"], 3)
@@ -684,13 +715,62 @@ class Merra2ProductCatalogTests(unittest.TestCase):
         client = merra2.Merra2(short_name="NOT_MERRA2")
 
         with (
-            mock.patch.object(merra2, "earthaccess", earthaccess),
+            mock.patch.object(earthdata, "earthaccess", earthaccess),
             self.assertRaisesRegex(
                 FileNotFoundError,
                 "No current MERRA-2-related collection",
             ),
         ):
             client.resolve_product()
+
+
+class EarthdataClientTests(unittest.TestCase):
+    def test_merra2_is_an_earthdata_subclass(self):
+        self.assertTrue(issubclass(merra2.Merra2, earthdata.Earthdata))
+
+    def test_downloads_files_for_a_non_merra2_collection(self):
+        api = EarthaccessStub(
+            collections=[
+                CollectionResultStub(
+                    short_name="GENERIC_PRODUCT",
+                    version="3",
+                    projects=("OTHER",),
+                    platforms=("OTHER",),
+                )
+            ]
+        )
+        with tempfile.TemporaryDirectory() as tmpdir:
+            client = earthdata.Earthdata(
+                short_name="GENERIC_PRODUCT",
+                provider="TEST_PROVIDER",
+                download_dir=tmpdir,
+                backend="earthaccess",
+            )
+            with mock.patch.object(earthdata, "earthaccess", api):
+                paths = client.download_files(
+                    "2024-01-01T01:00:00Z",
+                    "2024-01-01T02:00:00Z",
+                    variables="SCIENCE_VARIABLE",
+                    login=False,
+                )
+
+        self.assertEqual(client.version, "3")
+        self.assertEqual(
+            api.dataset_search_kwargs,
+            {
+                "short_name": "GENERIC_PRODUCT",
+                "provider": "TEST_PROVIDER",
+                "count": -1,
+            },
+        )
+        self.assertEqual(
+            api.search_kwargs["temporal"],
+            ("2024-01-01T01:00:00Z", "2024-01-01T02:00:00Z"),
+        )
+        self.assertEqual(
+            paths,
+            [Path(tmpdir) / "day-1.nc4", Path(tmpdir) / "day-2.nc4"],
+        )
 
 
 class EarthdataSettingsTests(unittest.TestCase):
@@ -721,7 +801,7 @@ class EarthdataSettingsTests(unittest.TestCase):
 
             with (
                 mock.patch.dict(os.environ, {}, clear=True),
-                mock.patch.object(merra2, "earthaccess", earthaccess),
+                mock.patch.object(earthdata, "earthaccess", earthaccess),
             ):
                 client = merra2.Merra2(
                     settings_path=path,
@@ -758,7 +838,7 @@ class EarthdataSettingsTests(unittest.TestCase):
 
             with (
                 mock.patch.dict(os.environ, existing_environment, clear=True),
-                mock.patch.object(merra2, "earthaccess", earthaccess),
+                mock.patch.object(earthdata, "earthaccess", earthaccess),
             ):
                 client = merra2.Merra2(
                     settings_path=path,
@@ -797,20 +877,20 @@ class EarthdataSettingsTests(unittest.TestCase):
                 backend="earthaccess",
             )
             with (
-                mock.patch.object(merra2, "earthaccess", earthaccess),
+                mock.patch.object(earthdata, "earthaccess", earthaccess),
                 mock.patch.object(
                     merra2.xr,
                     "open_mfdataset",
                     return_value=source,
                 ),
             ):
-                ds = client.download_total_column_ozone(
+                ds = client.download(
                     "2024-01-01T01:00:00",
                     "2024-01-01T02:00:00",
                 )
 
         self.assertEqual(client.short_name, "M2T1NXSLV")
-        self.assertEqual(client.ozone_variable, "TO3")
+        self.assertEqual(list(ds.data_vars), ["TO3", "T2M"])
         self.assertIs(client.dataset, ds)
         self.assertEqual(client.paths, expected_paths)
 

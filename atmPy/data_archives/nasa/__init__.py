@@ -1,13 +1,12 @@
 """Access to data products distributed by NASA."""
 
+from .earthdata import Earthdata, create_earthdata_settings_file
 from .merra2 import (
     Merra2,
-    create_earthdata_settings_file,
-    download_total_column_ozone,
 )
 
 __all__ = [
+    "Earthdata",
     "Merra2",
     "create_earthdata_settings_file",
-    "download_total_column_ozone",
 ]
