@@ -34,7 +34,7 @@ Repository = "https://github.com/hagne/atm-py"
 packages = ["atmPy"]
 
 [project.optional-dependencies]
-nasa = ["earthaccess", "harmony-py"]
+nasa = ["earthaccess", "harmony-py", "netCDF4"]
 
 #[tool.setuptools]
 #find-packages = { where = "." }
