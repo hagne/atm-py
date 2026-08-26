@@ -9,7 +9,6 @@ Created on Thu Aug 25 21:01:37 2022
 # -*- coding: utf-8 -*-
 import pandas as pd
 # from scipy import stats
-import scipy as sp
 import numpy as np
 import pathlib
 from typing import Union
@@ -668,12 +667,11 @@ def fit_langley(langley,
     if not weighted:
         mod = statsmodels.api.OLS(y,x)
     else:
-        idx = langley.index
-        wt = idx[:-1] - idx[1:]
-        wx = np.arange(wt.shape[0])
-        f = sp.interpolate.interp1d(wx, wt, bounds_error=False, fill_value='extrapolate')
-        w = np.append(wt, f(wx[-1] + 1))
-        w = 1/w**2 
+        idx = langley.index.to_numpy(dtype=float)
+        w = np.empty_like(idx)
+        w[0] = (idx[0] - idx[1]) / 2
+        w[-1] = (idx[-2] - idx[-1]) / 2
+        w[1:-1] = (idx[:-2] - idx[2:]) / 2
         parent.tp_w = w
         parent.tp_langley = langley
         mod = statsmodels.api.WLS(y, x, weights = w)

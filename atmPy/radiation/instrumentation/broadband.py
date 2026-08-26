@@ -10,6 +10,7 @@ import re
 import scipy as sp
 import pandas as pd
 import typing
+import xarray as xr
 
 
 
@@ -100,9 +101,14 @@ def thermistor_resistance2temperature(r,
     -------
     Temperatur in Kelvin
     """
+    if isinstance(r, xr.DataArray):
+        assert(r.units == 'ohm'), f'Thermistor resistance units are {r.units}. Should be ohm.'
     bterm = b*np.log(r)
     cterm = c * np.log(r)**3
     t = 1 / (a + bterm + cterm)
+    if isinstance(r, xr.DataArray):
+        t.attrs['units'] = 'K'
+        t.attrs['long_name'] = 'Temperature derived from thermistor resistance'
     return t 
 
 
@@ -139,6 +145,11 @@ class Pyronometer:
         """
         
         cal = self.calibration
+
+        if isinstance(U, xr.DataArray):
+            assert(U.units == 'mV'), 'Thermopile voltage units are {U.units}. Should be mV.'
+            assert(T.units == 'K'), f'Temperature units are {T.units}. Should be K. Note K=0 is at -273.15°C'
+
         T = T - 273.15
         I = U*1e3 / (cal['R'] * ((cal['a'] * T**2) + (cal['b'] * T) + cal['c']))
         

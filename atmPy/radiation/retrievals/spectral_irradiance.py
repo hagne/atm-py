@@ -883,8 +883,6 @@ class DirectNormalIrradiation(SolarIrradiation):
         # self.path2absorption_correction_ceoff_1625 = None #'1625nm_absorption_correction_coefficience.nc'
         self._absorption_correction_coeff_1625 = None
         self.skip_1625_channel = False
-        self._am = None
-        self._pm = None
         # self._transmission = None
         # self._od_rayleigh = None
         self._od_co2ch4h2o = None
@@ -893,6 +891,16 @@ class DirectNormalIrradiation(SolarIrradiation):
         # self._aod = None
         # self._metdata = None
         # self._od_ozone = None
+
+    @property
+    def settings_langley_airmass_limits(self):
+        return self._settings_langley_airmass_limits
+
+    @settings_langley_airmass_limits.setter
+    def settings_langley_airmass_limits(self, value):
+        self._settings_langley_airmass_limits = value
+        self._am = None
+        self._pm = None
     
     def direct_normal_from_direct_horizontal(self):
         """Converts direct horizontal irradiance to direct normal irradiance. 'direct_normal' will be added to the dataset if it is not already present. """
@@ -1938,8 +1946,8 @@ class DirectNormalIrradiation(SolarIrradiation):
         if verbose:
             print('get the one day')
         ##### getting the one day
-        if np.rad2deg(ds.isel(datetime = [0]).zenith) < 90: # if the first value is during daytime, start from previous day
-            assert(False), 'This needs to be implemented more carefully, do so!!'
+        # if np.rad2deg(ds.isel(datetime = [0]).zenith) < 90: # if the first value is during daytime, start from previous day
+        #     assert(False), 'This needs to be implemented more carefully, do so!!'
 
         if verbose:
             print('remove night')

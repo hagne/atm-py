@@ -507,3 +507,5 @@ class Mfrsr(Mfr):
         sialt = self.data_cal_spec_log_head # there is a chance that this instance already has the sunposition calculated, avoids double execution
         si.dataset['direct_normal'] = si.dataset.direct_horizontal / xr.DataArray(np.sin(sialt.sun_position.elevation))
         return si
+
+
