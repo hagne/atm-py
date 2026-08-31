@@ -9,28 +9,29 @@ from atmPy.opt_imports import matplotlib as mpl
 import atmPy.general.measurement_site as atmgms
 import warnings
 from atmPy.radiation.retrievals import tiltcorrection
+import pathlib as pl
+import atmPy.radiation.radflux.lab as atmradflux
 
+SOLAR_CONSTANT = 1361.0
 
-
-
-default_config = dict(# General filters
-                        mu0_min = 0.05,
-                        # normalized shortwave (nsw) magnitude test parameters
-                        nsw_exp = 1.2,
-                        nsw_min = 800.0,
-                        nsw_max = 1400.0,
-                        # Diffuse magnitude test parameters
-                        diffuse_max_coeff = 600,
-                        diffuse_max_exp = 0.5,
-                        # Change-with-time test parameters
-                        max_dsw_dt = 75.0,  # W m-2 per minute
-                        # NDR variability test parameters
-                        ndr_exp = -0.8,
-                        ndr_std_max = 0.005,
-                        ndr_window = 11,
-                        # # Output options
-                        # return_tests = False,
-                     )
+# default_config = dict(# General filters
+#                         mu0_min = 0.05,
+#                         # normalized shortwave (nsw) magnitude test parameters
+#                         nsw_exp = 1.2,
+#                         nsw_min = 800.0,
+#                         nsw_max = 1400.0,
+#                         # Diffuse magnitude test parameters
+#                         diffuse_max_coeff = 600,
+#                         diffuse_max_exp = 0.5,
+#                         # Change-with-time test parameters
+#                         max_dsw_dt = 75.0,  # W m-2 per minute
+#                         # NDR variability test parameters
+#                         ndr_exp = -0.8,
+#                         ndr_std_max = 0.005,
+#                         ndr_window = 11,
+#                         # # Output options
+#                         # return_tests = False,
+#                      )
 
 class _DatasetRef(object):
     def __init__(self, dataset):
@@ -56,6 +57,11 @@ class SolarIrradiation(object):
         self._sun_position_variables = ['zenith', 'zenith_geometric', 'elevation_geometric', 'elevation', 'azimuth', 'equation_of_time', 'airmass', 'airmass_absolute', 'sun_earth_distance']
         self._sun_position_variables_ds = [f'solar_{v}' for v in self._sun_position_variables] # for internal use, to avoid name clashes with potential variables in the dataset.
         assert('datetime' in dataset or 'datetime' in dataset.dims), 'Time coordinate has to be called datetime .... sorry, i know that is an unconventional choise for the time cooridinate name.'
+
+    @property
+    def temporal_resolution_minutes(self):
+        """Returns the temporal resolution of the dataset in minutes. This is computed as the median difference between consecutive time points."""
+        return float((self.dataset.datetime - self.dataset.datetime.shift(datetime = 1)).dropna('datetime').median()/pd.to_timedelta(1, 'm'))
 
     @property
     def site(self):
@@ -142,20 +148,125 @@ class GlobalHorizontalIrradiation(SolarIrradiation):
         assert('global_horizontal' in dataset), f'global_horizontal variable is missing.'
 
     @property
-    def mask_variability(self,
+    def mask_temporal_gradient(self,
                                             # global_irradiance: xr.DataArray,
                                             # time_dim: str,
                                             # max_dsw_dt: float,
                                         ):
-        if 'mask_global_irradiance_variability' not in self.dataset:
+        if 'mask_global_irradiance_temporal_gradient' not in self.dataset:
             if self.verbose:
-                print('Running global irradiance variability test')
-            mask = atmcsk.global_irradiance_variability_test(self, 
-                                                             self.dataset.global_horizontal, 
-                                                             max_dsw_dt = self.get_attr('max_dsw_dt'))
-            self.dataset['mask_global_irradiance_variability'] = mask
-        return self.dataset.mask_global_irradiance_variability
-    
+                print('Running global irradiance temporal gradient test')
+            self._global_irradiance_temporal_gradient_test( # self.dataset.global_horizontal, 
+                                                            # max_dsw_dt = self.get_attr('max_dsw_dt')
+                                                            )
+            # self.dataset['mask_global_irradiance_temporal_gradient'] = out['mask']
+            # self._mask_global_irradiance_temporal_gradient = out['auxiliary']
+        return self.dataset.mask_global_irradiance_temporal_gradient
+
+    def _global_irradiance_temporal_gradient_test(self,
+        # global_irradiance: xr.DataArray,
+        # *,
+        # max_dsw_dt: float,
+        # # time_dim: str = "datetime",
+    ) -> xr.DataArray:
+        """
+        #todo: adjust docstring to reflect recent changes
+
+        Originally called global_irradiance_change_with_time_test
+
+        Temporal gradient test on global shortwave. Note, this is not a variability test as the 
+        normalized_diffuse_ratio_variability_test. This is a test that looks for abrupt changes
+        in terms of the rate, that is the derivative.
+
+        Long & Ackerman compare the rate of change of surface SW to that of TOA
+        SW; here we implement a generic magnitude limit on |d(sw_global)/dt|:
+
+            |d sw_global / dt| <= max_dsw_dt
+
+        where dt is computed from the time coordinate.
+
+        Parameters
+        ----------
+        sw_global : xr.DataArray
+            Downwelling global shortwave flux [W m-2].
+        max_dsw_dt : float
+            Maximum allowed |d(sw_global)/dt| in W m-2 per minute.
+
+        Returns
+        -------
+        xr.DataArray
+            Boolean mask where True indicates the point passes this test.
+            Endpoints (first/last point) are treated as failing if derivative
+            cannot be computed.
+        """
+        max_dsw_dt = self.get_attr('max_dsw_dt')
+        global_irradiance = self.dataset.global_horizontal.copy(deep=True)
+        # Differentiate wrt time; xarray returns W m-2 per nanosecond for datetime64,
+        # so convert to per minute.
+        dsw_dt_per_min = global_irradiance.differentiate('datetime',
+                                                 datetime_unit = 'm') 
+
+        # Take absolute value and pad endpoints with NaNs
+        dsw_dt_abs = np.abs(dsw_dt_per_min)
+        dsw_dt_abs = dsw_dt_abs.reindex_like(global_irradiance)  # align with original time axis
+
+        # build limits based on top of the atmosphere radiation
+        I_t = (SOLAR_CONSTANT / self.sun_position.solar_sun_earth_distance**2) / self.sun_position.solar_airmass
+        dI_t = abs(I_t.differentiate('datetime', 
+                         datetime_unit = 'm'
+                        ))
+           
+        lim_max = dI_t + max_dsw_dt * 1/self.sun_position.solar_airmass
+        mu_noon = 1/self.sun_position.solar_airmass.min()
+        lim_min = dI_t - (self.temporal_resolution_minutes * (mu_noon + 0.01) * self.sun_position.solar_airmass)
+
+        test_mask = (dsw_dt_abs <= lim_max) & (dsw_dt_abs >= lim_min) & dsw_dt_abs.notnull()
+        test_mask.name = "test_global_irradiance_temporal_gradient"
+
+
+        test_mask.attrs = {}
+        test_mask.attrs["info"] = "Mask based on change-with-time test on global shortwave (global variability test). See Long & Ackerman (2000) and subsequent iterations for details."
+        test_mask.attrs["unit"] = "1", 
+        test_mask.attrs["long_name"] = "clear sky classification mask",
+        test_mask.attrs["flag_values"] = '0, 1',
+        test_mask.attrs["flag_meanings"] = "0: fails change-with-time test (cloudy), 1: passes change-with-time test (possible clear-sky)"
+        axiliary = {'dsw_dt_abs': dsw_dt_abs}
+        axiliary['lim_max'] = lim_max
+        axiliary['lim_min'] = lim_min
+        out = {'mask': test_mask, 'auxiliary': axiliary}
+        self.dataset['mask_global_irradiance_temporal_gradient'] = test_mask
+        self._mask_global_irradiance_temporal_gradient_auxiliary = axiliary
+        return out
+
+    def plot_global_irradiance_temporal_gradient_test(self, 
+                                                    #   ax = None
+                                                      ):
+        self.mask_temporal_gradient # just to initiate the calculation 
+        # if isinstance(ax, type(None)):
+        f, aa= mpl.pyplot.subplots(2, sharex = True, height_ratios = [3,1], gridspec_kw = {'hspace':0} )
+
+        # the test
+        a = aa[0]
+        lim_max = self._mask_global_irradiance_temporal_gradient_auxiliary['lim_max']
+        lim_min = self._mask_global_irradiance_temporal_gradient_auxiliary['lim_min']
+        dsw_dt_abs = self._mask_global_irradiance_temporal_gradient_auxiliary['dsw_dt_abs']
+        dsw_dt_abs.plot(ax = a, label = '|dSW/dt|')
+        a.fill_between(lim_max.datetime, lim_max, lim_min, alpha = 0.4, label = 'limit envelope')
+        a.set_ylabel('dSW/dt [W m-2 per minute]')
+        a.legend()
+
+        # the mask
+        # at = a.twinx(zorder = -1)
+        a = aa[1]
+        self.mask_temporal_gradient.plot(ax = a, 
+                                        #  color = 'black', zorder = -1
+                                         )
+        a.set_ylabel('mask')
+        # a.set_ylim(0,10)
+        return f,aa
+
+
+            
     @property
     def mask_normalized_global_magnitude(self):
         if 'mask_normalized_global_magnitude' not in self.dataset:
@@ -168,7 +279,6 @@ class GlobalHorizontalIrradiation(SolarIrradiation):
                                                                                                         nsw_min = self.get_attr('nsw_min'),
                                                                                                         nsw_max = self.get_attr('nsw_max'),)
         return self.dataset.mask_normalized_global_magnitude
-
 
 class DiffuseHorizontalIrradiation(SolarIrradiation):
     def __init__(self, *args, **kwargs):
@@ -316,14 +426,38 @@ class CombinedGlobalDiffuseDirect(SolarIrradiation):
         return self._get_clearsky_parameters()
     
     @clearsky_parameters.setter
-    def clearsky_parameters(self, cs_params: dict):
-        # self.dataset = self.dataset.drop_vars(['mask_normalized_global_magnitude',
-        #                                        'mask_normalized_diffuse_ratio_variability',
-        #                                        'mask_clear_sky_shortwave_radflux', 
-        #                                        'clearsky_global_irradiation_powerlow_fit_params',
-        #                                        'mask_diffuse_magnitude',
-        #                                        'mask_global_irradiance_variability'], errors= 'ignore')
+    def clearsky_parameters(self, cs_params: dict|str|pl.Path):
+        """Sets the clearsky parameters in the dataset attributes. 
+        Parameters
+        ----------
+        cs_params: dict, str, or Path
+            If dict, should contain the clearsky parameters as keys and their values. 
+            If str or Path, should be a path to a toml file containing the clearsky parameters.
+            Note if cs_params ==  "default" the default clearsky parameters will be used.
+        """
         self.reset_all_masks(error_when_missing = 'ignore')
+        if isinstance(cs_params, (str, pl.Path)):
+            cs_params = atmradflux.read_clear_sky_shortwave_settings(cs_params)
+            self.tp_sp = cs_params
+            params = {}
+            params['mu0_min'] = np.cos(np.deg2rad(cs_params.fixed.maximum_solar_zenith_angle))
+            params['nsw_exp'] = cs_params.initial.normalized_total_shortwave_power_exponent
+            # params['nsw_coeff'] = cs_params.fixed.maximum_diffuse_shortwave_irradiance
+            # params['nsw_r2'] = cs_params.fixed.maximum_diffuse_shortwave_cosine_exponent
+            params['nsw_min'] = cs_params.first_iteration_limits.normalized_total_shortwave_lower_limit
+            params['nsw_max'] = cs_params.first_iteration_limits.normalized_total_shortwave_upper_limit
+            params['diffuse_max_coeff'] = cs_params.fixed.maximum_diffuse_shortwave_irradiance
+            params['diffuse_max_exp'] = cs_params.fixed.maximum_diffuse_shortwave_cosine_exponent
+            # params['normalized_diffuse_fit_coeff'] = cs_params.fixed.normalized_total_shortwave_final_iteration_half_width
+            # params['normalized_diffuse_fit_exp'] = cs_params.fixed.normalized_total_shortwave_low_sun_cosine_boundary
+            params['max_dsw_dt'] = cs_params.fixed.shortwave_temporal_gradient_envelope_constant
+            # minimum_clear_sky_duration_for_daily_fit
+            params['ndr_exp'] = cs_params.initial.normalized_diffuse_ratio_power_exponent
+            params['ndr_std_max'] = cs_params.fixed.normalized_diffuse_ratio_standard_deviation_limit
+            params['ndr_window'] = cs_params.fixed.normalized_diffuse_ratio_standard_deviation_window_minutes
+            cs_params = params
+            
+        # elif isinstance(cs_params, dict):
         for k,v in cs_params.items():
             if k== 'ndr_window':
                 if self.verbose:
@@ -405,7 +539,7 @@ class CombinedGlobalDiffuseDirect(SolarIrradiation):
                     'mask_normalized_diffuse_ratio_variability',
                     'mask_clear_sky_shortwave_radflux', 
                     'mask_diffuse_magnitude',
-                    'mask_global_irradiance_variability']:
+                    'mask_global_irradiance_temporal_gradient']:
             
             self.dataset = self.dataset.drop_vars(var, errors=error_when_missing)
 
@@ -459,7 +593,7 @@ class CombinedGlobalDiffuseDirect(SolarIrradiation):
                 print('Running clear sky tests (RADFLUX equivalent)')
             self.dataset['mask_clear_sky_shortwave_radflux'] = (self.global_horizontal_irradiation.mask_normalized_global_magnitude 
                                                                 & self.diffuse_horizontal_irradiation.mask_magnitude 
-                                                                & self.global_horizontal_irradiation.mask_variability 
+                                                                & self.global_horizontal_irradiation.mask_temporal_gradient 
                                                                 & self.mask_normalized_diffuse_ratio_variability)
             self.dataset.mask_clear_sky_shortwave_radflux.attrs = {}
             
@@ -547,7 +681,7 @@ class CombinedGlobalDiffuseDirect(SolarIrradiation):
         min_clear_for_update = int(min_clear_for_update_equivalent * dt_in_m)  
         self.dataset.attrs['clear_sky_params_optimized'] = 'Failed'
         if self.verbose:
-            print((f'Original values -- nsw_exp:{self.get_attr('nsw_exp'):0.3f},'
+            print((f'Original values -- nsw_exp:{self.get_attr('nsw_exp'):0.3f},' #normalized_total_shortwave_power_exponent
                 f'nsw_min: {self.get_attr('nsw_min'):0.1f},' 
                 f'nsw_max: {self.get_attr('nsw_max'):0.1f},'
                 f'ndr_exp: {self.get_attr('ndr_exp'):0.3f}'))
@@ -559,7 +693,7 @@ class CombinedGlobalDiffuseDirect(SolarIrradiation):
                 print('Number of clearsky (valid) points: ', n_clear)
             if n_clear < min_clear_for_update:
                 if self.verbose:
-                    print('Not enough clear sky points -> skip optimazation, keep old params')
+                    print(f'Not enough clear sky points ({n_clear} < {min_clear_for_update}) -> skip optimazation, keep old params')
                 self.dataset.attrs['clear_sky_params_optimized'] = 'Not enough clear sky points'
                 return None
             
@@ -588,6 +722,7 @@ class CombinedGlobalDiffuseDirect(SolarIrradiation):
                                                             nsw_exp = nsw_exp,
                                                             nsw_min = self.get_attr('nsw_min'), #in the original those this and the following are not directly considered, they are indirectly considered throught the cloudmask though
                                                             nsw_max = self.get_attr('nsw_max'),
+                                                            # min_points = min_clear_for_update
                                                         )
             
 
@@ -598,7 +733,9 @@ class CombinedGlobalDiffuseDirect(SolarIrradiation):
                                                                 self.dataset.diffuse_horizontal,
                                                                 self.dataset.global_horizontal,
                                                                 self.mask_clear_sky_radflux, 
-                                                                mu0_min = self.get_attr('mu0_min'),)
+                                                                mu0_min = self.get_attr('mu0_min'),
+                                                                min_points = min_clear_for_update
+                                                                )
 
 
 

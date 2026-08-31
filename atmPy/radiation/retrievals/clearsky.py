@@ -85,67 +85,69 @@ def normalized_diffuse_ratio_variability_test(
     test_mask.attrs["flag_meanings"] = "0: fails NDR variability test (cloudy), 1: passes NDR variability test (possible clear-sky)"
     return test_mask
 
-#TODO: the following should not just be for global, this should be applicable to any radiation, just the shresholds would change.
-def global_irradiance_variability_test(self,
-    global_irradiance: xr.DataArray,
-    *,
-    max_dsw_dt: float,
-    # time_dim: str = "datetime",
-) -> xr.DataArray:
-    """
-    Change-with-time test on global shortwave.
+# def global_irradiance_temporal_gradient_test(self,
+#     global_irradiance: xr.DataArray,
+#     *,
+#     max_dsw_dt: float,
+#     # time_dim: str = "datetime",
+# ) -> xr.DataArray:
+#     """
+#     Originally called global_irradiance_change_with_time_test
 
-    Long & Ackerman compare the rate of change of surface SW to that of TOA
-    SW; here we implement a generic magnitude limit on |d(sw_global)/dt|:
+#     Temporal gradient test on global shortwave. Note, this is not a variability test as the 
+#     normalized_diffuse_ratio_variability_test. This is a test that looks for abrupt changes
+#     in terms of the rate, that is the derivative.
 
-        |d sw_global / dt| <= max_dsw_dt
+#     Long & Ackerman compare the rate of change of surface SW to that of TOA
+#     SW; here we implement a generic magnitude limit on |d(sw_global)/dt|:
 
-    where dt is computed from the time coordinate.
+#         |d sw_global / dt| <= max_dsw_dt
 
-    Parameters
-    ----------
-    sw_global : xr.DataArray
-        Downwelling global shortwave flux [W m-2].
-    time_dim : str
-        Name of the time dimension in `sw_global`.
-    max_dsw_dt : float
-        Maximum allowed |d(sw_global)/dt| in W m-2 per minute.
+#     where dt is computed from the time coordinate.
 
-    Returns
-    -------
-    xr.DataArray
-        Boolean mask where True indicates the point passes this test.
-        Endpoints (first/last point) are treated as failing if derivative
-        cannot be computed.
-    """
+#     Parameters
+#     ----------
+#     sw_global : xr.DataArray
+#         Downwelling global shortwave flux [W m-2].
+#     max_dsw_dt : float
+#         Maximum allowed |d(sw_global)/dt| in W m-2 per minute.
+
+#     Returns
+#     -------
+#     xr.DataArray
+#         Boolean mask where True indicates the point passes this test.
+#         Endpoints (first/last point) are treated as failing if derivative
+#         cannot be computed.
+#     """
 
     
-    # Differentiate wrt time; xarray returns W m-2 per nanosecond for datetime64,
-    # so convert to per minute.
-    dsw_dt = global_irradiance.differentiate('datetime') 
-    # Convert units: ns -> minutes
-    # 1 minute = 60 s = 60 * 1e9 ns
+#     # Differentiate wrt time; xarray returns W m-2 per nanosecond for datetime64,
+#     # so convert to per minute.
+#     dsw_dt = global_irradiance.differentiate('datetime') 
+#     # Convert units: ns -> minutes
+#     # 1 minute = 60 s = 60 * 1e9 ns
 
-    #TODO this will fail if the time is not in nanoseconds generalize
-    ns_per_minute = np.float64(60 * 1e9)
-    dsw_dt_per_min = dsw_dt * ns_per_minute
+#     #TODO this will fail if the time is not in nanoseconds generalize
+#     ns_per_minute = np.float64(60 * 1e9)
+#     dsw_dt_per_min = dsw_dt * ns_per_minute
 
-    # Take absolute value and pad endpoints with NaNs
-    dsw_dt_abs = np.abs(dsw_dt_per_min)
-    dsw_dt_abs = dsw_dt_abs.reindex_like(global_irradiance)  # align with original time axis
+#     # Take absolute value and pad endpoints with NaNs
+#     dsw_dt_abs = np.abs(dsw_dt_per_min)
+#     dsw_dt_abs = dsw_dt_abs.reindex_like(global_irradiance)  # align with original time axis
 
-    test_mask = (dsw_dt_abs <= max_dsw_dt) & dsw_dt_abs.notnull()
-    test_mask.name = "test_change_with_time"
+#     test_mask = (dsw_dt_abs <= max_dsw_dt) & dsw_dt_abs.notnull()
+#     test_mask.name = "test_change_with_time"
 
 
-    test_mask.attrs = {}
-    test_mask.attrs["info"] = "Mask based on change-with-time test on global shortwave (global variability test). See Long & Ackerman (2000) and subsequent iterations for details."
-    test_mask.attrs["unit"] = "1", 
-    test_mask.attrs["long_name"] = "clear sky classification mask",
-    test_mask.attrs["flag_values"] = '0, 1',
-    test_mask.attrs["flag_meanings"] = "0: fails change-with-time test (cloudy), 1: passes change-with-time test (possible clear-sky)"
-
-    return test_mask
+#     test_mask.attrs = {}
+#     test_mask.attrs["info"] = "Mask based on change-with-time test on global shortwave (global variability test). See Long & Ackerman (2000) and subsequent iterations for details."
+#     test_mask.attrs["unit"] = "1", 
+#     test_mask.attrs["long_name"] = "clear sky classification mask",
+#     test_mask.attrs["flag_values"] = '0, 1',
+#     test_mask.attrs["flag_meanings"] = "0: fails change-with-time test (cloudy), 1: passes change-with-time test (possible clear-sky)"
+#     axiliary = {'dsw_dt_abs': dsw_dt_abs}
+#     out = {'mask': test_mask, 'auxiliary': axiliary}
+#     return out
 
 # TODO: find better name for this function
 def diffuse_magnitude_test(diffuse_irradiance: xr.DataArray,
@@ -384,7 +386,7 @@ def fit_diffuse_global_ratio_mu0_powerlaw(
     )
     cond_vals = cond.values
     if int(cond_vals.sum()) < min_points:
-        assert(False), 'should this really happen?'
+        assert(False), f'should this really happen? Valid points: {int(cond_vals.sum())}, min_points: {min_points}'
 
     mu0_sel = mu0.values[cond_vals]
     y_sel = diffuse_irradiance.values[cond_vals] / global_irradiance.values[cond_vals]

@@ -1,0 +1,114 @@
+# Configuration for the Long–Ackerman / RadFlux clear-sky shortwave analysis.
+#
+# The file deliberately separates:
+#   fixed_parameters       -> algorithm thresholds that are NOT updated by fitting
+#   fit_initial_values     -> first guesses that ARE replaced by fitted values
+#   first_iteration_limits -> broad limits used only before the first successful fit
+#
+# Defaults are intended for 1-minute SURFRAD-like broadband radiation data.
+
+[metadata]
+schema_version = "1.0"
+algorithm = "Long-Ackerman clear-sky shortwave detection and fitting"
+references = [
+    "Long and Ackerman (2000), JGR, doi:10.1029/2000JD900077",
+    "Long and Gaustad (2004), ARM TR-004.1"
+]
+
+[clear_sky_shortwave.fixed_parameters]
+# Maximum solar zenith angle allowed in the shortwave clear-sky analysis.
+# Default 90 deg preserves the original RadFlux behavior and imposes no
+# additional site-specific horizon restriction.
+#
+# Users may reduce this value to exclude low-sun observations affected by
+# terrain, vegetation, towers, or other horizon obstructions.
+maximum_solar_zenith_angle = 90.0  # degree
+
+# Maximum clear-sky diffuse irradiance coefficient D_max in
+# D_limit = D_max * cos(SZA)^0.5.
+# This remains fixed during all clear-sky iterations.
+maximum_diffuse_shortwave_irradiance = 150.0  # W m-2
+
+# Fixed exponent in the maximum-diffuse test.
+maximum_diffuse_shortwave_cosine_exponent = 0.5  # 1
+
+# Maximum allowed standard deviation of the normalized diffuse ratio.
+# 0.0012 is the operational RadFlux value recommended for typical systems.
+normalized_diffuse_ratio_standard_deviation_limit = 0.0012  # 1
+
+# Window used to calculate normalized-diffuse-ratio variability for
+# 1-minute data. The implementation should convert minutes to samples.
+normalized_diffuse_ratio_standard_deviation_window_minutes = 11  # min
+
+# Change-with-time clear-sky envelope constant for 1-minute data.
+# RadFlux scales this value with the temporal resolution.
+# shortwave_change_with_time_envelope_constant = 2.0  # W m-2
+shortwave_temporal_gradient_envelope_constant = 2.0  # W m-2
+
+
+# Measurements below this value are excluded from logarithmic/power-law fits.
+minimum_total_shortwave_irradiance = 1.0  # W m-2
+
+# Half-width around the fitted normalized-total-SW coefficient used during
+# intermediate iterations: fitted_a +/- this value.
+normalized_total_shortwave_intermediate_iteration_half_width = 150.0  # W m-2
+
+# Tighter half-width used for the final clear-sky iteration.
+normalized_total_shortwave_final_iteration_half_width = 100.0  # W m-2
+
+# Boundary separating the low-sun and higher-sun first-iteration NSW limits.
+normalized_total_shortwave_low_sun_cosine_boundary = 0.2  # 1
+
+# Minimum amount of detected clear-sky data used for a daily empirical fit.
+# Long & Ackerman recommend about 100-120 minutes for 1-minute observations.
+minimum_clear_sky_duration_for_daily_fit = 110  # min
+
+# Fit-QC limits for the clear-sky diffuse-ratio power-law exponent.
+# Values outside this interval trigger coefficient replacement/interpolation.
+diffuse_ratio_exponent_lower_validity_limit = -0.95  # 1
+diffuse_ratio_exponent_upper_validity_limit = -0.40  # 1
+
+
+[clear_sky_shortwave.fit_initial_values]
+
+# Initial exponent b in total_SW / cos(SZA)^b.
+# Used only for the first detection pass. Subsequent iterations inherit the
+# fitted/interpolated total-SW exponent from the previous iteration.
+normalized_total_shortwave_power_exponent = 1.18  # 1
+
+# Initial exponent b in (diffuse / total) / cos(SZA)^b.
+# Used only for the first detection pass. Subsequent iterations inherit the
+# fitted/interpolated diffuse-ratio exponent from the previous iteration.
+normalized_diffuse_ratio_power_exponent = -0.8  # 1
+
+
+[clear_sky_shortwave.first_iteration_limits]
+
+# Broad normalized-total-shortwave limits used before a fitted clear-sky
+# coefficient is available. They are replaced by fitted_a +/- an iteration
+# half-width after the first successful fit.
+normalized_total_shortwave_lower_limit = 900.0   # W m-2, low sun: 900.0, high sun: 1000.0
+normalized_total_shortwave_upper_limit = 1250.0          # W m-2
+
+
+[legacy_names]
+# Informational mapping only. New code should use the descriptive names above.
+
+maximum_diffuse_shortwave_irradiance = "maxdif"
+maximum_diffuse_shortwave_cosine_exponent = "hard-coded 0.5 in diflim"
+normalized_diffuse_ratio_standard_deviation_limit = "NDR std-dev limit"
+normalized_diffuse_ratio_standard_deviation_window_minutes = "NDR window"
+shortwave_change_with_time_envelope_constant = "C / delS + Lim factor"
+minimum_total_shortwave_irradiance = "Total SW low limit"
+normalized_total_shortwave_intermediate_iteration_half_width = "NSW +/- 150"
+normalized_total_shortwave_final_iteration_half_width = "NSW +/- 100"
+normalized_total_shortwave_low_sun_cosine_boundary = "mu0 = 0.2 boundary"
+minimum_clear_sky_duration_for_daily_fit = "minimum clear points / fit"
+diffuse_ratio_exponent_lower_validity_limit = "DFRb lower limit"
+diffuse_ratio_exponent_upper_validity_limit = "DFRb upper limit"
+
+normalized_total_shortwave_power_exponent = "nsw_exp"
+normalized_diffuse_ratio_power_exponent = "ndr_exp"
+
+normalized_total_shortwave_lower_limit = "nsw_min"
+normalized_total_shortwave_upper_limit = "nsw_max"
