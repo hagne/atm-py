@@ -13,8 +13,12 @@ class Mfr():
                  spectral_calibration = None,
                  logger_calibration = None,
                  head_calibration = None,
-                 cosine_responds = None):
+                 cosine_responds = None,
+                 verbose = False,
+                 ):
         
+        self.verbose = verbose
+
         self.spectral_calibration = spectral_calibration
         self.logger_calibration = logger_calibration
         if np.array_equal(logger_calibration, head_calibration):
@@ -40,6 +44,8 @@ class Mfr():
         if isinstance(value, xr.Dataset):
             self._spectral_calibration = value
         elif isinstance(value, (str, pl.Path)):
+            if self.verbose:
+                print(f'Reading spectral calibration from {value}')
             if value.suffix.lower() ==  '.sol':
                 self._spectral_calibration = atmcal.read_factory_cal_sol(value)
             elif value.suffix.lower() == '.spr':
@@ -60,6 +66,8 @@ class Mfr():
         elif value is None:
             self._logger_calibration = None
         elif isinstance(value, (str, pl.Path)):
+            if self.verbose:
+                print(f'Reading logger calibration from {value}')
             self._logger_calibration = atmcal.read_factory_cal(value)
         else:
             raise TypeError(f'Unknown type for logger_calibration: {type(value)}')
@@ -77,6 +85,8 @@ class Mfr():
         elif value is None:
             self._head_calibration = None
         elif isinstance(value, (str, pl.Path)):
+            if self.verbose:
+                print(f'Reading head calibration from {value}')
             if pl.Path(value).suffix == '.nc':
                 self._head_calibration = xr.open_dataset(value)
             else:
@@ -95,6 +105,8 @@ class Mfr():
         if isinstance(value, xr.Dataset):
             self._cosine_responds = value
         elif isinstance(value, (str, pl.Path)):
+            if self.verbose:
+                print(f'Reading cosine responses from {value}')
             if str(value) == self.spectral_calibration.source_file:
                 self._cosine_responds = self.spectral_calibration
                 return 
@@ -424,8 +436,14 @@ class Mfr():
         # assert(False), 'Maybe i just need to make the solar position to_panda()'
         # sunpos = si.sun_position.to_pandas()
         dspol = self.cosine_responds_polar
-        out = dspol['spectral'].interp({'zenith': np.rad2deg(si.sun_position.zenith), 'azimuth': np.rad2deg(si.sun_position.azimuth)})
-        out = out.drop_vars(['zenith', 'azimuth'])
+        zenith = np.rad2deg(si.sun_position.zenith)
+        azimuth = np.rad2deg(si.sun_position.azimuth)
+        if zenith.size == 0:
+            calibration = dspol['spectral'].isel(zenith=0, azimuth=0, drop=True)
+            out = xr.broadcast(calibration, zenith, azimuth)[0]
+        else:
+            out = dspol['spectral'].interp({'zenith': zenith, 'azimuth': azimuth})
+        out = out.drop_vars(['zenith', 'azimuth'], errors='ignore')
         out = 1/out
         return out
         
@@ -507,5 +525,4 @@ class Mfrsr(Mfr):
         sialt = self.data_cal_spec_log_head # there is a chance that this instance already has the sunposition calculated, avoids double execution
         si.dataset['direct_normal'] = si.dataset.direct_horizontal / xr.DataArray(np.sin(sialt.sun_position.elevation))
         return si
-
 
