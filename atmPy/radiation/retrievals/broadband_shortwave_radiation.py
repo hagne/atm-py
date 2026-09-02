@@ -241,6 +241,7 @@ class GlobalHorizontalIrradiation(SolarIrradiation):
     def plot_global_irradiance_temporal_gradient_test(self, 
                                                     #   ax = None
                                                       ):
+        """similar to Fig. 3 in Long & Ackerman 2000"""
         self.mask_temporal_gradient # just to initiate the calculation 
         # if isinstance(ax, type(None)):
         f, aa= mpl.pyplot.subplots(2, sharex = True, height_ratios = [3,1], gridspec_kw = {'hspace':0} )
@@ -254,6 +255,7 @@ class GlobalHorizontalIrradiation(SolarIrradiation):
         a.fill_between(lim_max.datetime, lim_max, lim_min, alpha = 0.4, label = 'limit envelope')
         a.set_ylabel('dSW/dt [W m-2 per minute]')
         a.legend()
+        a.set_title('Global irradiance temporal gradient test')
 
         # the mask
         # at = a.twinx(zorder = -1)
@@ -272,13 +274,142 @@ class GlobalHorizontalIrradiation(SolarIrradiation):
         if 'mask_normalized_global_magnitude' not in self.dataset:
             if self.verbose:
                 print('Running normalized global magnitude test')
-            self.dataset['mask_normalized_global_magnitude'] = atmcsk.normalized_global_magnitude_test(self.dataset.global_horizontal,
-                                                                                                        self.mu0,
-                                                                                                        mu0_min = self.get_attr('mu0_min'), 
-                                                                                                        nsw_exp = self.get_attr('nsw_exp'),
-                                                                                                        nsw_min = self.get_attr('nsw_min'),
-                                                                                                        nsw_max = self.get_attr('nsw_max'),)
+            out = self._normalized_global_magnitude_test() #self.dataset.global_horizontal,
+                                                                                                        # self.mu0,
+                                                                                                        # mu0_min = self.get_attr('mu0_min'), 
+                                                                                                        # nsw_exp = self.get_attr('nsw_exp'),
+                                                                                                        # nsw_min = self.get_attr('nsw_min'),
+                                                                                                        # nsw_max = self.get_attr('nsw_max'),)
+
+
+            self.dataset['mask_normalized_global_magnitude'] = out['mask']                        
+            self._normalized_global_magnitude_test_auxiliary = out['auxiliary']
         return self.dataset.mask_normalized_global_magnitude
+
+
+    def _normalized_global_magnitude_test(self,
+        # sw_global: xr.DataArray,
+        # mu0: xr.DataArray,
+        # *,
+        # mu0_min: float,
+        # nsw_exp: float,
+        # nsw_min: float,
+        # nsw_max: float,
+    ) -> xr.DataArray:
+        """
+        Normalized shortwave magnitude test (NSW test).
+
+        Implements a simplified version of the Long & Ackerman 'normalized SW'
+        constraint:
+
+            NSW = sw_global / mu0**nsw_exp
+
+        A sample passes this test if:
+            nsw_min <= NSW <= nsw_max   and   mu0 >= mu0_min
+
+        Parameters
+        ----------
+        sw_global : xr.DataArray
+            Downwelling global shortwave flux on a horizontal surface [W m-2].
+        mu0 : xr.DataArray
+            Cosine of solar zenith angle (unitless).
+        mu0_min : float
+            Minimum mu0 required to consider points (exclude very low sun).
+        nsw_exp : float
+            Exponent used in the normalization (often ~1.2 in initial iterations).
+        nsw_min, nsw_max : float
+            Lower and upper allowed bounds for NSW (W m-2 * (unitless)^(-nsw_exp)).
+
+        Returns
+        -------
+        xr.DataArray
+            Boolean mask where True indicates the point passes this test.
+        """
+        auxiliary = {}
+        mu0_min = self.get_attr('mu0_min')
+        nsw_exp = self.get_attr('nsw_exp')
+        # nsw_min = self.get_attr('nsw_min')
+        nsw_min_low = self.get_attr('nsw_min')
+        nsw_min_high = self.get_attr('normalized_total_shortwave_lower_limit_high_sun')
+
+
+        nsw_max = self.get_attr('nsw_max')
+        sw_global = self.dataset.global_horizontal.copy(deep = True)
+        mu0 = self.mu0
+        valid = (mu0 >= mu0_min) & sw_global.notnull()
+
+        # Avoid division by zero
+        mu0_safe = mu0.where(mu0 > 0)
+        nsw = sw_global / (mu0_safe ** nsw_exp)
+        nsw = nsw.where(valid)
+
+        # self.tp_nsw = nsw
+        # self.tp_nsw_min_low = nsw_min_low
+        # self.tp_nsw_min_high = nsw_min_high
+        # self.tp_nsw_max = nsw_max
+
+        nsw_min = xr.zeros_like(nsw, dtype=float )
+        nsw_min = nsw_min.where(self.mu0 < 0.2, other = nsw_min_high)
+        nsw_min = nsw_min.where(self.mu0 > 0.2, other = nsw_min_low)
+
+        test_mask = valid & (nsw >= nsw_min) & (nsw <= nsw_max)
+        auxiliary['nsw_min'] = nsw_min
+        auxiliary['nsw_max'] = nsw_max
+        auxiliary['nsw'] = nsw
+        test_mask.name = "test_nsw"
+
+        # Robust center and spread
+        median = float(np.nanmedian(nsw))
+        q25, q75 = np.nanpercentile(nsw, [25, 75])
+        iqr = float(q75 - q25)
+        if not np.isfinite(iqr) or iqr <= 0:
+            iqr = max(0.1 * median, 10.0)  # fall-back
+        iqr_k = 3
+        nsw_min = max(median - iqr_k * iqr, 0.0)
+        nsw_max = median + iqr_k * iqr
+
+        test_mask.attrs = {}
+        test_mask.attrs["info"] = "Mask based on normalized shortwave magnitude (NSW) test. See Long & Ackerman (2000) and subsequent iterations for details."
+        test_mask.attrs["unit"] = "1", 
+        test_mask.attrs["long_name"] = "clear sky classification mask",
+        test_mask.attrs["flag_values"] = '0, 1',
+        test_mask.attrs["flag_meanings"] = "0: fails NSW test (cloudy), 1: passes NSW test (possible clear-sky)",
+        test_mask.attrs["nsw_min"] = nsw_min
+        test_mask.attrs["nsw_max"] = nsw_max
+        out = dict(mask = test_mask,
+                   auxiliary = auxiliary
+                   )
+        
+
+        return out
+
+    def plot_normalized_global_magnitude_test(self):
+        self.mask_normalized_global_magnitude # to initiate calculation
+        aux = self._normalized_global_magnitude_test_auxiliary
+        nsw_min = aux['nsw_min']
+        nsw_max = aux['nsw_max']
+        nsw = aux['nsw']
+        f, aa = mpl.pyplot.subplots(2, sharex=True, height_ratios=[3,1], gridspec_kw={'hspace':0})
+        #################
+        a = aa[0]
+        nsw.plot(ax = a)
+        a.fill_between(nsw_min.datetime,nsw_min, 
+                nsw_min.where(False, other=nsw_max), 
+                alpha = 0.4, zorder = 0)
+        a.set_ylim(nsw_min.min()*0.9, nsw_max* 1.1)
+        a.set_ylabel('Normalized SW [W m-2]')
+        a.set_title('Normalized global magnitude test')
+
+        ##################
+        a = aa[1]
+        self.mask_normalized_global_magnitude.plot(ax = a)
+        a.set_ylabel('mask')
+        #################
+        a = aa[0]
+        return f,aa
+
+
+
 
 class DiffuseHorizontalIrradiation(SolarIrradiation):
     def __init__(self, *args, **kwargs):
@@ -290,13 +421,106 @@ class DiffuseHorizontalIrradiation(SolarIrradiation):
         if 'mask_diffuse_magnitude' not in self.dataset:
             if self.verbose:
                 print('Running diffuse magnitude test')
-            self.dataset['mask_diffuse_magnitude'] = atmcsk.diffuse_magnitude_test(self.dataset.diffuse_horizontal,
-                                                                                    self.mu0,
-                                                                                    mu0_min = self.get_attr('mu0_min'),
-                                                                                    diffuse_max_coeff = self.get_attr('diffuse_max_coeff'),
-                                                                                    diffuse_max_exp = self.get_attr('diffuse_max_exp'),)
+            out = self._diffuse_magnitude_test(
+                                                                                    # self.dataset.diffuse_horizontal,
+                                                                                    # self.mu0,
+                                                                                    # mu0_min = self.get_attr('mu0_min'),
+                                                                                    # diffuse_max_coeff = self.get_attr('diffuse_max_coeff'),
+                                                                                    # diffuse_max_exp = self.get_attr('diffuse_max_exp'),
+                                                                                    )
+            self.dataset['mask_diffuse_magnitude'] = out['mask']
+            self._diffuse_magnitude_test_auxiliary = out['auxiliary']
         return self.dataset.mask_diffuse_magnitude
-    
+
+    def _diffuse_magnitude_test(self,
+                            #     diffuse_irradiance: xr.DataArray,
+                            # mu0: xr.DataArray,
+                            # *,
+                            # mu0_min: float,
+                            # diffuse_max_coeff: float,
+                            # diffuse_max_exp: float,
+                            ) -> dict:
+        """
+        Diffuse shortwave magnitude test.
+
+        Conceptually follows Long & Ackerman's requirement that diffuse SW
+        not exceed a mu0-dependent envelope under clear-sky:
+
+            sw_diffuse <= diffuse_max_coeff * mu0**diffuse_max_exp
+
+        Parameters
+        ----------
+        sw_diffuse : xr.DataArray
+            Downwelling diffuse shortwave flux [W m-2].
+        mu0 : xr.DataArray
+            Cosine of solar zenith angle (unitless).
+        mu0_min : float
+            Minimum mu0 required to consider points (exclude very low sun).
+        diffuse_max_coeff : float
+            Coefficient setting the magnitude of the diffuse envelope.
+        diffuse_max_exp : float
+            Exponent controlling how the envelope scales with mu0.
+
+        Returns
+        -------
+        xr.DataArray
+            Boolean mask where True indicates the point passes this test.
+        """
+        mu0 = self.mu0
+        mu0_min = self.get_attr('mu0_min')
+        diffuse_max_coeff = self.get_attr('diffuse_max_coeff')
+        diffuse_max_exp = self.get_attr('diffuse_max_exp')
+        diffuse_irradiance = self.dataset.diffuse_horizontal
+        
+        valid = (mu0 >= mu0_min) & diffuse_irradiance.notnull()
+
+        mu0_safe = mu0.where(mu0 > 0)
+        diffuse_limit = diffuse_max_coeff * (mu0_safe ** diffuse_max_exp)
+
+        test_mask = valid & (diffuse_irradiance <= diffuse_limit)
+        test_mask.name = "test_diffuse_mag"
+
+
+        test_mask.attrs = {}
+        test_mask.attrs["info"] = "Mask based on diffuse shortwave magnitude test. See Long & Ackerman (2000) and subsequent iterations for details."
+        test_mask.attrs["unit"] = "1", 
+        test_mask.attrs["long_name"] = "clear sky classification mask",
+        test_mask.attrs["flag_values"] = '0, 1',
+        test_mask.attrs["flag_meanings"] = "0: fails diffuse magnitude test (cloudy), 1: passes diffuse magnitude test (possible clear-sky)"
+        out = {'mask': test_mask, 
+               'auxiliary': {'diffuse_limit': diffuse_limit,
+                             }}
+        return out
+
+    def plot_normalized_global_magnitude_test(self, x = 'datetime'):
+        self.mask_magnitude # to initiate calculation
+        if x == 'datetime':
+            x = self.dataset.datetime
+        elif x == 'mu0':
+            x = self.mu0
+        else:
+            assert(False) 
+        
+        diffuse = self.dataset.diffuse_horizontal
+        aux = self._diffuse_magnitude_test_auxiliary
+        diffuse_lim = aux['diffuse_limit']
+
+        f, aa = mpl.pyplot.subplots(2, sharex=True, height_ratios=[3,1], gridspec_kw={'hspace':0})
+        #################
+        a = aa[0]
+        a.plot(x, diffuse, label = 'diffuse SW')
+        a.plot(x,diffuse_lim, label = 'diffuse limit')
+        a.set_ylim(0, diffuse_lim.max() * 1.1)
+        a.set_ylabel('Diffuse SW [W m-2]')
+        a.legend()
+        a.set_title('Diffuse magnitude test')
+        ##################
+        a = aa[1]
+        a.plot(x,self.mask_magnitude,)
+        a.set_ylabel('mask')
+        #################
+        a = aa[0]
+        return f,aa
 
 
 
@@ -444,7 +668,8 @@ class CombinedGlobalDiffuseDirect(SolarIrradiation):
             params['nsw_exp'] = cs_params.initial.normalized_total_shortwave_power_exponent
             # params['nsw_coeff'] = cs_params.fixed.maximum_diffuse_shortwave_irradiance
             # params['nsw_r2'] = cs_params.fixed.maximum_diffuse_shortwave_cosine_exponent
-            params['nsw_min'] = cs_params.first_iteration_limits.normalized_total_shortwave_lower_limit
+            params['nsw_min'] = cs_params.first_iteration_limits.normalized_total_shortwave_lower_limit_low_sun
+            params['normalized_total_shortwave_lower_limit_high_sun'] = cs_params.first_iteration_limits.normalized_total_shortwave_lower_limit_high_sun
             params['nsw_max'] = cs_params.first_iteration_limits.normalized_total_shortwave_upper_limit
             params['diffuse_max_coeff'] = cs_params.fixed.maximum_diffuse_shortwave_irradiance
             params['diffuse_max_exp'] = cs_params.fixed.maximum_diffuse_shortwave_cosine_exponent
@@ -466,7 +691,10 @@ class CombinedGlobalDiffuseDirect(SolarIrradiation):
             self.dataset.attrs[k] = v
 
     def _get_clearsky_parameters(self, include_estimates = True):
-        cs_params = ['mu0_min', 'nsw_exp','nsw_coeff', 'nsw_r2', 'nsw_min', 'nsw_max', 'diffuse_max_coeff', 'diffuse_max_exp', 'normalized_diffuse_fit_coeff', 'normalized_diffuse_fit_exp', 'max_dsw_dt', 'ndr_exp', 'ndr_std_max', 'ndr_window']
+        cs_params = ['mu0_min', 'nsw_exp','nsw_coeff', 'nsw_r2',
+                     'nsw_min', 
+                     'normalized_total_shortwave_lower_limit_high_sun',
+                     'nsw_max', 'diffuse_max_coeff', 'diffuse_max_exp', 'normalized_diffuse_fit_coeff', 'normalized_diffuse_fit_exp', 'max_dsw_dt', 'ndr_exp', 'ndr_std_max', 'ndr_window']
         if include_estimates:
             cs_params += ['ndr_std_max_estimated',
                             'diffuse_max_coeff_estimated',
@@ -518,15 +746,151 @@ class CombinedGlobalDiffuseDirect(SolarIrradiation):
         if 'mask_normalized_diffuse_ratio_variability' not in self.dataset:
             if self.verbose:
                 print('Running normalized diffuse ratio variability test')
-            test_mask = atmcsk.normalized_diffuse_ratio_variability_test(global_irradiance=self.dataset.global_horizontal,
-                                                                         diffuse_irradiance=self.dataset.diffuse_horizontal,
-                                                                         mu0 = self.mu0,        
-                                                                         mu0_min = self.get_attr('mu0_min'),
-                                                                         ndr_exp = self.get_attr('ndr_exp'),
-                                                                         ndr_std_max = self.get_attr('ndr_std_max'),
-                                                                         window = self.get_attr('ndr_window'),)
-            self.dataset['mask_normalized_diffuse_ratio_variability'] = test_mask
+            self.run_normalized_diffuse_ratio_variability_test()
         return self.dataset.mask_normalized_diffuse_ratio_variability
+
+
+
+    def run_normalized_diffuse_ratio_variability_test(self,                                                                  
+                                                        mu0_min = None,
+                                                        ndr_exp = None,
+                                                        ndr_std_max = None,
+                                                        window = None
+                                                        ) -> dict:
+        """
+        Normalized diffuse ratio (NDR) variability test.
+
+        This mirrors the core idea from Long & Ackerman:
+            - Compute diffuse ratio DR = diffuse_irradiance / global_irradiance
+            - Normalize by a power of mu0: NDR = DR * mu0**(-ndr_exp)
+            - Compute rolling-window std(NDR); clear-sky requires that this std
+            remains below a small threshold.
+
+        Parameters
+        ----------
+        global_irradiance : xr.DataArray
+            Downwelling global shortwave [W m-2].
+        diffuse_irradiance : xr.DataArray
+            Downwelling diffuse shortwave [W m-2].
+        mu0 : xr.DataArray
+            Cosine of solar zenith angle (unitless).
+        mu0_min : float
+            Minimum mu0 to consider (exclude very low sun).
+        ndr_exp : float
+            Exponent used in the normalization (often around -0.8).
+        ndr_std_max : float
+            Maximum allowed standard deviation of NDR in the rolling window.
+        window : int
+            Rolling window length in **number of samples**.
+        time_dim : str
+            Name of the time dimension.
+
+        Returns
+        -------
+        xr.DataArray
+            Boolean mask where True indicates the point passes the NDR variability test.
+        """
+        global_irradiance=self.dataset.global_horizontal
+        diffuse_irradiance=self.dataset.diffuse_horizontal
+        mu0 = self.mu0
+        mu0_min = self.get_attr('mu0_min')
+        ndr_exp = self.get_attr('ndr_exp')
+        ndr_std_max = self.get_attr('ndr_std_max')
+        window = self.get_attr('ndr_window')
+
+        valid = (
+            (mu0 >= mu0_min)
+            & global_irradiance.notnull()
+            & diffuse_irradiance.notnull()
+            & (global_irradiance > 0)
+        )
+        
+        mu0_safe = mu0.where(mu0 > 0)
+
+        # Diffuse ratio
+        dr = (diffuse_irradiance / global_irradiance).where(valid)
+
+        # Normalized diffuse ratio
+        ndr = dr * (mu0_safe ** (-ndr_exp))
+        ndr = ndr.compute()  # ensure it's not lazy from now on
+        ndr.name = "ndr"
+
+        # Rolling std over the chosen window (centered to mimic a symmetric window)
+        # window is in samples; ensure it's odd for symmetry if you care
+        ndr_roll = ndr.rolling({'datetime': window}, center=True)# TODO variable name time will need to be adjusted
+        ndr_std = ndr_roll.std()  
+        ndr_mean = ndr_roll.mean()
+
+        test_mask = (ndr_std <= ndr_std_max) & ndr_std.notnull() & valid
+        test_mask.name = "test_ndr_var"
+
+        test_mask.attrs = {}
+        test_mask.attrs["info"] = "Mask based on normalized diffuse ratio (NDR) variability test. See Long & Ackerman (2000) and subsequent iterations for details."
+        test_mask.attrs["unit"] = "1", 
+        test_mask.attrs["long_name"] = "clear sky classification mask",
+        test_mask.attrs["flag_values"] = '0, 1',
+        test_mask.attrs["flag_meanings"] = "0: fails NDR variability test (cloudy), 1: passes NDR variability test (possible clear-sky)"
+
+        out = {
+            'mask': test_mask,
+            'normalized_diffuse_ratio': ndr,
+            'normalized_diffuse_ratio_std': ndr_std,
+            'normalized_diffuse_ratio_mean': ndr_mean,
+            'normalized_diffuse_ratio_std_max': ndr_std_max,
+            'window': window,
+        }
+        self.dataset['mask_normalized_diffuse_ratio_variability'] = out['mask']
+        self._normalized_diffuse_ratio_variability_test_results = out
+        return out
+
+
+    def plot_normalized_diffuse_ratio_variability_test(self):
+        self.mask_clear_sky_radflux # to initiate calculation
+        res = self._normalized_diffuse_ratio_variability_test_results
+        f, aa = mpl.pyplot.subplots(3, sharex=True, gridspec_kw={'hspace':0})
+        f.set_figheight(f.get_figheight() * 1.5)
+
+        ndr = res['normalized_diffuse_ratio']
+        ndr_std = res['normalized_diffuse_ratio_std']
+        ndr_mean = res['normalized_diffuse_ratio_mean']
+        ndr_std_max = res['normalized_diffuse_ratio_std_max']
+
+        ###################
+        a = aa[0]
+        ndr.plot(ax = a, color = '0.5', lw = 0.8, label = 'NDR')
+        ndr_mean.plot(ax = a, label = 'NDR mean')
+        a.fill_between(ndr.datetime, ndr_mean - ndr_std, ndr_mean + ndr_std, alpha = 0.4, zorder = 0, label = 'NDR Mean +- std')
+        # fb = a.fill_between(ndr.datetime, ndr_mean - ndr_std_max, ndr_mean + ndr_std_max, alpha = 0.4, zorder = 0)
+        for i in (ndr_mean - ndr_std_max, ndr_mean + ndr_std_max):
+            i.plot(color = 'red', ls = '--', ax = a, label = 'NDR mean +- max std')
+        g = a.get_lines()[-1]
+        g.set_label('no_legend')
+
+        # dlim = ndr_std_max * 2
+        dlim = ndr_mean.std() *2
+        center = ndr_mean.median()
+        ymin = center-dlim
+        ymax = center+dlim
+        a.set_ylim(ymin, ymax)
+        a.set_ylabel('Normalized diffuse ratio')
+        a.set_title('Normalized diffuse ratio variability test')
+        #################
+        a = aa[1]
+        ndr_std.plot(ax= a)
+        a.axhline(ndr_std_max, color = 'red', ls = '--', label = 'max std')
+        a.set_ylim(0, ndr_std_max * 1.2)
+        a.set_label('NDR std')
+        a.legend()
+        ###################
+        a = aa[2]
+        self.mask_normalized_diffuse_ratio_variability.plot(ax = a)
+        a.set_ylabel('mask')
+        return f, aa
+
+
+    
+
+
     
     def reset_all_masks(self, error_when_missing = 'raise'):
         """Resets all masks in the dataset. This is useful if you want to re-run the clear-sky detection with different parameters.

@@ -27,10 +27,10 @@ maximum_solar_zenith_angle = 90.0  # degree
 # Maximum clear-sky diffuse irradiance coefficient D_max in
 # D_limit = D_max * cos(SZA)^0.5.
 # This remains fixed during all clear-sky iterations.
-maximum_diffuse_shortwave_irradiance = 150.0  # W m-2
+maximum_diffuse_shortwave_irradiance = 120.0  # W m-2
 
 # Fixed exponent in the maximum-diffuse test.
-maximum_diffuse_shortwave_cosine_exponent = 0.5  # 1
+maximum_diffuse_shortwave_cosine_exponent = 0.4  # 1
 
 # Maximum allowed standard deviation of the normalized diffuse ratio.
 # 0.0012 is the operational RadFlux value recommended for typical systems.
@@ -88,8 +88,8 @@ normalized_diffuse_ratio_power_exponent = -0.8  # 1
 # coefficient is available. They are replaced by fitted_a +/- an iteration
 # half-width after the first successful fit.
 normalized_total_shortwave_lower_limit_low_sun = 900.0   # W m-2, low sun: 900.0, high sun: 1000.0
-normalized_total_shortwave_lower_limit_high_sun = 1000.0   # W m-2, low sun: 900.0, high sun: 1000.0
-normalized_total_shortwave_upper_limit = 1250.0          # W m-2
+normalized_total_shortwave_lower_limit_high_sun = 1050.0   # W m-2, low sun: 900.0, high sun: 1000.0
+normalized_total_shortwave_upper_limit = 1300.0          # W m-2
 
 
 [legacy_names]

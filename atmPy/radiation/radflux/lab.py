@@ -37,7 +37,8 @@ class FitInitialValues:
 
 @dataclass(frozen=True, slots=True)
 class FirstIterationLimits:
-    normalized_total_shortwave_lower_limit: float
+    normalized_total_shortwave_lower_limit_low_sun: float
+    normalized_total_shortwave_lower_limit_high_sun: float
     normalized_total_shortwave_upper_limit: float
 
 
@@ -139,7 +140,7 @@ def _validate_settings(settings: ClearSkyShortwaveSettings) -> None:
         )
 
     if not (
-        limits.normalized_total_shortwave_lower_limit
+        limits.normalized_total_shortwave_lower_limit_low_sun
         < limits.normalized_total_shortwave_upper_limit
     ):
         raise ValueError("Invalid low-sun normalized-total-SW limits.")
