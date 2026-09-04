@@ -1,4 +1,5 @@
 """This is a collection of clear sky tests"""
+assert(False), "This module is deprecated ... I think."
 
 import xarray as xr
 import numpy as np
@@ -381,152 +382,152 @@ import sklearn
 
 #     return da
 
-def fit_diffuse_global_ratio_mu0_powerlaw(
-    mu0: xr.DataArray,
-    diffuse_irradiance: xr.DataArray,
-    global_irradiance: xr.DataArray, 
-    mask_clearsky: xr.DataArray,
-    *,
-    mu0_min: float,
-    min_points: int = 100,) -> xr.DataArray | None:
-    """
-    Fit a simple power law for `global_irradiance`:
-    global_irradiance = A * mu0^b
-    using a linear regression in log space:
-    log(global_irradiance) = log(A) + b * log(mu0)
-    over points where `mask_clearsky` is True, mu0 >= mu0_min, and
-    global_irradiance > 0.
+# def fit_diffuse_global_ratio_mu0_powerlaw(
+#     mu0: xr.DataArray,
+#     diffuse_irradiance: xr.DataArray,
+#     global_irradiance: xr.DataArray, 
+#     mask_clearsky: xr.DataArray,
+#     *,
+#     mu0_min: float,
+#     min_points: int = 100,) -> xr.DataArray | None:
+#     """
+#     Fit a simple power law for `global_irradiance`:
+#     global_irradiance = A * mu0^b
+#     using a linear regression in log space:
+#     log(global_irradiance) = log(A) + b * log(mu0)
+#     over points where `mask_clearsky` is True, mu0 >= mu0_min, and
+#     global_irradiance > 0.
 
-    Returns
-    -------
-    xr.DataArray or None
-        Labeled output with:
-        - tcswd_a: coefficient
-        - tcswd_b: exponent
-        None if not enough valid points.
-    """
-    cond = (
-        mask_clearsky
-        & (mu0 >= mu0_min)
-        & mu0.notnull()
-        & diffuse_irradiance.notnull()
-        & global_irradiance.notnull()
-        & (global_irradiance > 0)
-    )
-    cond_vals = cond.values
-    if int(cond_vals.sum()) < min_points:
-        assert(False), f'should this really happen? Valid points: {int(cond_vals.sum())}, min_points: {min_points}'
+#     Returns
+#     -------
+#     xr.DataArray or None
+#         Labeled output with:
+#         - tcswd_a: coefficient
+#         - tcswd_b: exponent
+#         None if not enough valid points.
+#     """
+#     cond = (
+#         mask_clearsky
+#         & (mu0 >= mu0_min)
+#         & mu0.notnull()
+#         & diffuse_irradiance.notnull()
+#         & global_irradiance.notnull()
+#         & (global_irradiance > 0)
+#     )
+#     cond_vals = cond.values
+#     if int(cond_vals.sum()) < min_points:
+#         assert(False), f'should this really happen? Valid points: {int(cond_vals.sum())}, min_points: {min_points}'
 
-    mu0_sel = mu0.values[cond_vals]
-    y_sel = diffuse_irradiance.values[cond_vals] / global_irradiance.values[cond_vals]
+#     mu0_sel = mu0.values[cond_vals]
+#     y_sel = diffuse_irradiance.values[cond_vals] / global_irradiance.values[cond_vals]
 
-    # Flatten and drop NaNs
-    valid = np.isfinite(mu0_sel) & np.isfinite(y_sel) & (mu0_sel > 0) & (y_sel > 0)
-    if valid.sum() < min_points:
-        return None
+#     # Flatten and drop NaNs
+#     valid = np.isfinite(mu0_sel) & np.isfinite(y_sel) & (mu0_sel > 0) & (y_sel > 0)
+#     if valid.sum() < min_points:
+#         return None
 
-    x = np.log(mu0_sel[valid])
-    z = np.log(y_sel[valid])
+#     x = np.log(mu0_sel[valid])
+#     z = np.log(y_sel[valid])
 
-    # Simple least-squares fit: z = log(A) + b * x
-    b, logA = np.polyfit(x, z, 1)
-    A = np.exp(logA)
+#     # Simple least-squares fit: z = log(A) + b * x
+#     b, logA = np.polyfit(x, z, 1)
+#     A = np.exp(logA)
 
-    da =  xr.DataArray(
-        np.array((A, b), dtype=np.float64),
-        dims=("fit_params_dgrcswd",),
-        coords={"fit_params_dgrcswd": np.array(("a", "b"), dtype=object)},
-        name="fit_diffuse_global_ratio_mu0_powerlaw",
-    )
-    da.attrs['info'] = 'Fit result for (diffuce_irradiance / global_irradiance) = a * mu0^b under clearsky conditions. here b is ndr_exp'
-    # infer a ndr_std_max
-    # Normalized diffuse ratio
-    ndr = pd.DataFrame(y_sel * (mu0_sel ** (-b)))
-    ndr_std = ndr.rolling(11, center=True).std()
-    da.attrs['ndr_std_max_estimated'] = float(ndr_std.mean().iloc[0])
-    return da
+#     da =  xr.DataArray(
+#         np.array((A, b), dtype=np.float64),
+#         dims=("fit_params_dgrcswd",),
+#         coords={"fit_params_dgrcswd": np.array(("a", "b"), dtype=object)},
+#         name="fit_diffuse_global_ratio_mu0_powerlaw",
+#     )
+#     da.attrs['info'] = 'Fit result for (diffuce_irradiance / global_irradiance) = a * mu0^b under clearsky conditions. here b is ndr_exp'
+#     # infer a ndr_std_max
+#     # Normalized diffuse ratio
+#     ndr = pd.DataFrame(y_sel * (mu0_sel ** (-b)))
+#     ndr_std = ndr.rolling(11, center=True).std()
+#     da.attrs['ndr_std_max_estimated'] = float(ndr_std.mean().iloc[0])
+#     return da
 
-def fit_diffuse_mu0_powerlaw(
-    mu0: xr.DataArray,
-    diffuse_irradiance: xr.DataArray,
-    mask_clearsky: xr.DataArray,
-    *,
-    mu0_min: float,
-    min_points: int = 100,) -> xr.DataArray | None:
-    """
-    Fit a simple power law for `diffuse_irradiance`:
-    diffuse_irradiance = A * mu0^b
-    using a linear regression in log space:
-    log(diffuse_irradiance) = log(A) + b * log(mu0)
-    over points where `mask_clearsky` is True, mu0 >= mu0_min, and
-    diffuse_irradiance > 0.
+# def fit_diffuse_mu0_powerlaw(
+#     mu0: xr.DataArray,
+#     diffuse_irradiance: xr.DataArray,
+#     mask_clearsky: xr.DataArray,
+#     *,
+#     mu0_min: float,
+#     min_points: int = 100,) -> xr.DataArray | None:
+#     """
+#     Fit a simple power law for `diffuse_irradiance`:
+#     diffuse_irradiance = A * mu0^b
+#     using a linear regression in log space:
+#     log(diffuse_irradiance) = log(A) + b * log(mu0)
+#     over points where `mask_clearsky` is True, mu0 >= mu0_min, and
+#     diffuse_irradiance > 0.
 
-    This is in principle the same as fit_global_powerlaw_mu0, but is kept separate to allow independent development.
+#     This is in principle the same as fit_global_powerlaw_mu0, but is kept separate to allow independent development.
 
-    Returns
-    -------
-    xr.DataArray or None
-        Labeled output with:
-        - tcswd_a: coefficient
-        - tcswd_b: exponent
-        None if not enough valid points.
-    """
-    cond = (
-        mask_clearsky
-        & (mu0 >= mu0_min)
-        & mu0.notnull()
-        & diffuse_irradiance.notnull()
-        # & (diffuse_irradiance > 0)
-    )
-    cond_vals = cond.values
-    if int(cond_vals.sum()) < min_points:
-        assert(False), 'should this really happen?'
+#     Returns
+#     -------
+#     xr.DataArray or None
+#         Labeled output with:
+#         - tcswd_a: coefficient
+#         - tcswd_b: exponent
+#         None if not enough valid points.
+#     """
+#     cond = (
+#         mask_clearsky
+#         & (mu0 >= mu0_min)
+#         & mu0.notnull()
+#         & diffuse_irradiance.notnull()
+#         # & (diffuse_irradiance > 0)
+#     )
+#     cond_vals = cond.values
+#     if int(cond_vals.sum()) < min_points:
+#         assert(False), 'should this really happen?'
 
-    mu0_sel = mu0.values[cond_vals]
-    y_sel = diffuse_irradiance.values[cond_vals]
+#     mu0_sel = mu0.values[cond_vals]
+#     y_sel = diffuse_irradiance.values[cond_vals]
 
-    # Flatten and drop NaNs
-    valid = np.isfinite(mu0_sel) & np.isfinite(y_sel) & (mu0_sel > 0) & (y_sel > 0)
-    if valid.sum() < min_points:
-        assert(False), 'we need to handle this in some way'
-        return None
+#     # Flatten and drop NaNs
+#     valid = np.isfinite(mu0_sel) & np.isfinite(y_sel) & (mu0_sel > 0) & (y_sel > 0)
+#     if valid.sum() < min_points:
+#         assert(False), 'we need to handle this in some way'
+#         return None
 
-    x = np.log(mu0_sel[valid])
-    z = np.log(y_sel[valid])
+#     x = np.log(mu0_sel[valid])
+#     z = np.log(y_sel[valid])
 
-    # Simple least-squares fit: z = log(A) + b * x
-    # b, logA = np.polyfit(x, z, 1)
-    # A = np.exp(logA)
-    n = x.size
-    x_sum = x.sum()
-    z_sum = z.sum()
-    x_mean = x_sum / n
-    z_mean = z_sum / n
-    sxx = np.dot(x, x) - x_sum * x_mean
-    sxz = np.dot(x, z) - x_sum * z_mean
-    szz = np.dot(z, z) - z_sum * z_mean
-    if sxx <= 0:
-        return None
+#     # Simple least-squares fit: z = log(A) + b * x
+#     # b, logA = np.polyfit(x, z, 1)
+#     # A = np.exp(logA)
+#     n = x.size
+#     x_sum = x.sum()
+#     z_sum = z.sum()
+#     x_mean = x_sum / n
+#     z_mean = z_sum / n
+#     sxx = np.dot(x, x) - x_sum * x_mean
+#     sxz = np.dot(x, z) - x_sum * z_mean
+#     szz = np.dot(z, z) - z_sum * z_mean
+#     if sxx <= 0:
+#         return None
 
-    b = sxz / sxx
-    logA = z_mean - b * x_mean
-    A = np.exp(logA)
-    r2 = np.nan
-    if szz > 0:
-        r2 = float(np.clip((sxz * sxz) / (sxx * szz), 0.0, 1.0))
+#     b = sxz / sxx
+#     logA = z_mean - b * x_mean
+#     A = np.exp(logA)
+#     r2 = np.nan
+#     if szz > 0:
+#         r2 = float(np.clip((sxz * sxz) / (sxx * szz), 0.0, 1.0))
 
 
-    da =  xr.DataArray(
-        np.array((A, b, r2), dtype=np.float64),
-        dims=("fit_params_dcswd",),
-        coords={"fit_params_dcswd": np.array(("a", "b", "r2"), dtype=object)},
-        name="fit_diffuse_mu0_powerlaw",
-    )
+#     da =  xr.DataArray(
+#         np.array((A, b, r2), dtype=np.float64),
+#         dims=("fit_params_dcswd",),
+#         coords={"fit_params_dcswd": np.array(("a", "b", "r2"), dtype=object)},
+#         name="fit_diffuse_mu0_powerlaw",
+#     )
 
-    da.attrs['info'] = '''Fit result for diffuse_irradiance = a * mu0^b under clearsky conditions.
-    Here a is the infered value for diffuse_max_coeff minus a margin of 10-20%. 
-    b is the infered value for diffuse_max_exp and should be close to 0.5'''
-    # da.attrs['infert_diffuse_max_coeff'] = A * 1.2
-    # da.attrs['infert_diffuse_max_exp'] = b
+#     da.attrs['info'] = '''Fit result for diffuse_irradiance = a * mu0^b under clearsky conditions.
+#     Here a is the infered value for diffuse_max_coeff minus a margin of 10-20%. 
+#     b is the infered value for diffuse_max_exp and should be close to 0.5'''
+#     # da.attrs['infert_diffuse_max_coeff'] = A * 1.2
+#     # da.attrs['infert_diffuse_max_exp'] = b
 
-    return da
+#     return da
