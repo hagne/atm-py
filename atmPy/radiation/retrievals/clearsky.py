@@ -3,6 +3,8 @@
 import xarray as xr
 import numpy as np
 import pandas as pd
+import sklearn
+
 
 # TODO: come up with a better name
 # def normalized_diffuse_ratio_variability_test(
@@ -277,80 +279,107 @@ import pandas as pd
 #     test_mask.attrs["nsw_max"] = nsw_max
 #     return test_mask
 
-def fit_global_powerlaw_mu0(
-    mu0: xr.DataArray,
-    global_irradiance: xr.DataArray, 
-    mask_clearsky: xr.DataArray,
-    *,
-    mu0_min: float,
-    min_points: int = 100,) -> xr.DataArray | None:
-    """
-    Fit a simple power law for `global_irradiance`:
-    global_irradiance = A * mu0^b
-    using a linear regression in log space:
-    log(global_irradiance) = log(A) + b * log(mu0)
-    over points where `mask_clearsky` is True, mu0 >= mu0_min, and
-    global_irradiance > 0.
+# def fit_global_powerlaw_mu0(
+#     mu0: xr.DataArray,
+#     global_irradiance: xr.DataArray, 
+#     mask_clearsky: xr.DataArray,
+#     *,
+#     mu0_min: float,
+#     min_points: int = 100,) -> xr.DataArray | None:
+#     """
+#     Fit a simple power law for `global_irradiance`:
+#     global_irradiance = A * mu0^b
+#     using a linear regression in log space:
+#     log(global_irradiance) = log(A) + b * log(mu0)
+#     over points where `mask_clearsky` is True, mu0 >= mu0_min, and
+#     global_irradiance > 0.
 
-    Returns
-    -------
-    xr.DataArray or None
-        Labeled output with:
-        - tcswd_a: coefficient
-        - tcswd_b: exponent
-        - r_squared: coefficient of determination in log space
-        None if not enough valid points.
-    """
-    cond = (
-        mask_clearsky
-        & (mu0 >= mu0_min)
-        & mu0.notnull()
-        & global_irradiance.notnull()
-        & (global_irradiance > 0)
-    )
-    cond_vals = cond.values
-    if int(cond_vals.sum()) < min_points:
-        return None
+#     Returns
+#     -------
+#     xr.DataArray or None
+#         Labeled output with:
+#         - tcswd_a: coefficient
+#         - tcswd_b: exponent
+#         - r_squared: coefficient of determination in log space
+#         None if not enough valid points.
+#     """
+#     cond = (
+#         mask_clearsky
+#         & (mu0 >= mu0_min)
+#         & mu0.notnull()
+#         & global_irradiance.notnull()
+#         & (global_irradiance > 0)
+#     )
+#     cond_vals = cond.values
+#     if int(cond_vals.sum()) < min_points:
+#         return None
 
-    mu0_sel = mu0.values[cond_vals]
-    y_sel = global_irradiance.values[cond_vals]
+#     mu0_sel = mu0.values[cond_vals]
+#     y_sel = global_irradiance.values[cond_vals]
 
-    # Flatten and drop NaNs
-    valid = np.isfinite(mu0_sel) & np.isfinite(y_sel) & (mu0_sel > 0) & (y_sel > 0)
-    if valid.sum() < min_points:
-        return None
+#     # Flatten and drop NaNs
+#     valid = np.isfinite(mu0_sel) & np.isfinite(y_sel) & (mu0_sel > 0) & (y_sel > 0)
+#     if valid.sum() < min_points:
+#         return None
 
-    x = np.log(mu0_sel[valid])
-    z = np.log(y_sel[valid])
+#     if 1:
+#         # robust linear regression
+#         x = np.log(mu0_sel[valid])
+#         z = np.log(y_sel[valid])
 
-    # Simple least-squares fit: z = log(A) + b * x
-    n = x.size
-    x_sum = x.sum()
-    z_sum = z.sum()
-    x_mean = x_sum / n
-    z_mean = z_sum / n
-    sxx = np.dot(x, x) - x_sum * x_mean
-    sxz = np.dot(x, z) - x_sum * z_mean
-    szz = np.dot(z, z) - z_sum * z_mean
-    if sxx <= 0:
-        return None
+#         fit = sklearn.linear_model.HuberRegressor().fit(x[:, None], z)
 
-    b = sxz / sxx
-    logA = z_mean - b * x_mean
-    A = np.exp(logA)
-    r2 = np.nan
-    if szz > 0:
-        r2 = float(np.clip((sxz * sxz) / (sxx * szz), 0.0, 1.0))
+#         b = fit.coef_[0]
+#         logA = fit.intercept_
+#         A = np.exp(logA)
 
-    da =  xr.DataArray(
-        np.array((A, b, r2), dtype=np.float64),
-        dims=("fit_params_tcswd",),
-        coords={"fit_params_tcswd": np.array(("a", "b", "r2"), dtype=object)},
-        name="global_powerlaw_mu0_fit",
-    )
-    da.attrs['info'] = 'Fit result for global_irradiance = a * mu0^b under clearsky conditions.'
+#         z_fit = fit.predict(x[:, None])
+#         residual = z - z_fit
 
-    return da
+#         r2 = fit.score(x[:, None], z)
+#         rmse = np.sqrt(np.mean(residual**2))
+#         mae = np.mean(np.abs(residual))
+#         median_abs_residual = np.median(np.abs(residual))
+#         outlier_fraction = fit.outliers_.mean()
+
+
+#         da =  xr.DataArray(
+#             np.array((A, b, r2, rmse, mae, median_abs_residual, outlier_fraction), dtype=np.float64),
+#             dims=("fit_params_tcswd",),
+#             coords={"fit_params_tcswd": np.array(("a", "b", "r2","rmse","mae","median_abs_residual","outlier_fraction"), dtype=object)},
+#             name="global_powerlaw_mu0_fit",
+#         )
+#         da.attrs['info'] = 'Fit result for global_irradiance = a * mu0^b under clearsky conditions.'
+
+#     else:
+#         # Simple least-squares fit: z = log(A) + b * x
+#         n = x.size
+#         x_sum = x.sum()
+#         z_sum = z.sum()
+#         x_mean = x_sum / n
+#         z_mean = z_sum / n
+#         sxx = np.dot(x, x) - x_sum * x_mean
+#         sxz = np.dot(x, z) - x_sum * z_mean
+#         szz = np.dot(z, z) - z_sum * z_mean
+#         if sxx <= 0:
+#             return None
+
+#         b = sxz / sxx
+#         logA = z_mean - b * x_mean
+#         A = np.exp(logA)
+#         r2 = np.nan
+#         if szz > 0:
+#             r2 = float(np.clip((sxz * sxz) / (sxx * szz), 0.0, 1.0))
+
+#         da =  xr.DataArray(
+#             np.array((A, b, r2), dtype=np.float64),
+#             dims=("fit_params_tcswd",),
+#             coords={"fit_params_tcswd": np.array(("a", "b", "r2"), dtype=object)},
+#             name="global_powerlaw_mu0_fit",
+#         )
+#         da.attrs['info'] = 'Fit result for global_irradiance = a * mu0^b under clearsky conditions.'
+
+#     return da
 
 def fit_diffuse_global_ratio_mu0_powerlaw(
     mu0: xr.DataArray,
