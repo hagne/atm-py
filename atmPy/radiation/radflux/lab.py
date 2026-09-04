@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
 import pathlib as pl
 import tomllib
 from typing import Mapping
@@ -23,6 +23,71 @@ path2defaul_sw_settings = (
 )
 
 SOLAR_CONSTANT = 1361.0
+
+
+_ABBREVIATED_CLEAR_SKY_PARAMETER_NAMES = {
+    "mu0_min": "maximum_solar_zenith_angle",
+    "nsw_exp": "normalized_total_shortwave_power_exponent",
+    "nsw_coeff": "normalized_total_shortwave_power_coefficient",
+    "nsw_r2": "normalized_total_shortwave_coefficient_of_determination",
+    "nsw_min": "normalized_total_shortwave_lower_limit_low_sun",
+    "nsw_max": "normalized_total_shortwave_upper_limit",
+    "diffuse_max_coeff": "maximum_diffuse_shortwave_irradiance",
+    "diffuse_max_exp": "maximum_diffuse_shortwave_cosine_exponent",
+    "normalized_diffuse_fit_coeff": "diffuse_shortwave_power_coefficient",
+    "normalized_diffuse_fit_exp": "diffuse_shortwave_power_exponent",
+    "max_dsw_dt": "shortwave_temporal_gradient_envelope_constant",
+    "ndr_exp": "normalized_diffuse_ratio_power_exponent",
+    "ndr_coeff": "normalized_diffuse_ratio_power_coefficient",
+    "ndr_r2": "normalized_diffuse_ratio_coefficient_of_determination",
+    "ndr_std_max": "normalized_diffuse_ratio_standard_deviation_limit",
+    "ndr_window": "normalized_diffuse_ratio_standard_deviation_window_minutes",
+    "ndr_std_max_estimated": "normalized_diffuse_ratio_standard_deviation_limit_estimate",
+    "diffuse_max_coeff_estimated": "maximum_diffuse_shortwave_irradiance_estimate",
+    "diffuse_max_exp_estimated": "maximum_diffuse_shortwave_cosine_exponent_estimate",
+    "max_dsw_dt_estimated": "shortwave_temporal_gradient_envelope_constant_estimate",
+    "clear_sky_params_optimized": "clear_sky_parameters_optimization_status",
+}
+_DESCRIPTIVE_TO_ABBREVIATED_CLEAR_SKY_PARAMETER_NAMES = {
+    descriptive: abbreviated
+    for abbreviated, descriptive in (
+        _ABBREVIATED_CLEAR_SKY_PARAMETER_NAMES.items()
+    )
+}
+
+_DESCRIPTIVE_CLEAR_SKY_PARAMETER_NAMES = (
+    "maximum_solar_zenith_angle",
+    "maximum_diffuse_shortwave_irradiance",
+    "maximum_diffuse_shortwave_cosine_exponent",
+    "normalized_diffuse_ratio_standard_deviation_limit",
+    "normalized_diffuse_ratio_standard_deviation_window_minutes",
+    "shortwave_temporal_gradient_envelope_constant",
+    "minimum_total_shortwave_irradiance",
+    "normalized_total_shortwave_intermediate_iteration_half_width",
+    "normalized_total_shortwave_final_iteration_half_width",
+    "normalized_total_shortwave_low_sun_cosine_boundary",
+    "minimum_clear_sky_duration_for_daily_fit",
+    "diffuse_ratio_exponent_lower_validity_limit",
+    "diffuse_ratio_exponent_upper_validity_limit",
+    "normalized_total_shortwave_power_exponent",
+    "normalized_diffuse_ratio_power_exponent",
+    "normalized_total_shortwave_lower_limit_low_sun",
+    "normalized_total_shortwave_lower_limit_high_sun",
+    "normalized_total_shortwave_upper_limit",
+    "normalized_total_shortwave_power_coefficient",
+    "normalized_total_shortwave_coefficient_of_determination",
+    "normalized_diffuse_ratio_power_coefficient",
+    "normalized_diffuse_ratio_coefficient_of_determination",
+    "diffuse_shortwave_power_coefficient",
+    "diffuse_shortwave_power_exponent",
+)
+
+_DESCRIPTIVE_CLEAR_SKY_ESTIMATE_NAMES = (
+    "normalized_diffuse_ratio_standard_deviation_limit_estimate",
+    "maximum_diffuse_shortwave_irradiance_estimate",
+    "maximum_diffuse_shortwave_cosine_exponent_estimate",
+    "shortwave_temporal_gradient_envelope_constant_estimate",
+)
 
 
 # default_config = dict(# General filters
@@ -138,12 +203,13 @@ def fit_powerlaw_mu0(
         mae = np.mean(np.abs(residual))
         median_abs_residual = np.median(np.abs(residual))
         outlier_fraction = fit.outliers_.mean()
+        mad = np.median(np.abs(residual - np.median(residual)))
 
 
         da =  xr.DataArray(
-            np.array((A, b, r2, rmse, mae, median_abs_residual, outlier_fraction), dtype=np.float64),
+            np.array((A, b, r2, rmse, mae, median_abs_residual, outlier_fraction, mad), dtype=np.float64),
             dims=("fit_params_tcswd",),
-            coords={"fit_params_tcswd": np.array(("a", "b", "r2","rmse","mae","median_abs_residual","outlier_fraction"), dtype=object)},
+            coords={"fit_params_tcswd": np.array(("a", "b", "r2","rmse","mae","median_abs_residual","outlier_fraction","mad"), dtype=object)},
             name="global_powerlaw_mu0_fit",
         )
         da.attrs['info'] = 'Fit result for values = a * mu0^b under clearsky conditions.'
@@ -322,78 +388,140 @@ def _validate_settings(settings: ClearSkyShortwaveSettings) -> None:
         )
 
 
+def _settings_parameters(
+    settings: ClearSkyShortwaveSettings,
+) -> dict[str, float | int]:
+    return {
+        **asdict(settings.fixed),
+        **asdict(settings.initial),
+        **asdict(settings.first_iteration_limits),
+    }
+
+
 
 class RadFlux(CombinedGlobalDiffuseDirect):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
     def get_attr(self, attr):
-        if attr not in self.dataset.attrs:
+        """Return a dataset attribute, accepting legacy parameter names."""
+        descriptive_name = _ABBREVIATED_CLEAR_SKY_PARAMETER_NAMES.get(
+            attr, attr
+        )
+        attrs = self.dataset.attrs
+        abbreviated_name = (
+            _DESCRIPTIVE_TO_ABBREVIATED_CLEAR_SKY_PARAMETER_NAMES.get(
+                descriptive_name
+            )
+        )
+
+        if descriptive_name in attrs:
+            value = attrs[descriptive_name]
+        elif abbreviated_name in attrs:
+            value = attrs[abbreviated_name]
+            if descriptive_name == "maximum_solar_zenith_angle":
+                value = np.rad2deg(np.arccos(value))
+        else:
             if self.verbose:
-                print(f'{attr} attribute is not set, using default')
+                print(f'{descriptive_name} attribute is not set, using default')
             # self.dataset.attrs[attr] = default_config[attr]
-            self.clearsky_parameters = 'default'
-        return self.dataset.attrs[attr]
+            defaults = _settings_parameters(
+                read_clear_sky_shortwave_settings()
+            )
+            if descriptive_name not in defaults:
+                raise KeyError(
+                    f"No clear-sky parameter named {descriptive_name!r}."
+                )
+            value = defaults[descriptive_name]
+            attrs[descriptive_name] = value
+
+        if attr == "mu0_min":
+            value = np.cos(np.deg2rad(value))
+        return value
 
     @property
     def clearsky_parameters(self):
         return self._get_clearsky_parameters()
     
     @clearsky_parameters.setter
-    def clearsky_parameters(self, cs_params: dict|str|pl.Path):
+    def clearsky_parameters(
+        self,
+        cs_params: Mapping | ClearSkyShortwaveSettings | str | pl.Path,
+    ):
         """Sets the clearsky parameters in the dataset attributes. 
         Parameters
         ----------
-        cs_params: dict, str, or Path
-            If dict, should contain the clearsky parameters as keys and their values. 
+        cs_params: Mapping, ClearSkyShortwaveSettings, str, or Path
+            A mapping should use the descriptive clear-sky parameter names.
+            Legacy abbreviated names are also accepted and converted.
             If str or Path, should be a path to a toml file containing the clearsky parameters.
             Note if cs_params ==  "default" the default clearsky parameters will be used.
         """
         self.reset_all_masks()
         if isinstance(cs_params, (str, pl.Path)):
             cs_params = read_clear_sky_shortwave_settings(cs_params)
-            self.tp_sp = cs_params
-            params = {}
-            params['mu0_min'] = np.cos(np.deg2rad(cs_params.fixed.maximum_solar_zenith_angle))
-            params['nsw_exp'] = cs_params.initial.normalized_total_shortwave_power_exponent
             # params['nsw_coeff'] = cs_params.fixed.maximum_diffuse_shortwave_irradiance
             # params['nsw_r2'] = cs_params.fixed.maximum_diffuse_shortwave_cosine_exponent
-            params['nsw_min'] = cs_params.first_iteration_limits.normalized_total_shortwave_lower_limit_low_sun
-            params['normalized_total_shortwave_lower_limit_high_sun'] = cs_params.first_iteration_limits.normalized_total_shortwave_lower_limit_high_sun
-            params['nsw_max'] = cs_params.first_iteration_limits.normalized_total_shortwave_upper_limit
-            params['diffuse_max_coeff'] = cs_params.fixed.maximum_diffuse_shortwave_irradiance
-            params['diffuse_max_exp'] = cs_params.fixed.maximum_diffuse_shortwave_cosine_exponent
             # params['normalized_diffuse_fit_coeff'] = cs_params.fixed.normalized_total_shortwave_final_iteration_half_width
             # params['normalized_diffuse_fit_exp'] = cs_params.fixed.normalized_total_shortwave_low_sun_cosine_boundary
-            params['max_dsw_dt'] = cs_params.fixed.shortwave_temporal_gradient_envelope_constant
             # minimum_clear_sky_duration_for_daily_fit
-            params['ndr_exp'] = cs_params.initial.normalized_diffuse_ratio_power_exponent
-            params['ndr_std_max'] = cs_params.fixed.normalized_diffuse_ratio_standard_deviation_limit
-            params['ndr_window'] = cs_params.fixed.normalized_diffuse_ratio_standard_deviation_window_minutes
-            cs_params = params
-            
+        if isinstance(cs_params, ClearSkyShortwaveSettings):
+            cs_params = _settings_parameters(cs_params)
         # elif isinstance(cs_params, dict):
-        for k,v in cs_params.items():
-            if k== 'ndr_window':
+        elif not isinstance(cs_params, Mapping):
+            raise TypeError(
+                "clearsky_parameters must be a mapping, settings object, "
+                "or TOML path."
+            )
+
+        params = {}
+        for name, value in cs_params.items():
+            descriptive_name = _ABBREVIATED_CLEAR_SKY_PARAMETER_NAMES.get(
+                name, name
+            )
+            if name == "mu0_min":
+                value = np.rad2deg(np.arccos(value))
+            params[descriptive_name] = value
+
+        for name, value in params.items():
+            if name == 'normalized_diffuse_ratio_standard_deviation_window_minutes':
                 if self.verbose:
-                    print('casting ndr_window to int')
-                v = int(v)
-            self.dataset.attrs[k] = v
+                    print(
+                        "Casting normalized diffuse ratio standard deviation "
+                        "window to int"
+                    )
+                value = int(value)
+            self.dataset.attrs[name] = value
+
+        for abbreviated_name, descriptive_name in (
+            _ABBREVIATED_CLEAR_SKY_PARAMETER_NAMES.items()
+        ):
+            if descriptive_name in params:
+                self.dataset.attrs.pop(abbreviated_name, None)
 
     def _get_clearsky_parameters(self, include_estimates = True):
-        cs_params = ['mu0_min', 'nsw_exp','nsw_coeff', 'nsw_r2',
-                     'nsw_min', 
-                     'normalized_total_shortwave_lower_limit_high_sun',
-                     'nsw_max', 'diffuse_max_coeff', 'diffuse_max_exp', 'normalized_diffuse_fit_coeff', 'normalized_diffuse_fit_exp', 'max_dsw_dt', 'ndr_exp', 'ndr_std_max', 'ndr_window']
+        parameter_names = list(_DESCRIPTIVE_CLEAR_SKY_PARAMETER_NAMES)
         if include_estimates:
-            cs_params += ['ndr_std_max_estimated',
-                            'diffuse_max_coeff_estimated',
-                            'diffuse_max_exp_estimated',
-                            'max_dsw_dt_estimated'
-                            ]
-        attr = self.dataset.attrs
-        cs_params_dict = {k: attr[k] for k in attr if k in cs_params}
-        return cs_params_dict
+            parameter_names.extend(_DESCRIPTIVE_CLEAR_SKY_ESTIMATE_NAMES)
+
+        params = {}
+        attrs = self.dataset.attrs
+        for name in parameter_names:
+            if name in attrs:
+                params[name] = attrs[name]
+                continue
+
+            abbreviated_name = (
+                _DESCRIPTIVE_TO_ABBREVIATED_CLEAR_SKY_PARAMETER_NAMES.get(name)
+            )
+            if abbreviated_name not in attrs:
+                continue
+
+            value = attrs[abbreviated_name]
+            if abbreviated_name == "mu0_min":
+                value = np.rad2deg(np.arccos(value))
+            params[name] = value
+        return params
 
 
     @property
@@ -448,16 +576,18 @@ class RadFlux(CombinedGlobalDiffuseDirect):
         """
         mu0 = self.mu0
         mu0_min = self.get_attr('mu0_min')
-        diffuse_max_coeff = self.get_attr('diffuse_max_coeff')
-        diffuse_max_exp = self.get_attr('diffuse_max_exp')
-        diffuse_irradiance = self.dataset.diffuse_horizontal
+        dif_max = self.get_attr('maximum_diffuse_shortwave_irradiance')
+        dif_exp = self.get_attr(
+            'maximum_diffuse_shortwave_cosine_exponent'
+        )
+        dif = self.dataset.diffuse_horizontal
         
-        valid = (mu0 >= mu0_min) & diffuse_irradiance.notnull()
+        valid = (mu0 >= mu0_min) & dif.notnull()
 
         mu0_safe = mu0.where(mu0 > 0)
-        diffuse_limit = diffuse_max_coeff * (mu0_safe ** diffuse_max_exp)
+        dif_lim = dif_max * (mu0_safe ** dif_exp)
 
-        test_mask = valid & (diffuse_irradiance <= diffuse_limit)
+        test_mask = valid & (dif <= dif_lim)
         test_mask.name = "test_diffuse_mag"
 
 
@@ -468,11 +598,11 @@ class RadFlux(CombinedGlobalDiffuseDirect):
         test_mask.attrs["flag_values"] = '0, 1',
         test_mask.attrs["flag_meanings"] = "0: fails diffuse magnitude test (cloudy), 1: passes diffuse magnitude test (possible clear-sky)"
         out = {'mask': test_mask, 
-               'auxiliary': {'diffuse_limit': diffuse_limit,
+               'auxiliary': {'dif_lim': dif_lim,
                              }}
         return out
 
-    def plot_normalized_global_magnitude_test(self, x = 'datetime'):
+    def plot_diffuse_magnitude_test(self, x = 'datetime'):
         self.mask_diffuse_magnitude # to initiate calculation
         if x == 'datetime':
             x = self.dataset.datetime
@@ -481,16 +611,16 @@ class RadFlux(CombinedGlobalDiffuseDirect):
         else:
             assert(False) 
         
-        diffuse = self.dataset.diffuse_horizontal
+        dif = self.dataset.diffuse_horizontal
         aux = self._diffuse_magnitude_test_auxiliary
-        diffuse_lim = aux['diffuse_limit']
+        dif_lim = aux['dif_lim']
 
         f, aa = mpl.pyplot.subplots(2, sharex=True, height_ratios=[3,1], gridspec_kw={'hspace':0})
         #################
         a = aa[0]
-        a.plot(x, diffuse, label = 'diffuse SW')
-        a.plot(x,diffuse_lim, label = 'diffuse limit')
-        a.set_ylim(0, diffuse_lim.max() * 1.1)
+        a.plot(x, dif, label = 'diffuse SW')
+        a.plot(x, dif_lim, label = 'diffuse limit')
+        a.set_ylim(0, dif_lim.max() * 1.1)
         a.set_ylabel('Diffuse SW [W m-2]')
         a.legend()
         a.set_title('Diffuse magnitude test')
@@ -503,7 +633,7 @@ class RadFlux(CombinedGlobalDiffuseDirect):
         return f,aa
 
     @property
-    def mask_global_temporal_gradient(self,
+    def mask_global_irradiance_temporal_gradient(self,
                                             # global_irradiance: xr.DataArray,
                                             # time_dim: str,
                                             # max_dsw_dt: float,
@@ -517,6 +647,11 @@ class RadFlux(CombinedGlobalDiffuseDirect):
             # self.dataset['mask_global_irradiance_temporal_gradient'] = out['mask']
             # self._mask_global_irradiance_temporal_gradient = out['auxiliary']
         return self.dataset.mask_global_irradiance_temporal_gradient
+
+    @property
+    def mask_global_temporal_gradient(self):
+        """Compatibility alias for the descriptive property name."""
+        return self.mask_global_irradiance_temporal_gradient
 
     def _global_irradiance_temporal_gradient_test(self,
         # global_irradiance: xr.DataArray,
@@ -554,16 +689,18 @@ class RadFlux(CombinedGlobalDiffuseDirect):
             Endpoints (first/last point) are treated as failing if derivative
             cannot be computed.
         """
-        max_dsw_dt = self.get_attr('max_dsw_dt')
-        global_irradiance = self.dataset.global_horizontal.copy(deep=True)
+        max_dsw_dt = self.get_attr(
+            'shortwave_temporal_gradient_envelope_constant'
+        )
+        gsw = self.dataset.global_horizontal.copy(deep=True)
         # Differentiate wrt time; xarray returns W m-2 per nanosecond for datetime64,
         # so convert to per minute.
-        dsw_dt_per_min = global_irradiance.differentiate('datetime',
+        dsw_dt_per_min = gsw.differentiate('datetime',
                                                  datetime_unit = 'm') 
 
         # Take absolute value and pad endpoints with NaNs
         dsw_dt_abs = np.abs(dsw_dt_per_min)
-        dsw_dt_abs = dsw_dt_abs.reindex_like(global_irradiance)  # align with original time axis
+        dsw_dt_abs = dsw_dt_abs.reindex_like(gsw)  # align with original time axis
 
         # build limits based on top of the atmosphere radiation
         I_t = (SOLAR_CONSTANT / self.sun_position.solar_sun_earth_distance**2) / self.sun_position.solar_airmass
@@ -597,7 +734,7 @@ class RadFlux(CombinedGlobalDiffuseDirect):
                                                     #   ax = None
                                                       ):
         """similar to Fig. 3 in Long & Ackerman 2000"""
-        self.mask_global_temporal_gradient # just to initiate the calculation 
+        self.mask_global_irradiance_temporal_gradient # just to initiate the calculation
         # if isinstance(ax, type(None)):
         f, aa= mpl.pyplot.subplots(2, sharex = True, height_ratios = [3,1], gridspec_kw = {'hspace':0} )
 
@@ -615,7 +752,7 @@ class RadFlux(CombinedGlobalDiffuseDirect):
         # the mask
         # at = a.twinx(zorder = -1)
         a = aa[1]
-        self.mask_global_temporal_gradient.plot(ax = a, 
+        self.mask_global_irradiance_temporal_gradient.plot(ax = a,
                                         #  color = 'black', zorder = -1
                                          )
         a.set_ylabel('mask')
@@ -684,20 +821,27 @@ class RadFlux(CombinedGlobalDiffuseDirect):
         """
         auxiliary = {}
         mu0_min = self.get_attr('mu0_min')
-        nsw_exp = self.get_attr('nsw_exp')
+        nsw_exp = self.get_attr(
+            'normalized_total_shortwave_power_exponent'
+        )
         # nsw_min = self.get_attr('nsw_min')
-        nsw_min_low = self.get_attr('nsw_min')
-        nsw_min_high = self.get_attr('normalized_total_shortwave_lower_limit_high_sun')
-
-
-        nsw_max = self.get_attr('nsw_max')
-        sw_global = self.dataset.global_horizontal.copy(deep = True)
+        nsw_min_low = self.get_attr(
+            'normalized_total_shortwave_lower_limit_low_sun'
+        )
+        nsw_min_high = self.get_attr(
+            'normalized_total_shortwave_lower_limit_high_sun'
+        )
+        nsw_max = self.get_attr('normalized_total_shortwave_upper_limit')
+        mu0_boundary = self.get_attr(
+            'normalized_total_shortwave_low_sun_cosine_boundary'
+        )
+        gsw = self.dataset.global_horizontal.copy(deep = True)
         mu0 = self.mu0
-        valid = (mu0 >= mu0_min) & sw_global.notnull()
+        valid = (mu0 >= mu0_min) & gsw.notnull()
 
         # Avoid division by zero
         mu0_safe = mu0.where(mu0 > 0)
-        nsw = sw_global / (mu0_safe ** nsw_exp)
+        nsw = gsw / (mu0_safe ** nsw_exp)
         nsw = nsw.where(valid)
 
         # self.tp_nsw = nsw
@@ -706,8 +850,8 @@ class RadFlux(CombinedGlobalDiffuseDirect):
         # self.tp_nsw_max = nsw_max
 
         nsw_min = xr.zeros_like(nsw, dtype=float )
-        nsw_min = nsw_min.where(self.mu0 < 0.2, other = nsw_min_high)
-        nsw_min = nsw_min.where(self.mu0 > 0.2, other = nsw_min_low)
+        nsw_min = nsw_min.where(mu0 < mu0_boundary, other = nsw_min_high)
+        nsw_min = nsw_min.where(mu0 > mu0_boundary, other = nsw_min_low)
 
         test_mask = valid & (nsw >= nsw_min) & (nsw <= nsw_max)
         auxiliary['nsw_min'] = nsw_min
@@ -816,25 +960,31 @@ class RadFlux(CombinedGlobalDiffuseDirect):
         xr.DataArray
             Boolean mask where True indicates the point passes the NDR variability test.
         """
-        global_irradiance=self.dataset.global_horizontal
-        diffuse_irradiance=self.dataset.diffuse_horizontal
+        gsw = self.dataset.global_horizontal
+        dsw = self.dataset.diffuse_horizontal
         mu0 = self.mu0
         mu0_min = self.get_attr('mu0_min')
-        ndr_exp = self.get_attr('ndr_exp')
-        ndr_std_max = self.get_attr('ndr_std_max')
-        window = self.get_attr('ndr_window')
+        ndr_exp = self.get_attr(
+            'normalized_diffuse_ratio_power_exponent'
+        )
+        ndr_std_max = self.get_attr(
+            'normalized_diffuse_ratio_standard_deviation_limit'
+        )
+        window = self.get_attr(
+            'normalized_diffuse_ratio_standard_deviation_window_minutes'
+        )
 
         valid = (
             (mu0 >= mu0_min)
-            & global_irradiance.notnull()
-            & diffuse_irradiance.notnull()
-            & (global_irradiance > 0)
+            & gsw.notnull()
+            & dsw.notnull()
+            & (gsw > 0)
         )
         
         mu0_safe = mu0.where(mu0 > 0)
 
         # Diffuse ratio
-        dr = (diffuse_irradiance / global_irradiance).where(valid)
+        dr = (dsw / gsw).where(valid)
 
         # Normalized diffuse ratio
         ndr = dr * (mu0_safe ** (-ndr_exp))
@@ -871,7 +1021,7 @@ class RadFlux(CombinedGlobalDiffuseDirect):
 
 
     def plot_normalized_diffuse_ratio_variability_test(self):
-        self.mask_clear_sky_radflux # to initiate calculation
+        self.mask_clear_sky_shortwave_radflux # to initiate calculation
         res = self._normalized_diffuse_ratio_variability_test_results
         f, aa = mpl.pyplot.subplots(3, sharex=True, gridspec_kw={'hspace':0})
         f.set_figheight(f.get_figheight() * 1.5)
@@ -939,7 +1089,7 @@ class RadFlux(CombinedGlobalDiffuseDirect):
                     print(f'Reset {var} in dataset.')
 
     @property
-    def mask_clear_sky_radflux(self) -> xr.DataArray:
+    def mask_clear_sky_shortwave_radflux(self) -> xr.DataArray:
         """
         Detect clear-sky periods in shortwave radiation using four Long & Ackerman–
         style tests.
@@ -988,7 +1138,7 @@ class RadFlux(CombinedGlobalDiffuseDirect):
                 print('Running clear sky tests (RADFLUX equivalent)')
             self.dataset['mask_clear_sky_shortwave_radflux'] = (self.mask_normalized_global_magnitude 
                                                                 & self.mask_diffuse_magnitude 
-                                                                & self.mask_global_temporal_gradient 
+                                                                & self.mask_global_irradiance_temporal_gradient
                                                                 & self.mask_normalized_diffuse_ratio_variability)
             self.dataset.mask_clear_sky_shortwave_radflux.attrs = {}
             
@@ -998,9 +1148,21 @@ class RadFlux(CombinedGlobalDiffuseDirect):
             self.dataset.mask_clear_sky_shortwave_radflux.attrs["flag_values"] = '0, 1',
             self.dataset.mask_clear_sky_shortwave_radflux.attrs["flag_meanings"] = "0: fails radflux clear-sky test (cloudy), 1: passes radflux clear-sky test (possible clear-sky)"
 
-        if ('clear_sky_params_optimized' not in self.dataset.attrs) or (self.dataset.attrs['clear_sky_params_optimized'] == 'False'):
-            warnings.warn('Clear_sky parameters have not been optimized! It is recommended to run optimize_clearsky_parameters().')
+        optimization_status = self.dataset.attrs.get(
+            'clear_sky_parameters_optimization_status'
+        )
+        if optimization_status is None:
+            optimization_status = self.dataset.attrs.get(
+                'clear_sky_params_optimized'
+            )
+        if optimization_status in (None, 'False'):
+            warnings.warn('Clear-sky parameters have not been optimized! It is recommended to run optimize_clearsky_parameters().')
         return self.dataset['mask_clear_sky_shortwave_radflux']
+
+    @property
+    def mask_clear_sky_radflux(self) -> xr.DataArray:
+        """Compatibility alias for the descriptive property name."""
+        return self.mask_clear_sky_shortwave_radflux
 
 
     def optimize_clearsky_parameters(self,
@@ -1018,16 +1180,27 @@ class RadFlux(CombinedGlobalDiffuseDirect):
         # adjust the number of clear sky points based on the time resolution of the data. 
         dt_in_m = np.median(self.dataset.datetime.values[1:]-self.dataset.datetime.values[:-1])/pd.to_timedelta(1,'m')
         min_clear_for_update = int(min_clear_for_update_equivalent * dt_in_m)  
-        self.dataset.attrs['clear_sky_params_optimized'] = 'Failed'
+        self.dataset.attrs[
+            'clear_sky_parameters_optimization_status'
+        ] = 'Failed'
+        self.dataset.attrs.pop('clear_sky_params_optimized', None)
         if self.verbose:
             print(('################\n'
                     'Original values\n'
-                   f'nsw_exp:{self.get_attr('nsw_exp'):0.3f},\n' #normalized_total_shortwave_power_exponent
-                   f'nsw_min: {self.get_attr('nsw_min'):0.1f},\n' 
+                   # normalized_total_shortwave_power_exponent
+                   f'normalized_total_shortwave_power_exponent: '
+                   f'{self.get_attr('normalized_total_shortwave_power_exponent'):0.3f},\n'
+                   f'normalized_total_shortwave_lower_limit_low_sun: '
+                   f'{self.get_attr('normalized_total_shortwave_lower_limit_low_sun'):0.1f},\n'
                    f'normalized_total_shortwave_lower_limit_high_sun: {self.get_attr('normalized_total_shortwave_lower_limit_high_sun'):0.1f},\n' 
-                   f'nsw_max: {self.get_attr('nsw_max'):0.1f},\n'
-                   f'ndr_exp: {self.get_attr('ndr_exp'):0.3f}'))
+                   f'normalized_total_shortwave_upper_limit: '
+                   f'{self.get_attr('normalized_total_shortwave_upper_limit'):0.1f},\n'
+                   f'normalized_diffuse_ratio_power_exponent: '
+                   f'{self.get_attr('normalized_diffuse_ratio_power_exponent'):0.3f}'))
         weight_by_mu0 = False
+        nsw_mu0_coverage = False
+        nsw_final_mu0_coverage = False
+        ndr_mu0_coverage = False
         for it in range(n_iterations):
             if self.verbose:
                 print('################')
@@ -1036,25 +1209,35 @@ class RadFlux(CombinedGlobalDiffuseDirect):
                 if self.verbose:
                     print('Set weight_by_mu0 = True for last iteration')
                 weight_by_mu0 = True
-                total = self.mask_clear_sky_radflux.sum()
-                above_th = self.mask_clear_sky_radflux.where(self.mu0 > 0.6).sum()
-                test_mu0_coverage_NSW_final_iteration = bool(above_th/total >= 0.45)
+                total = self.mask_clear_sky_shortwave_radflux.sum()
+                above_th = self.mask_clear_sky_shortwave_radflux.where(self.mu0 > 0.6).sum()
+                nsw_final_mu0_coverage = bool(above_th/total >= 0.45)
             else:
                 # is mu0 larger than 80 of that at noon?
-                test_mu0_coverage_NSW = bool(self.mu0.where(self.mask_clear_sky_radflux).max() > 0.8 * self.mu0.max())
+                nsw_mu0_coverage = bool(
+                    self.mu0.where(self.mask_clear_sky_shortwave_radflux).max()
+                    > 0.8 * self.mu0.max()
+                )
             
             mu0_min = self.get_attr('mu0_min')
-            test_mu0_coverage_diffuse_ratio = bool(self.mu0.where(self.mask_clear_sky_radflux & (self.mu0 > mu0_min)).min() < 0.4)
+            ndr_mu0_coverage = bool(
+                self.mu0.where(
+                    self.mask_clear_sky_shortwave_radflux & (self.mu0 > mu0_min)
+                ).min()
+                < 0.4
+            )
 
 
             # 1 check if sufficient clear sky points
-            n_clear = int(self.mask_clear_sky_radflux.sum())
+            n_clear = int(self.mask_clear_sky_shortwave_radflux.sum())
             if self.verbose:
                 print('Number of clearsky (valid) points: ', n_clear)
             if n_clear < min_clear_for_update:
                 if self.verbose:
                     print(f'Not enough clear sky points ({n_clear} < {min_clear_for_update}) -> skip optimazation, keep old params')
-                self.dataset.attrs['clear_sky_params_optimized'] = 'Not enough clear sky points'
+                self.dataset.attrs[
+                    'clear_sky_parameters_optimization_status'
+                ] = 'Not enough clear sky points'
                 return None
             
             #####
@@ -1070,24 +1253,48 @@ class RadFlux(CombinedGlobalDiffuseDirect):
             #                                 min_points = min_clear_for_update) #todo: valid for minute data only. this should be adjustable, such that minute and second resolution data can be used as well. 
             res = fit_powerlaw_mu0(mu0 = self.mu0, 
                                       values = self.dataset.global_horizontal, 
-                                      mask_clearsky= self.mask_clear_sky_radflux,
+                                      mask_clearsky= self.mask_clear_sky_shortwave_radflux,
                                       mu0_min = self.get_attr('mu0_min'),
                                       min_points = min_clear_for_update,
                                       weight_by_mu0 = weight_by_mu0)
             params = res.fit_result
-            self.tp_res_nsw = res
+            self.normalized_total_shortwave_fit_results = res
 
             # update the parameters in the dataset attributes
-            self.dataset.attrs['nsw_exp'] = float(params.to_pandas().b)
-            self.dataset.attrs['nsw_coeff'] = float(params.to_pandas().a)
-            self.dataset.attrs['nsw_r2'] = float(params.to_pandas().r2)
+            nsw_exp = float(params.sel(fit_params_tcswd='b'))
+            nsw_coeff = float(params.sel(fit_params_tcswd='a'))
+            nsw_r2 = float(params.sel(fit_params_tcswd='r2'))
+            nsw_mad = float(params.sel(fit_params_tcswd='mad'))
+            self.dataset.attrs[
+                'normalized_total_shortwave_power_exponent'
+            ] = nsw_exp
+            self.dataset.attrs[
+                'normalized_total_shortwave_power_coefficient'
+            ] = nsw_coeff
+            self.dataset.attrs[
+                'normalized_total_shortwave_coefficient_of_determination'
+            ] = nsw_r2
+            self.dataset.attrs[
+                'normalized_total_shortwave_median_absolute_deviation'
+            ] = nsw_mad
+
             if it == n_iterations - 1:
-                nsw_tol = 100
+                nsw_tol = self.get_attr(
+                    'normalized_total_shortwave_final_iteration_half_width'
+                )
             else:
-                nsw_tol = 150
-            self.dataset.attrs['nsw_min'] = self.dataset.attrs['nsw_coeff'] - nsw_tol
-            self.dataset.attrs['normalized_total_shortwave_lower_limit_high_sun'] = self.dataset.attrs['nsw_coeff'] - nsw_tol
-            self.dataset.attrs['nsw_max'] = self.dataset.attrs['nsw_coeff'] + nsw_tol
+                nsw_tol = self.get_attr(
+                    'normalized_total_shortwave_intermediate_iteration_half_width'
+                )
+            self.dataset.attrs[
+                'normalized_total_shortwave_lower_limit_low_sun'
+            ] = nsw_coeff - nsw_tol
+            self.dataset.attrs[
+                'normalized_total_shortwave_lower_limit_high_sun'
+            ] = nsw_coeff - nsw_tol
+            self.dataset.attrs[
+                'normalized_total_shortwave_upper_limit'
+            ] = nsw_coeff + nsw_tol
 
 
                 
@@ -1100,87 +1307,169 @@ class RadFlux(CombinedGlobalDiffuseDirect):
 
             res = fit_powerlaw_mu0(mu0 = self.mu0,
                                        values = self.dataset.diffuse_horizontal / self.dataset.global_horizontal,
-                                       mask_clearsky = self.mask_clear_sky_radflux,
+                                       mask_clearsky = self.mask_clear_sky_shortwave_radflux,
                                        mu0_min = self.get_attr('mu0_min'),
                                        min_points = min_clear_for_update,
                                        weight_by_1_over_mu0 = weight_by_mu0
                                        )
-            self.tp_res_ndr = res
+            self.normalized_diffuse_ratio_fit_results = res
             params = res.fit_result
 
             # update the parameters in the dataset attributes
-            self.dataset.attrs['ndr_exp'] = float(params.to_pandas().b)
-            self.dataset.attrs['ndr_coeff'] = float(params.to_pandas().a)
-            self.dataset.attrs['ndr_r2'] = float(params.to_pandas().r2)
+            ndr_exp = float(params.sel(fit_params_tcswd='b'))
+            ndr_coeff = float(params.sel(fit_params_tcswd='a'))
+            ndr_r2 = float(params.sel(fit_params_tcswd='r2'))
+            ndr_mad = float(params.sel(fit_params_tcswd='mad'))
+            self.dataset.attrs[
+                'normalized_diffuse_ratio_power_exponent'
+            ] = ndr_exp
+            self.dataset.attrs[
+                'normalized_diffuse_ratio_power_coefficient'
+            ] = ndr_coeff
+            self.dataset.attrs[
+                'normalized_diffuse_ratio_coefficient_of_determination'
+            ] = ndr_r2
+            self.dataset.attrs[
+                'normalized_diffuse_ratio_median_absolute_deviation'
+            ] = ndr_mad
 
             if self.verbose:
                 print(( 'New values\n'
-                       f'nsw_exp:{self.dataset.attrs['nsw_exp']:0.7f},\n'
-                       f'nsw_min: {self.dataset.attrs['nsw_min']:0.2f},\n'                                    
+                       f'normalized_total_shortwave_power_exponent: {nsw_exp:0.7f},\n'
+                       f'normalized_total_shortwave_lower_limit_low_sun: '
+                       f'{self.get_attr('normalized_total_shortwave_lower_limit_low_sun'):0.2f},\n'
                        f'normalized_total_shortwave_lower_limit_high_sun: {self.get_attr('normalized_total_shortwave_lower_limit_high_sun'):0.1f},\n' 
-                       f'nsw_max: {self.dataset.attrs['nsw_max']:0.2f},\n'
-                       f'ndr_exp: {self.dataset.attrs['ndr_exp']:0.7f}'))
+                       f'normalized_total_shortwave_upper_limit: '
+                       f'{self.get_attr('normalized_total_shortwave_upper_limit'):0.2f},\n'
+                       f'normalized_diffuse_ratio_power_exponent: {ndr_exp:0.7f}'))
             self.reset_all_masks() #this ensures that from now on all masks use the most up-to-date parameters.
 
-        self.dataset.attrs['clear_sky_params_optimized'] = 'True'
+
+        self.dataset.attrs[
+            'clear_sky_parameters_optimization_status'
+        ] = 'True'
 
         ##############
         ## extra, this does not really need to be here, as it does not add to the optimization, but it makes sence to have it here.
         res = fit_powerlaw_mu0(mu0 = self.mu0,
                             values = self.dataset.diffuse_horizontal,
-                            mask_clearsky = self.mask_clear_sky_radflux,
+                            mask_clearsky = self.mask_clear_sky_shortwave_radflux,
                             mu0_min = self.get_attr('mu0_min'),
                             min_points = min_clear_for_update
                                 )
-        self.tp_res_diffuse = res
+        self.diffuse_shortwave_fit_results = res
         params = res.fit_result
 
-        self.dataset.attrs['normalized_diffuse_fit_coeff'] = float(params.to_pandas().a)
-        self.dataset.attrs['normalized_diffuse_fit_exp'] = float(params.to_pandas().b)
+        self.dataset.attrs['diffuse_shortwave_power_coefficient'] = float(
+            params.sel(fit_params_tcswd='a')
+        )
+        self.dataset.attrs['diffuse_shortwave_power_exponent'] = float(
+            params.sel(fit_params_tcswd='b')
+        )
 
         #### more tests
         # If b_diffr < −0.95 (too steep) → interpolate b_diffr.
-        self.dataset.attrs['test_ndr_exp_too_steep'] = self.dataset.attrs['ndr_exp'] < -0.95
+        ndr_exp_min = self.get_attr(
+            'diffuse_ratio_exponent_lower_validity_limit'
+        )
+        ndr_exp_max = self.get_attr(
+            'diffuse_ratio_exponent_upper_validity_limit'
+        )
+        self.dataset.attrs[
+            'diffuse_ratio_power_exponent_below_validity_limit'
+        ] = ndr_exp < ndr_exp_min
         #If b_diffr > −0.4 (too flat) → interpolate both a_diffr and b_diffr.
-        self.dataset.attrs['test_ndr_exp_too_flat'] = self.dataset.attrs['ndr_exp'] > -0.4
+        self.dataset.attrs[
+            'diffuse_ratio_power_exponent_above_validity_limit'
+        ] = ndr_exp > ndr_exp_max
 
-        self.dataset.attrs['test_mu0_coverage_NSW'] = test_mu0_coverage_NSW
-        self.dataset.attrs['test_mu0_coverage_NSW_final_iteration'] = test_mu0_coverage_NSW_final_iteration
-        self.dataset.attrs['test_mu0_coverage_diffuse_ratio'] = test_mu0_coverage_diffuse_ratio
+        self.dataset.attrs[
+            'normalized_total_shortwave_cosine_coverage_sufficient'
+        ] = nsw_mu0_coverage
+        self.dataset.attrs[
+            'normalized_total_shortwave_final_iteration_cosine_coverage_sufficient'
+        ] = nsw_final_mu0_coverage
+        self.dataset.attrs[
+            'diffuse_ratio_cosine_coverage_sufficient'
+        ] = ndr_mu0_coverage
+
+    
+
+
 
         if self.verbose:
-            if not test_mu0_coverage_NSW:
-                txtNSW = f'{test_mu0_coverage_NSW}, Discard total-SW a,b; interpolate them.'
+            if not nsw_mu0_coverage:
+                txt_nsw = f'{nsw_mu0_coverage}, Discard total-SW a,b; interpolate them.'
             else:
-                txtNSW = f'{test_mu0_coverage_NSW}, Keep total-SW a,b.'
-            if not test_mu0_coverage_NSW_final_iteration:
-                txtNSWfinal = f'{test_mu0_coverage_NSW_final_iteration}, Discard total-SW a,b; interpolate them.'
+                txt_nsw = f'{nsw_mu0_coverage}, Keep total-SW a,b.'
+            if not nsw_final_mu0_coverage:
+                txt_nsw_final = f'{nsw_final_mu0_coverage}, Discard total-SW a,b; interpolate them.'
             else:
-                txtNSWfinal = f'{test_mu0_coverage_NSW_final_iteration}, Keep total-SW a,b.'
-            if not test_mu0_coverage_diffuse_ratio:
-                txt_diffuse = f'{test_mu0_coverage_diffuse_ratio}, Discard only diffuse-ratio b; interpolate b. Keep diffuse-ratio a'
+                txt_nsw_final = f'{nsw_final_mu0_coverage}, Keep total-SW a,b.'
+            if not ndr_mu0_coverage:
+                txt_diffuse = f'{ndr_mu0_coverage}, Discard only diffuse-ratio b; interpolate b. Keep diffuse-ratio a'
             else:
-                txt_diffuse = f'{test_mu0_coverage_diffuse_ratio}'
-            if self.dataset.attrs['test_ndr_exp_too_steep']:
-                txt_ndr_too_steep = f'{self.dataset.attrs['test_ndr_exp_too_steep']}, interpolate b.'
+                txt_diffuse = f'{ndr_mu0_coverage}'
+            if self.dataset.attrs['diffuse_ratio_power_exponent_below_validity_limit']:
+                txt_ndr_too_steep = f'{self.dataset.attrs['diffuse_ratio_power_exponent_below_validity_limit']}, interpolate b.'
             else: 
-                txt_ndr_too_steep = f'{self.dataset.attrs['test_ndr_exp_too_steep']}, pass.'
-            if self.dataset.attrs['test_ndr_exp_too_flat']:
-                txt_ndr_too_flat = f'{self.dataset.attrs['test_ndr_exp_too_flat']}, interpolate a and b.'
+                txt_ndr_too_steep = f'{self.dataset.attrs['diffuse_ratio_power_exponent_below_validity_limit']}, pass.'
+            if self.dataset.attrs['diffuse_ratio_power_exponent_above_validity_limit']:
+                txt_ndr_too_flat = f'{self.dataset.attrs['diffuse_ratio_power_exponent_above_validity_limit']}, interpolate a and b.'
             else:
-                txt_ndr_too_flat = f'{self.dataset.attrs['test_ndr_exp_too_flat']}, pass.'
-            print(('### mu0 coverage test results\n'
-                    f'test_mu0_coverage_NSW: {txtNSW},\n'
-                    f'test_mu0_coverage_NSW_final_iteration: {txtNSWfinal},\n'
-                    f'test_mu0_coverage_diffuse_ratio: {txt_diffuse},\n'
-                    f'test_ndr_exp_too_steep: {txt_ndr_too_steep},\n'
-                    f'test_ndr_exp_too_flat: {txt_ndr_too_flat},\n'))
+                txt_ndr_too_flat = f'{self.dataset.attrs['diffuse_ratio_power_exponent_above_validity_limit']}, pass.'
+            print((
+                '### mu0 coverage test results\n'
+                f'normalized_total_shortwave_cosine_coverage_sufficient: {txt_nsw},\n'
+                f'normalized_total_shortwave_final_iteration_cosine_coverage_sufficient: {txt_nsw_final},\n'
+                f'diffuse_ratio_cosine_coverage_sufficient: {txt_diffuse},\n'
+                f'diffuse_ratio_power_exponent_below_validity_limit: {txt_ndr_too_steep},\n'
+                f'diffuse_ratio_power_exponent_above_validity_limit: {txt_ndr_too_flat},\n'
+            ))
+
+
+        #todo: create an xarray dataset that contains the variables below (until line 1462). Determine values for the variables under conclusion based on the tests described above. When possible add attributes: unit(s), description, etc. This dataset is supposed to be my return object.
+        #results
+        normalized_total_shortwave_power_coefficient
+        normalized_total_shortwave_power_exponent
+        normalized_diffuse_ratio_power_coefficient
+        normalized_diffuse_ratio_power_exponent
+
+        # diagnostics
+        n_clear
+        n_clear_global_irradiance_termporal_gradiant
+        n_clear_normalized_diffuse_ratio_variability
+        n_clear_diffuse_magnitude
+        n_clear_normalized_diffuse_ratio_variability
+
+        mu0_coverage
+        normalized_total_shortwave_median_absolute_deviation
+        normalized_total_shortwave_coefficient_of_determination
+        normalized_diffuse_ratio_median_absolute_deviation
+        normalized_diffuse_ratio_coefficient_of_determination
+
+        # tests
+        diffuse_ratio_power_exponent_above_validity_limit
+        diffuse_ratio_power_exponent_below_validity_limit
+        normalized_total_shortwave_cosine_coverage_sufficient
+        normalized_total_shortwave_final_iteration_cosine_coverage_sufficient
+        diffuse_ratio_cosine_coverage_sufficient
+
+        #conclusion
+        normalized_total_shortwave_power_coefficient_is_valid
+        normalized_total_shortwave_power_exponent_is_valid
+        normalized_diffuse_ratio_power_coefficient_is_valid
+        normalized_diffuse_ratio_power_exponent_is_valid
+
+
+
+
     def plot_clearsky_parameter_optimization_results(self):
         f,aa = mpl.pyplot.subplots(3, sharex=True, gridspec_kw={'hspace':0})
         f.set_figheight(f.get_figheight() * 1.5)
         # 1. nsw optimization results
         a = aa[0]
-        res = self.tp_res_nsw
+        res = self.normalized_total_shortwave_fit_results
         res.valid_points.plot(ax = a)
         res.fit.plot(ax = a)
         a.set_ylabel('Normalized global SW [W m-2]')
@@ -1189,7 +1478,7 @@ class RadFlux(CombinedGlobalDiffuseDirect):
         
         # 2. ndr optimization results
         a = aa[1]
-        res = self.tp_res_ndr
+        res = self.normalized_diffuse_ratio_fit_results
         res.valid_points.plot(ax = a)
         res.fit.plot(ax = a)
         a.set_ylabel('Normalized diffuse ratio')
@@ -1198,7 +1487,7 @@ class RadFlux(CombinedGlobalDiffuseDirect):
 
         # 3. diffuse fit results
         a = aa[2]
-        res = self.tp_res_diffuse
+        res = self.diffuse_shortwave_fit_results
         res.valid_points.plot(ax = a)
         res.fit.plot(ax = a)
         a.set_ylabel('Normalized diffuse SW [W m-2]')
@@ -1210,12 +1499,20 @@ class RadFlux(CombinedGlobalDiffuseDirect):
     def clearsky_diffuse_horizontal(self):
         if 'clearsky_diffuse_horizontal' not in self.dataset:
             # params = self.clearsky_diffuse_irradiation_powerlow_fit_params
-            assert('normalized_diffuse_fit_coeff' in self.dataset.attrs and 'normalized_diffuse_fit_exp' in self.dataset.attrs), 'clearsky parameters ndiff_coeff and ndiff_exp are not set. Either set them manually (e.g. from database) or run optimize_clearsky_parameters() first.'
-            A = self.dataset.attrs['normalized_diffuse_fit_coeff']
-            b = self.dataset.attrs['normalized_diffuse_fit_exp']
+            params = self.clearsky_parameters
+            assert(
+                'diffuse_shortwave_power_coefficient' in params
+                and 'diffuse_shortwave_power_exponent' in params
+            ), (
+                'Clear-sky diffuse shortwave power coefficient and exponent '
+                'are not set. Either set them manually (e.g. from database) '
+                'or run optimize_clearsky_parameters() first.'
+            )
+            a = params['diffuse_shortwave_power_coefficient']
+            b = params['diffuse_shortwave_power_exponent']
             # A = params.to_pandas().a
             # b = params.to_pandas().b
-            fit = A * np.power(self.mu0, b)
+            fit = a * np.power(self.mu0, b)
             self.dataset['clearsky_diffuse_horizontal'] = fit
             self.dataset.clearsky_diffuse_horizontal.attrs = {}
             self.dataset.clearsky_diffuse_horizontal.attrs['long_name'] = 'Clear sky diffuse horizontal irradiance (empirical power law fit)'
@@ -1227,13 +1524,20 @@ class RadFlux(CombinedGlobalDiffuseDirect):
     def clearsky_global_horizontal(self):
         if 'clearsky_global_horizontal' not in self.dataset:
             # params = self.clearsky_global_irradiation_powerlow_fit_params
-            assert('nsw_coeff' in self.dataset.attrs and 'nsw_exp' in self.dataset.attrs), 'clearsky parameters nsw_coeff and nsw_exp are not set. Either set them manually (e.g. from database) or run optimize_clearsky_parameters() first.'
-            A = self.dataset.attrs['nsw_coeff']
-            b = self.dataset.attrs['nsw_exp']
-            fit = A * np.power(self.mu0, b)
+            params = self.clearsky_parameters
+            assert(
+                'normalized_total_shortwave_power_coefficient' in params
+                and 'normalized_total_shortwave_power_exponent' in params
+            ), (
+                'Clear-sky normalized total shortwave power coefficient and '
+                'exponent are not set. Either set them manually (e.g. from '
+                'database) or run optimize_clearsky_parameters() first.'
+            )
+            a = params['normalized_total_shortwave_power_coefficient']
+            b = params['normalized_total_shortwave_power_exponent']
+            fit = a * np.power(self.mu0, b)
             self.dataset['clearsky_global_horizontal'] = fit
             self.dataset.clearsky_global_horizontal.attrs = {}
             self.dataset.clearsky_global_horizontal.attrs['long_name'] = 'Clear sky global horizontal irradiance (empirical power law fit)'
             self.dataset.clearsky_global_horizontal.attrs['unit'] = 'W m-2'
         return self.dataset['clearsky_global_horizontal']
-
