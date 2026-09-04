@@ -1210,7 +1210,7 @@ class RadFlux(CombinedGlobalDiffuseDirect):
                     print('Set weight_by_mu0 = True for last iteration')
                 weight_by_mu0 = True
                 total = self.mask_clear_sky_shortwave_radflux.sum()
-                above_th = self.mask_clear_sky_shortwave_radflux.where(self.mu0 > 0.6).sum()
+                above_th = self.mask_clear_sky_shortwave_radflux.where(self.mu0 > 0.6 * self.mu0.max()).sum()
                 nsw_final_mu0_coverage = bool(above_th/total >= 0.45)
             else:
                 # is mu0 larger than 80 of that at noon?
@@ -1351,21 +1351,23 @@ class RadFlux(CombinedGlobalDiffuseDirect):
 
         ##############
         ## extra, this does not really need to be here, as it does not add to the optimization, but it makes sence to have it here.
-        res = fit_powerlaw_mu0(mu0 = self.mu0,
-                            values = self.dataset.diffuse_horizontal,
-                            mask_clearsky = self.mask_clear_sky_shortwave_radflux,
-                            mu0_min = self.get_attr('mu0_min'),
-                            min_points = min_clear_for_update
-                                )
-        self.diffuse_shortwave_fit_results = res
-        params = res.fit_result
+        # i'll take it out for now
+        if 0:
+            res = fit_powerlaw_mu0(mu0 = self.mu0,
+                                values = self.dataset.diffuse_horizontal,
+                                mask_clearsky = self.mask_clear_sky_shortwave_radflux,
+                                mu0_min = self.get_attr('mu0_min'),
+                                min_points = min_clear_for_update
+                                    )
+            self.diffuse_shortwave_fit_results = res
+            params = res.fit_result
 
-        self.dataset.attrs['diffuse_shortwave_power_coefficient'] = float(
-            params.sel(fit_params_tcswd='a')
-        )
-        self.dataset.attrs['diffuse_shortwave_power_exponent'] = float(
-            params.sel(fit_params_tcswd='b')
-        )
+            self.dataset.attrs['diffuse_shortwave_power_coefficient'] = float(
+                params.sel(fit_params_tcswd='a')
+            )
+            self.dataset.attrs['diffuse_shortwave_power_exponent'] = float(
+                params.sel(fit_params_tcswd='b')
+            )
 
         #### more tests
         # If b_diffr < −0.95 (too steep) → interpolate b_diffr.
@@ -1428,44 +1430,261 @@ class RadFlux(CombinedGlobalDiffuseDirect):
             ))
 
 
-        #todo: create an xarray dataset that contains the variables below (until line 1462). Determine values for the variables under conclusion based on the tests described above. When possible add attributes: unit(s), description, etc. This dataset is supposed to be my return object.
-        #results
-        normalized_total_shortwave_power_coefficient
-        normalized_total_shortwave_power_exponent
-        normalized_diffuse_ratio_power_coefficient
-        normalized_diffuse_ratio_power_exponent
+        clear_mask = self.mask_clear_sky_shortwave_radflux
+        clear_mu0 = self.mu0.where(clear_mask)
+        diagnostics = xr.Dataset(
+            {
+                'n_clear': clear_mask.sum(),
+                'n_clear_global_irradiance_termporal_gradiant': (
+                    self.mask_global_irradiance_temporal_gradient.sum()
+                ),
+                'n_clear_normalized_diffuse_ratio_variability': (
+                    self.mask_normalized_diffuse_ratio_variability.sum()
+                ),
+                'n_clear_diffuse_magnitude': self.mask_diffuse_magnitude.sum(),
+                'n_clear_normalized_global_magnitude': (
+                    self.mask_normalized_global_magnitude.sum()
+                ),
+                '_minimum_clear_mu0': clear_mu0.min(),
+                '_maximum_clear_mu0': clear_mu0.max(),
+            }
+        ).compute()
+        mu0_coverage = float(
+            diagnostics._maximum_clear_mu0 - diagnostics._minimum_clear_mu0
+        )
 
-        # diagnostics
-        n_clear
-        n_clear_global_irradiance_termporal_gradiant
-        n_clear_normalized_diffuse_ratio_variability
-        n_clear_diffuse_magnitude
-        n_clear_normalized_diffuse_ratio_variability
+        diffuse_ratio_power_exponent_above_validity_limit = bool(
+            self.dataset.attrs[
+                'diffuse_ratio_power_exponent_above_validity_limit'
+            ]
+        )
+        diffuse_ratio_power_exponent_below_validity_limit = bool(
+            self.dataset.attrs[
+                'diffuse_ratio_power_exponent_below_validity_limit'
+            ]
+        )
+        normalized_total_shortwave_parameters_are_valid = (
+            nsw_mu0_coverage and nsw_final_mu0_coverage
+        )
+        normalized_diffuse_ratio_power_coefficient_is_valid = not (
+            diffuse_ratio_power_exponent_above_validity_limit
+        )
+        normalized_diffuse_ratio_power_exponent_is_valid = (
+            ndr_mu0_coverage
+            and not diffuse_ratio_power_exponent_below_validity_limit
+            and not diffuse_ratio_power_exponent_above_validity_limit
+        )
 
-        mu0_coverage
-        normalized_total_shortwave_median_absolute_deviation
-        normalized_total_shortwave_coefficient_of_determination
-        normalized_diffuse_ratio_median_absolute_deviation
-        normalized_diffuse_ratio_coefficient_of_determination
-
-        # tests
-        diffuse_ratio_power_exponent_above_validity_limit
-        diffuse_ratio_power_exponent_below_validity_limit
-        normalized_total_shortwave_cosine_coverage_sufficient
-        normalized_total_shortwave_final_iteration_cosine_coverage_sufficient
-        diffuse_ratio_cosine_coverage_sufficient
-
-        #conclusion
-        normalized_total_shortwave_power_coefficient_is_valid
-        normalized_total_shortwave_power_exponent_is_valid
-        normalized_diffuse_ratio_power_coefficient_is_valid
-        normalized_diffuse_ratio_power_exponent_is_valid
+        optimization_results = xr.Dataset(
+            data_vars={
+                'normalized_total_shortwave_power_coefficient': (
+                    (),
+                    nsw_coeff,
+                    {
+                        'units': 'W m-2',
+                        'description': 'Coefficient a in total shortwave = a * mu0**b.',
+                    },
+                ),
+                'normalized_total_shortwave_power_exponent': (
+                    (),
+                    nsw_exp,
+                    {
+                        'units': '1',
+                        'description': 'Exponent b in total shortwave = a * mu0**b.',
+                    },
+                ),
+                'normalized_diffuse_ratio_power_coefficient': (
+                    (),
+                    ndr_coeff,
+                    {
+                        'units': '1',
+                        'description': 'Coefficient a in diffuse ratio = a * mu0**b.',
+                    },
+                ),
+                'normalized_diffuse_ratio_power_exponent': (
+                    (),
+                    ndr_exp,
+                    {
+                        'units': '1',
+                        'description': 'Exponent b in diffuse ratio = a * mu0**b.',
+                    },
+                ),
+                'n_clear': (
+                    (),
+                    int(diagnostics.n_clear),
+                    {
+                        'units': '1',
+                        'description': 'Number of samples passing all clear-sky tests.',
+                    },
+                ),
+                'clear_fraction': (
+                    (), 
+                    int(diagnostics.n_clear/ (self.mu0 > mu0_min).sum()),
+                    {
+                        'units': 1,
+                        'description': 'Ratio of n_clear and total number of valid points.'
+                    },
+                ),
+                'n_clear_global_irradiance_termporal_gradiant': (
+                    (),
+                    int(
+                        diagnostics.n_clear_global_irradiance_termporal_gradiant
+                    ),
+                    {
+                        'units': '1',
+                        'description': 'Number of samples passing the global irradiance temporal-gradient test.',
+                    },
+                ),
+                'n_clear_normalized_diffuse_ratio_variability': (
+                    (),
+                    int(
+                        diagnostics.n_clear_normalized_diffuse_ratio_variability
+                    ),
+                    {
+                        'units': '1',
+                        'description': 'Number of samples passing the normalized diffuse-ratio variability test.',
+                    },
+                ),
+                'n_clear_diffuse_magnitude': (
+                    (),
+                    int(diagnostics.n_clear_diffuse_magnitude),
+                    {
+                        'units': '1',
+                        'description': 'Number of samples passing the diffuse-magnitude test.',
+                    },
+                ),
+                'n_clear_normalized_global_magnitude': (
+                    (),
+                    int(diagnostics.n_clear_normalized_global_magnitude),
+                    {
+                        'units': '1',
+                        'description': 'Number of samples passing the normalized global-magnitude test.',
+                    },
+                ),
+                'mu0_coverage': (
+                    (),
+                    mu0_coverage,
+                    {
+                        'units': '1',
+                        'description': 'Range of mu0 represented by clear-sky samples.',
+                    },
+                ),
+                'normalized_total_shortwave_median_absolute_deviation': (
+                    (),
+                    nsw_mad,
+                    {
+                        'units': '1',
+                        'description': 'Median absolute deviation of the total-shortwave fit residuals in log space.',
+                    },
+                ),
+                'normalized_total_shortwave_coefficient_of_determination': (
+                    (),
+                    nsw_r2,
+                    {
+                        'units': '1',
+                        'description': 'Coefficient of determination of the total-shortwave fit in log space.',
+                    },
+                ),
+                'normalized_diffuse_ratio_median_absolute_deviation': (
+                    (),
+                    ndr_mad,
+                    {
+                        'units': '1',
+                        'description': 'Median absolute deviation of the diffuse-ratio fit residuals in log space.',
+                    },
+                ),
+                'normalized_diffuse_ratio_coefficient_of_determination': (
+                    (),
+                    ndr_r2,
+                    {
+                        'units': '1',
+                        'description': 'Coefficient of determination of the diffuse-ratio fit in log space.',
+                    },
+                ),
+                'diffuse_ratio_power_exponent_above_validity_limit': (
+                    (),
+                    diffuse_ratio_power_exponent_above_validity_limit,
+                    {
+                        'units': '1',
+                        'description': 'True when the diffuse-ratio exponent is too flat.',
+                    },
+                ),
+                'diffuse_ratio_power_exponent_below_validity_limit': (
+                    (),
+                    diffuse_ratio_power_exponent_below_validity_limit,
+                    {
+                        'units': '1',
+                        'description': 'True when the diffuse-ratio exponent is too steep.',
+                    },
+                ),
+                'normalized_total_shortwave_cosine_coverage_sufficient': (
+                    (),
+                    nsw_mu0_coverage,
+                    {
+                        'units': '1',
+                        'description': 'Whether total-shortwave fitting samples cover sufficiently high mu0.',
+                    },
+                ),
+                'normalized_total_shortwave_final_iteration_cosine_coverage_sufficient': (
+                    (),
+                    nsw_final_mu0_coverage,
+                    {
+                        'units': '1',
+                        'description': 'Whether enough final-iteration samples have mu0 above 0.6.',
+                    },
+                ),
+                'diffuse_ratio_cosine_coverage_sufficient': (
+                    (),
+                    ndr_mu0_coverage,
+                    {
+                        'units': '1',
+                        'description': 'Whether diffuse-ratio fitting samples cover sufficiently low mu0.',
+                    },
+                ),
+                'normalized_total_shortwave_power_coefficient_is_valid': (
+                    (),
+                    normalized_total_shortwave_parameters_are_valid,
+                    {
+                        'units': '1',
+                        'description': 'Whether the fitted total-shortwave coefficient can be used without interpolation.',
+                    },
+                ),
+                'normalized_total_shortwave_power_exponent_is_valid': (
+                    (),
+                    normalized_total_shortwave_parameters_are_valid,
+                    {
+                        'units': '1',
+                        'description': 'Whether the fitted total-shortwave exponent can be used without interpolation.',
+                    },
+                ),
+                'normalized_diffuse_ratio_power_coefficient_is_valid': (
+                    (),
+                    normalized_diffuse_ratio_power_coefficient_is_valid,
+                    {
+                        'units': '1',
+                        'description': 'Whether the fitted diffuse-ratio coefficient can be used without interpolation.',
+                    },
+                ),
+                'normalized_diffuse_ratio_power_exponent_is_valid': (
+                    (),
+                    normalized_diffuse_ratio_power_exponent_is_valid,
+                    {
+                        'units': '1',
+                        'description': 'Whether the fitted diffuse-ratio exponent can be used without interpolation.',
+                    },
+                ),
+            },
+            attrs={
+                'description': 'Clear-sky parameter optimization results and diagnostics.'
+            },
+        )
+        return optimization_results
 
 
 
 
     def plot_clearsky_parameter_optimization_results(self):
-        f,aa = mpl.pyplot.subplots(3, sharex=True, gridspec_kw={'hspace':0})
+        f,aa = mpl.pyplot.subplots(2, sharex=True, gridspec_kw={'hspace':0})
         f.set_figheight(f.get_figheight() * 1.5)
         # 1. nsw optimization results
         a = aa[0]
@@ -1486,13 +1705,14 @@ class RadFlux(CombinedGlobalDiffuseDirect):
         a.set_title('Normalized diffuse ratio power law fit')
 
         # 3. diffuse fit results
-        a = aa[2]
-        res = self.diffuse_shortwave_fit_results
-        res.valid_points.plot(ax = a)
-        res.fit.plot(ax = a)
-        a.set_ylabel('Normalized diffuse SW [W m-2]')
-        a.set_xlabel('mu0 (cosine of solar zenith angle)')
-        a.set_title('Normalized diffuse power law fit')
+        if 0: #we don't fit this anymore ... right now
+            a = aa[2]
+            res = self.clearsky_diffuse_horizontal
+            res.valid_points.plot(ax = a)
+            res.fit.plot(ax = a)
+            a.set_ylabel('Normalized diffuse SW [W m-2]')
+            a.set_xlabel('mu0 (cosine of solar zenith angle)')
+            a.set_title('Normalized diffuse power law fit')
         return f,aa
 
     @property
@@ -1500,19 +1720,37 @@ class RadFlux(CombinedGlobalDiffuseDirect):
         if 'clearsky_diffuse_horizontal' not in self.dataset:
             # params = self.clearsky_diffuse_irradiation_powerlow_fit_params
             params = self.clearsky_parameters
-            assert(
-                'diffuse_shortwave_power_coefficient' in params
-                and 'diffuse_shortwave_power_exponent' in params
-            ), (
-                'Clear-sky diffuse shortwave power coefficient and exponent '
-                'are not set. Either set them manually (e.g. from database) '
-                'or run optimize_clearsky_parameters() first.'
-            )
-            a = params['diffuse_shortwave_power_coefficient']
-            b = params['diffuse_shortwave_power_exponent']
-            # A = params.to_pandas().a
-            # b = params.to_pandas().b
-            fit = a * np.power(self.mu0, b)
+            construct_from_diffuse_ratio = True
+            if construct_from_diffuse_ratio:
+                assert(
+                    'normalized_diffuse_ratio_power_exponent' in params
+                    and 'normalized_diffuse_ratio_power_coefficient' in params
+                ), (
+                    'Clear-sky diffuse ratio shortwave power coefficient and exponent '
+                    'are not set. Either set them manually (e.g. from database) '
+                    'or run optimize_clearsky_parameters() first.'
+                )
+                a = params['normalized_diffuse_ratio_power_coefficient']
+                b = params['normalized_diffuse_ratio_power_exponent']
+                # A = params.to_pandas().a
+                # b = params.to_pandas().b
+                diff_ratio = a * np.power(self.mu0, b)
+                fit = diff_ratio * self.clearsky_global_horizontal
+                
+            else:
+                assert(
+                    'diffuse_shortwave_power_coefficient' in params
+                    and 'diffuse_shortwave_power_exponent' in params
+                ), (
+                    'Clear-sky diffuse shortwave power coefficient and exponent '
+                    'are not set. Either set them manually (e.g. from database) '
+                    'or run optimize_clearsky_parameters() first.'
+                )
+                a = params['diffuse_shortwave_power_coefficient']
+                b = params['diffuse_shortwave_power_exponent']
+                # A = params.to_pandas().a
+                # b = params.to_pandas().b
+                fit = a * np.power(self.mu0, b)
             self.dataset['clearsky_diffuse_horizontal'] = fit
             self.dataset.clearsky_diffuse_horizontal.attrs = {}
             self.dataset.clearsky_diffuse_horizontal.attrs['long_name'] = 'Clear sky diffuse horizontal irradiance (empirical power law fit)'
