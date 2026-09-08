@@ -3,35 +3,65 @@ This module provides a class for managing a database of radflux parameters. It i
 but rather as a blueprint for a customized database class.
 """
 import sqlite3
+import socket
 import pathlib as pl
 import pandas as pd
-
-
-default_clearsky_params = {'nsw_exp': 1.202095545434091,
-                            'nsw_min': 800,
-                            'nsw_max': 1400,
-                            'ndr_exp': -0.6827046137686424,
-                            'mu0_min': 0.05,
-                            'diffuse_max_coeff': 150,
-                            'diffuse_max_exp': 0.5,
-                            'max_dsw_dt': 8,
-                            'ndr_std_max': 0.005,
-                            'ndr_window': 11,}
-
+import xarray as xr
 
 radflux_parameter_table = 'radflux_parameters'
-radflux_parameter_names = tuple(default_clearsky_params) + (
-    'nsw_coeff',
-    'nsw_r2',
-    'ndr_std_max_estimated',
-    # 'diffuse_max_coeff_estimated',
-    # 'diffuse_max_exp_estimated',
-    'normalized_diffuse_fit_exp',
-    'normalized_diffuse_fit_coeff',
-    'max_dsw_dt_estimated',
+radflux_parameter_names = (
+    'normalized_total_shortwave_power_coefficient',
+    'normalized_total_shortwave_power_exponent',
+    'normalized_diffuse_ratio_power_coefficient',
+    'normalized_diffuse_ratio_power_exponent',
+    'n_clear',
+    'clear_fraction',
+    'n_clear_global_irradiance_termporal_gradiant',
+    'n_clear_normalized_diffuse_ratio_variability',
+    'n_clear_diffuse_magnitude',
+    'n_clear_normalized_global_magnitude',
+    'mu0_coverage',
+    'normalized_total_shortwave_median_absolute_deviation',
+    'normalized_total_shortwave_coefficient_of_determination',
+    'normalized_diffuse_ratio_median_absolute_deviation',
+    'normalized_diffuse_ratio_coefficient_of_determination',
+    'diffuse_ratio_power_exponent_above_validity_limit',
+    'diffuse_ratio_power_exponent_below_validity_limit',
+    'normalized_total_shortwave_cosine_coverage_sufficient',
+    'normalized_total_shortwave_final_iteration_cosine_coverage_sufficient',
+    'diffuse_ratio_cosine_coverage_sufficient',
+    'normalized_total_shortwave_power_coefficient_is_valid',
+    'normalized_total_shortwave_power_exponent_is_valid',
+    'normalized_diffuse_ratio_power_coefficient_is_valid',
+    'normalized_diffuse_ratio_power_exponent_is_valid',
+)
+radflux_integer_parameter_names = frozenset({
+    'n_clear',
+    'n_clear_global_irradiance_termporal_gradiant',
+    'n_clear_normalized_diffuse_ratio_variability',
+    'n_clear_diffuse_magnitude',
+    'n_clear_normalized_global_magnitude',
+})
+radflux_boolean_parameter_names = frozenset({
+    'diffuse_ratio_power_exponent_above_validity_limit',
+    'diffuse_ratio_power_exponent_below_validity_limit',
+    'normalized_total_shortwave_cosine_coverage_sufficient',
+    'normalized_total_shortwave_final_iteration_cosine_coverage_sufficient',
+    'diffuse_ratio_cosine_coverage_sufficient',
+    'normalized_total_shortwave_power_coefficient_is_valid',
+    'normalized_total_shortwave_power_exponent_is_valid',
+    'normalized_diffuse_ratio_power_coefficient_is_valid',
+    'normalized_diffuse_ratio_power_exponent_is_valid',
+})
+radflux_float_parameter_names = frozenset(radflux_parameter_names).difference(
+    radflux_integer_parameter_names,
+    radflux_boolean_parameter_names,
+)
+radflux_discrete_parameter_names = (
+    radflux_integer_parameter_names | radflux_boolean_parameter_names
 )
 radflux_table_columns = {
-    'row_timestamp': 'TEXT PRIMARY KEY',
+    'local_day': 'TEXT PRIMARY KEY',
     'input_file': 'TEXT NOT NULL',
     'next_day_needed': 'BOOLEAN',
     # 'output_file': 'TEXT NOT NULL',
@@ -39,8 +69,10 @@ radflux_table_columns = {
     'process_version': 'TEXT NOT NULL',
     'processing_server': 'TEXT NOT NULL',
     'clear_sky_params_optimized': 'TEXT',
-    # 'parameters_json': 'TEXT NOT NULL',
-    **{name: 'REAL' for name in radflux_parameter_names},
+    **{
+        name: 'INTEGER' if name in radflux_discrete_parameter_names else 'REAL'
+        for name in radflux_parameter_names
+    },
 }
 
 class RadfluxParameterDatabase:
@@ -81,11 +113,22 @@ class RadfluxParameterDatabase:
             row['name']
             for row in conn.execute(f'PRAGMA table_info({radflux_parameter_table})')
         }
-        if table_exists and 'row_timestamp' not in existing_columns:
-            raise ValueError(
-                f'{self.radflux_parameters_db} contains a '
-                f'{radflux_parameter_table} table without row_timestamp'
+        if table_exists and 'local_day' not in existing_columns:
+            if 'row_timestamp' not in existing_columns:
+                raise ValueError(
+                    f'{self.radflux_parameters_db} contains a '
+                    f'{radflux_parameter_table} table without local_day'
+                )
+            conn.execute(
+                f'ALTER TABLE {radflux_parameter_table} '
+                'RENAME COLUMN row_timestamp TO local_day'
             )
+            conn.execute(
+                f'UPDATE {radflux_parameter_table} '
+                'SET local_day = SUBSTR(local_day, 1, 10)'
+            )
+            existing_columns.remove('row_timestamp')
+            existing_columns.add('local_day')
         for name, dtype in radflux_table_columns.items():
             if name not in existing_columns:
                 dtype = dtype.replace(' NOT NULL', '').replace(' PRIMARY KEY', '')
@@ -95,27 +138,41 @@ class RadfluxParameterDatabase:
                 )
 
     @staticmethod
-    def timestamp2dbformat(timestamp):
-        return pd.to_datetime(timestamp).isoformat()
+    def date2dbformat(date):
+        return pd.to_datetime(date).date().isoformat()
 
     @staticmethod
     def _database_value(value):
+        if hasattr(value, 'item'):
+            value = value.item()
         try:
             if pd.isna(value):
                 return None
         except (TypeError, ValueError):
             pass
-        if hasattr(value, 'item'):
-            value = value.item()
         return value
+
+    @staticmethod
+    def _optimization_results_dataset(values, status):
+        data_vars = {}
+        for name in radflux_parameter_names:
+            value = values[name]
+            if value is None:
+                continue
+            if name in radflux_boolean_parameter_names:
+                value = bool(value)
+            elif name in radflux_integer_parameter_names:
+                value = int(value)
+            data_vars[name] = value
+        return xr.Dataset(data_vars, attrs={'status': status})
     
     def dump_radflux_parameters(self):
         with self.connect_database() as conn:
             self.ensure_parameter_table(conn)
             df = pd.read_sql_query(
-                f'SELECT * FROM {radflux_parameter_table} ORDER BY row_timestamp DESC',
+                f'SELECT * FROM {radflux_parameter_table} ORDER BY local_day DESC',
                 conn,
-                index_col='row_timestamp',
+                index_col='local_day',
             )
         return df
 
@@ -123,7 +180,7 @@ class RadfluxParameterDatabase:
         """Returns clearsky parameters for the given day. Parmeters are either interpolated, 
         when a valid paremeters exist before and after the date, or extrapolated (same as 
         last/first valid paremeters), when only one (before/after) valid set of parameters exists.
-        
+
         Parameters
         ----------
         date: datetime-like
@@ -131,13 +188,13 @@ class RadfluxParameterDatabase:
 
         Returns
         -------
-        dict
-            A dictionary containing the clearsky parameters for the specified date. This includes 
-            an entry 'status' which indicates whether the parameters were interpolated, extrapolated, 
-            or if no valid parameters were found.
+        xarray.Dataset
+            The clear-sky optimization results for the specified date. The
+            ``status`` attribute indicates whether values were interpolated,
+            extrapolated, or unavailable.
         """
-        row_timestamp = self.timestamp2dbformat(date)
-        selected_columns = ', '.join(('row_timestamp', *radflux_parameter_names))
+        local_day = self.date2dbformat(date)
+        selected_columns = ', '.join(('local_day', *radflux_parameter_names))
         optimized_filter = (
             "clear_sky_params_optimized IN ('True', 'true', 'TRUE', '1')"
         )
@@ -147,127 +204,166 @@ class RadfluxParameterDatabase:
                 f"""
                 SELECT {selected_columns}
                 FROM {radflux_parameter_table}
-                WHERE row_timestamp <= ?
+                WHERE local_day <= ?
                   AND {optimized_filter}
-                ORDER BY row_timestamp DESC
+                ORDER BY local_day DESC
                 LIMIT 1
                 """,
-                (row_timestamp,),
+                (local_day,),
             ).fetchone()
             following = conn.execute(
                 f"""
                 SELECT {selected_columns}
                 FROM {radflux_parameter_table}
-                WHERE row_timestamp >= ?
+                WHERE local_day >= ?
                   AND {optimized_filter}
-                ORDER BY row_timestamp ASC
+                ORDER BY local_day ASC
                 LIMIT 1
                 """,
-                (row_timestamp,),
+                (local_day,),
             ).fetchone()
 
         if previous is None and following is None:
             if self.verbose:
-                print(f'No optimized clearsky parameters found for {row_timestamp}.')
-            parameters = default_clearsky_params.copy()
-            parameters['status'] = 'no valid parameters found'
-            return parameters
+                print(f'No optimized clearsky parameters found for {local_day}.')
+            return xr.Dataset(attrs={'status': 'no valid parameters found'})
 
-        def row_to_parameters(row, status):
-            # parameters = default_clearsky_params.copy()
-            parameters = {
-                name: row[name]
-                for name in radflux_parameter_names
-                if row[name] is not None
-            }
-            parameters['status'] = status
-            return parameters
+        def row_to_results(row, status):
+            return self._optimization_results_dataset(row, status)
 
         if previous is None:
-            return row_to_parameters(following, f'extrapolated, no previous parameters found, closest valid clearsky day: {following["row_timestamp"]}')
+            return row_to_results(following, f'extrapolated, no previous parameters found, closest valid clearsky day: {following["local_day"]}')
         if following is None:
-            return row_to_parameters(previous, f'extrapolated, no following parameters found, closest valid clearsky day: {previous["row_timestamp"]}')
-        if previous['row_timestamp'] == following['row_timestamp']:
-            return row_to_parameters(previous, 'valid clearsky day, no interpolation needed')
+            return row_to_results(previous, f'extrapolated, no following parameters found, closest valid clearsky day: {previous["local_day"]}')
+        if previous['local_day'] == following['local_day']:
+            return row_to_results(previous, 'valid clearsky day, no interpolation needed')
 
-        previous_time = pd.to_datetime(previous['row_timestamp']).value
-        following_time = pd.to_datetime(following['row_timestamp']).value
+        previous_time = pd.to_datetime(previous['local_day']).value
+        following_time = pd.to_datetime(following['local_day']).value
         date_time = pd.to_datetime(date).value
         weight = (date_time - previous_time) / (following_time - previous_time)
 
-        parameters = default_clearsky_params.copy()
+        parameters = {}
+        nearest = previous if weight <= 0.5 else following
         for name in radflux_parameter_names:
             previous_value = previous[name]
             following_value = following[name]
             if previous_value is None and following_value is None:
+                parameters[name] = None
                 continue
             if previous_value is None:
                 parameters[name] = following_value
             elif following_value is None:
                 parameters[name] = previous_value
+            elif name in radflux_discrete_parameter_names:
+                parameters[name] = nearest[name]
             else:
                 parameters[name] = previous_value + (
                     following_value - previous_value
                 ) * weight
-        parameters['status'] = f'interpolated, closest valid clearsky days: {previous["row_timestamp"]} and {following["row_timestamp"]}'
-        return parameters
+        status = f'interpolated, closest valid clearsky days: {previous["local_day"]} and {following["local_day"]}'
+        return self._optimization_results_dataset(parameters, status)
 
-    def read_previous_valid_clearsky_parameters(self, timestamp):
-        """Retrieves the last set of clearsky parameters before the given timestamp."""
-        row_timestamp = self.timestamp2dbformat(timestamp)
+    def read_previous_valid_clearsky_parameters(self, date):
+        """Retrieves the last set of clearsky parameters before the given local day."""
+        local_day = self.date2dbformat(date)
+        optimized_filter = (
+            "clear_sky_params_optimized IN ('True', 'true', 'TRUE', '1')"
+        )
         with self.connect_database() as conn:
             self.ensure_parameter_table(conn)
             previous = conn.execute(
                 f"""
                 SELECT *
                 FROM {radflux_parameter_table}
-                WHERE row_timestamp < ?
-                  AND clear_sky_params_optimized = 'True'
-                ORDER BY row_timestamp DESC
+                WHERE local_day < ?
+                  AND {optimized_filter}
+                ORDER BY local_day DESC
                 LIMIT 1
                 """,
-                (row_timestamp,),
+                (local_day,),
             ).fetchone()
             self.tp_prvious = previous
 
         if previous is None:
             if self.verbose:
-                print(f'No previous optimized clearsky parameters found for {row_timestamp}.')
+                print(f'No previous optimized clearsky parameters found for {local_day}.')
             self.tp_previous_radflux_parameters_record = None
             return None
 
         self.tp_previous_radflux_parameters_record = dict(previous)
-        # parameters = json.loads(previous['parameters_json'])
-        # parameters = {
-        #     name: value
-        #     for name, value in parameters.items()
-        #     if value is not None
-        # }
-        # return {**default_clearsky_params, **parameters}
-        return dict(previous)
-
+        return self._optimization_results_dataset(
+            previous,
+            f'previous valid clearsky day: {previous["local_day"]}',
+        )
+    
     def write_radflux_parameters(self,
-                                  row,
+                                  date,
+                                  path2file,
                                   clearsky_parameters,
-                                  processing_date,
-                                  processing_server,
-                                  clear_sky_params_optimized,
-                                  next_day_needed
+                                  processing_date=None,
+                                  processing_server=None,
+                                  next_day_needed=None
                                   ):
-        # cleanup the parameters to ensure they are JSON serializable and handle NaN values
-        parameters = {
-            name: self._database_value(value)
-            for name, value in clearsky_parameters.items()
-        }
+
+        """Insert or update one set of radflux processing parameters.
+
+        Parameters
+        ----------
+        date : datetime-like
+            Local day covered by the processed data.
+        path2file : path-like
+            Path to the processed input file.
+        clearsky_parameters : xarray.Dataset or None
+            Clear-sky optimization results. The dataset must contain every
+            variable named in ``radflux_parameter_names``. If ``None``, the
+            corresponding database columns are stored as null values and the
+            day is marked as not optimized.
+        processing_date : str, optional
+            Timestamp describing when the record was processed. Defaults to
+            the current timestamp.
+        processing_server : str, optional
+            Name of the server that processed the record. Defaults to the
+            current host name.
+        next_day_needed : bool
+            Whether processing requires data from the following day.
+
+        Notes
+        -----
+        An existing record for the same local day is replaced in place.
+        """
+
+        if processing_date is None:
+            processing_date = pd.Timestamp.now().isoformat()
+        if processing_server is None:
+            processing_server = socket.gethostname()
+
+        if clearsky_parameters is None:
+            parameters = {}
+        elif not isinstance(clearsky_parameters, xr.Dataset):
+            raise TypeError('clearsky_parameters must be an xarray.Dataset or None')
+        else:
+            missing = set(radflux_parameter_names).difference(
+                clearsky_parameters.data_vars
+            )
+            if missing:
+                raise ValueError(
+                    'clearsky_parameters is missing optimization results: '
+                    f'{sorted(missing)}'
+                )
+            parameters = {
+                name: self._database_value(clearsky_parameters[name])
+                for name in radflux_parameter_names
+            }
         values = {
-            'row_timestamp': self.timestamp2dbformat(row.name),
-            'input_file': str(row.p2f_in),
+            'local_day': self.date2dbformat(date),
+            'input_file': str(path2file),
             'next_day_needed': next_day_needed,
             # 'output_file': str(row.p2f_out),
             'processed_at': processing_date,
             'process_version': self.version,
             'processing_server': processing_server,
-            'clear_sky_params_optimized': clear_sky_params_optimized,
+            'clear_sky_params_optimized': clearsky_parameters is not None,
             # 'parameters_json': json.dumps(parameters, sort_keys=True),
         }
         values.update({
@@ -279,7 +375,7 @@ class RadfluxParameterDatabase:
         update_columns = ', '.join(
             f'{column} = excluded.{column}'
             for column in columns
-            if column != 'row_timestamp'
+            if column != 'local_day'
         )
 
         self.tp_columns = columns
@@ -292,7 +388,7 @@ class RadfluxParameterDatabase:
                 INSERT INTO {radflux_parameter_table}
                     ({', '.join(columns)})
                 VALUES ({placeholders})
-                ON CONFLICT(row_timestamp) DO UPDATE SET
+                ON CONFLICT(local_day) DO UPDATE SET
                     {update_columns}
                 """,
                 tuple(values[column] for column in columns),
@@ -307,7 +403,7 @@ class RadfluxParameterDatabase:
                     f"""
                     SELECT *
                     FROM {radflux_parameter_table}
-                    WHERE DATE(row_timestamp) = ?
+                    WHERE local_day = ?
                     """,
                     (date_str,),
                 ).fetchall()
@@ -316,7 +412,7 @@ class RadfluxParameterDatabase:
                 conn.execute(
                     f"""
                     DELETE FROM {radflux_parameter_table}
-                    WHERE DATE(row_timestamp) = ?
+                    WHERE local_day = ?
                     """,
                     (date_str,),
                 )
