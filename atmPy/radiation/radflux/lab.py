@@ -648,11 +648,6 @@ class RadFlux(CombinedGlobalDiffuseDirect):
             # self._mask_global_irradiance_temporal_gradient = out['auxiliary']
         return self.dataset.mask_global_irradiance_temporal_gradient
 
-    @property
-    def mask_global_temporal_gradient(self):
-        """Compatibility alias for the descriptive property name."""
-        return self.mask_global_irradiance_temporal_gradient
-
     def _global_irradiance_temporal_gradient_test(self,
         # global_irradiance: xr.DataArray,
         # *,
@@ -1021,7 +1016,7 @@ class RadFlux(CombinedGlobalDiffuseDirect):
 
 
     def plot_normalized_diffuse_ratio_variability_test(self):
-        self.mask_clear_sky_shortwave_radflux # to initiate calculation
+        self.mask_clear_sky_shortwave # to initiate calculation
         res = self._normalized_diffuse_ratio_variability_test_results
         f, aa = mpl.pyplot.subplots(3, sharex=True, gridspec_kw={'hspace':0})
         f.set_figheight(f.get_figheight() * 1.5)
@@ -1077,7 +1072,7 @@ class RadFlux(CombinedGlobalDiffuseDirect):
 
         for var in ['mask_normalized_global_magnitude',
                     'mask_normalized_diffuse_ratio_variability',
-                    'mask_clear_sky_shortwave_radflux', 
+                    'mask_clear_sky_shortwave', 
                     'mask_diffuse_magnitude',
                     'mask_global_irradiance_temporal_gradient']:
             if var not in self.dataset:
@@ -1089,7 +1084,7 @@ class RadFlux(CombinedGlobalDiffuseDirect):
                     print(f'Reset {var} in dataset.')
 
     @property
-    def mask_clear_sky_shortwave_radflux(self) -> xr.DataArray:
+    def mask_clear_sky_shortwave(self) -> xr.DataArray:
         """
         Detect clear-sky periods in shortwave radiation using four Long & Ackerman–
         style tests.
@@ -1133,20 +1128,20 @@ class RadFlux(CombinedGlobalDiffuseDirect):
         """
        
         # Combine all tests: clear if all tests pass
-        if 'mask_clear_sky_shortwave_radflux' not in self.dataset:
+        if 'mask_clear_sky_shortwave' not in self.dataset:
             if self.verbose:
                 print('Running clear sky tests (RADFLUX equivalent)')
-            self.dataset['mask_clear_sky_shortwave_radflux'] = (self.mask_normalized_global_magnitude 
+            self.dataset['mask_clear_sky_shortwave'] = (self.mask_normalized_global_magnitude 
                                                                 & self.mask_diffuse_magnitude 
                                                                 & self.mask_global_irradiance_temporal_gradient
                                                                 & self.mask_normalized_diffuse_ratio_variability)
-            self.dataset.mask_clear_sky_shortwave_radflux.attrs = {}
+            self.dataset.mask_clear_sky_shortwave.attrs = {}
             
-            self.dataset.mask_clear_sky_shortwave_radflux.attrs["info"] = "Radflux clear sky mask according to Long & Ackerman (2000) and subsequent publication iterations."
-            self.dataset.mask_clear_sky_shortwave_radflux.attrs["unit"] = "1", 
-            self.dataset.mask_clear_sky_shortwave_radflux.attrs["long_name"] = "clear sky classification mask",
-            self.dataset.mask_clear_sky_shortwave_radflux.attrs["flag_values"] = '0, 1',
-            self.dataset.mask_clear_sky_shortwave_radflux.attrs["flag_meanings"] = "0: fails radflux clear-sky test (cloudy), 1: passes radflux clear-sky test (possible clear-sky)"
+            self.dataset.mask_clear_sky_shortwave.attrs["info"] = "Radflux clear sky mask according to Long & Ackerman (2000) and subsequent publication iterations."
+            self.dataset.mask_clear_sky_shortwave.attrs["unit"] = "1", 
+            self.dataset.mask_clear_sky_shortwave.attrs["long_name"] = "clear sky classification mask",
+            self.dataset.mask_clear_sky_shortwave.attrs["flag_values"] = '0, 1',
+            self.dataset.mask_clear_sky_shortwave.attrs["flag_meanings"] = "0: fails radflux clear-sky test (cloudy), 1: passes radflux clear-sky test (possible clear-sky)"
 
         optimization_status = self.dataset.attrs.get(
             'clear_sky_parameters_optimization_status'
@@ -1157,12 +1152,7 @@ class RadFlux(CombinedGlobalDiffuseDirect):
             )
         if optimization_status in (None, 'False'):
             warnings.warn('Clear-sky parameters have not been optimized! It is recommended to run optimize_clearsky_parameters().')
-        return self.dataset['mask_clear_sky_shortwave_radflux']
-
-    @property
-    def mask_clear_sky_radflux(self) -> xr.DataArray:
-        """Compatibility alias for the descriptive property name."""
-        return self.mask_clear_sky_shortwave_radflux
+        return self.dataset['mask_clear_sky_shortwave']
 
 
     def optimize_clearsky_parameters(self,
@@ -1209,27 +1199,27 @@ class RadFlux(CombinedGlobalDiffuseDirect):
                 if self.verbose:
                     print('Set weight_by_mu0 = True for last iteration')
                 weight_by_mu0 = True
-                total = self.mask_clear_sky_shortwave_radflux.sum()
-                above_th = self.mask_clear_sky_shortwave_radflux.where(self.mu0 > 0.6 * self.mu0.max()).sum()
+                total = self.mask_clear_sky_shortwave.sum()
+                above_th = self.mask_clear_sky_shortwave.where(self.mu0 > 0.6 * self.mu0.max()).sum()
                 nsw_final_mu0_coverage = bool(above_th/total >= 0.45)
             else:
                 # is mu0 larger than 80 of that at noon?
                 nsw_mu0_coverage = bool(
-                    self.mu0.where(self.mask_clear_sky_shortwave_radflux).max()
+                    self.mu0.where(self.mask_clear_sky_shortwave).max()
                     > 0.8 * self.mu0.max()
                 )
             
             mu0_min = self.get_attr('mu0_min')
             ndr_mu0_coverage = bool(
                 self.mu0.where(
-                    self.mask_clear_sky_shortwave_radflux & (self.mu0 > mu0_min)
+                    self.mask_clear_sky_shortwave & (self.mu0 > mu0_min)
                 ).min()
                 < 0.4
             )
 
 
             # 1 check if sufficient clear sky points
-            n_clear = int(self.mask_clear_sky_shortwave_radflux.sum())
+            n_clear = int(self.mask_clear_sky_shortwave.sum())
             if self.verbose:
                 print('Number of clearsky (valid) points: ', n_clear)
             if n_clear < min_clear_for_update:
@@ -1253,7 +1243,7 @@ class RadFlux(CombinedGlobalDiffuseDirect):
             #                                 min_points = min_clear_for_update) #todo: valid for minute data only. this should be adjustable, such that minute and second resolution data can be used as well. 
             res = fit_powerlaw_mu0(mu0 = self.mu0, 
                                       values = self.dataset.global_horizontal, 
-                                      mask_clearsky= self.mask_clear_sky_shortwave_radflux,
+                                      mask_clearsky= self.mask_clear_sky_shortwave,
                                       mu0_min = self.get_attr('mu0_min'),
                                       min_points = min_clear_for_update,
                                       weight_by_mu0 = weight_by_mu0)
@@ -1307,7 +1297,7 @@ class RadFlux(CombinedGlobalDiffuseDirect):
 
             res = fit_powerlaw_mu0(mu0 = self.mu0,
                                        values = self.dataset.diffuse_horizontal / self.dataset.global_horizontal,
-                                       mask_clearsky = self.mask_clear_sky_shortwave_radflux,
+                                       mask_clearsky = self.mask_clear_sky_shortwave,
                                        mu0_min = self.get_attr('mu0_min'),
                                        min_points = min_clear_for_update,
                                        weight_by_1_over_mu0 = weight_by_mu0
@@ -1355,7 +1345,7 @@ class RadFlux(CombinedGlobalDiffuseDirect):
         if 0:
             res = fit_powerlaw_mu0(mu0 = self.mu0,
                                 values = self.dataset.diffuse_horizontal,
-                                mask_clearsky = self.mask_clear_sky_shortwave_radflux,
+                                mask_clearsky = self.mask_clear_sky_shortwave,
                                 mu0_min = self.get_attr('mu0_min'),
                                 min_points = min_clear_for_update
                                     )
@@ -1430,7 +1420,7 @@ class RadFlux(CombinedGlobalDiffuseDirect):
             ))
 
 
-        clear_mask = self.mask_clear_sky_shortwave_radflux
+        clear_mask = self.mask_clear_sky_shortwave
         clear_mu0 = self.mu0.where(clear_mask)
         diagnostics = xr.Dataset(
             {

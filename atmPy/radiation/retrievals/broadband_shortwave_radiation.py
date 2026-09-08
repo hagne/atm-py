@@ -283,21 +283,21 @@ class CombinedGlobalDiffuseDirect(SolarIrradiation):
             col = g.get_color()
             g.set_alpha(0.5)
             g.set_label('_nolegend_')
-            dssel.global_horizontal.where(self.mask_clear_sky_radflux).plot(ax = a, label = 'global_horizontal', color = col)
+            dssel.global_horizontal.where(self.mask_clear_sky_shortwave).plot(ax = a, label = 'global_horizontal', color = col)
         dssel.diffuse_horizontal.plot(ax = a, label = 'diffuse_horizontal')
         if apply_mask_clear_sky:
             g = a.get_lines()[-1]
             col = g.get_color()
             g.set_alpha(0.5)
             g.set_label('_nolegend_')
-            dssel.diffuse_horizontal.where(self.mask_clear_sky_radflux).plot(ax = a, label = 'diffuse_horizontal', color = col)
+            dssel.diffuse_horizontal.where(self.mask_clear_sky_shortwave).plot(ax = a, label = 'diffuse_horizontal', color = col)
         dssel.direct_normal.plot(ax = a, label = 'direct')
         if apply_mask_clear_sky:
             g = a.get_lines()[-1]
             col = g.get_color()
             g.set_alpha(0.5)
             g.set_label('_nolegend_')
-            dssel.direct_normal.where(self.mask_clear_sky_radflux).plot(ax = a, label = 'direct_normal', color = col)
+            dssel.direct_normal.where(self.mask_clear_sky_shortwave).plot(ax = a, label = 'direct_normal', color = col)
         
         if show_clearsky:
             self.clearsky_global_horizontal.plot(ax = a, ls = '--', label = 'clearsky_global_horizontal')
