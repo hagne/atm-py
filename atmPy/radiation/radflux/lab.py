@@ -1946,18 +1946,18 @@ class RadFlux(CombinedGlobalDiffuseDirect):
         ## $$    \boxed{N_{\rm SW}=0}.    $$
 
         N_sw = self.dataset.global_horizontal.where(False)
-        N_sw[self.mask_clear_sky_shortwave] = 0
+        N_sw[self.mask_clear_sky_shortwave.compute()] = 0 
  
         ## Negative Dn, normalized diffuse cloud effect
         ## Case 1:
         ## $$    D_n<0,\quad K>0.4    \quad\Rightarrow\quad    \boxed{N_{\rm SW}=0}    $$
 
-        N_sw[np.logical_and(D_n < 0 , K > 0.4)] = 0
+        N_sw[np.logical_and(D_n < 0 , K > 0.4).compute()] = 0
 
         ## Case 2:
         ## $$    D_n<0,\quad K\le0.4    \quad\Rightarrow\quad    \boxed{N_{\rm SW}=1}.    $$
 
-        N_sw[np.logical_and(D_n < 0 , K <= 0.4)] = 1
+        N_sw[np.logical_and(D_n < 0 , K <= 0.4).compute()] = 1
 
         ### Additional thick-overcast test 
         # For nontrivial positive diffuse cloud effects, Long et al. identify optically thick overcast when all three conditions hold:
@@ -1972,14 +1972,14 @@ class RadFlux(CombinedGlobalDiffuseDirect):
         R_d_roll = R_d.rolling(datetime = 3, center = True)
         where = (D_n < 0.37) & (R_d_roll.mean() > 0.9) & (R_d_roll.std() < 0.05)
 
-        N_sw[where] = 1
+        N_sw[where.compute()] = 1
 
         ### Remaining partly cloudy and optically thinner overcast observations
         # Long et al.'s empirical fit to sky-imager observations is
         # $$    \boxed{    N_{\rm SW}=2.255\,D_n^{0.9381}    }    $$
 
         N_sw_rest = 2.255 * D_n**0.9381
-        where = N_sw.isnull()
+        where = N_sw.isnull().compute()
         N_sw[where] = N_sw_rest[where]
 
         ### The two 11-point corrections
@@ -2009,7 +2009,7 @@ class RadFlux(CombinedGlobalDiffuseDirect):
         # c) 0.04 in fractional sky cover
 
         where = (N_overcast >= 1) & (abs(N_sw - N_sw_roll_w.mean()) > N_sw_roll_mad) & (abs(N_sw - N_sw_roll_w.mean()) > 0.04)
-
+        where = where.compute()
         # do a linear fit and replace target with prediction
 
         x = np.arange(window) - int(np.floor(window/2))
@@ -2024,7 +2024,7 @@ class RadFlux(CombinedGlobalDiffuseDirect):
             
             N_sw_fit = xr.apply_ufunc(
                 robust_center_TS,
-                N_sw_roll_w,
+                N_sw_roll_w.compute(),
                 input_core_dims=[["window"]],
                 vectorize=True,
             )
@@ -2065,7 +2065,7 @@ class RadFlux(CombinedGlobalDiffuseDirect):
         # Where
         # 70% clear or empirically retrieved (<1)
         where = (((N_C + N_E) / window) >= 0.7 ) & (N_C >= 2) & (N_O <= 2)
-
+        where = where.compute()
         N_sw_11pcorr = N_sw_11pcorr_1.copy(deep = True)
 
         weighted = N_sw_11pcorr * (N_E/(N_C + N_E))
