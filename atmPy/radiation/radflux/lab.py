@@ -9,6 +9,7 @@ from atmPy.radiation.retrievals.broadband_shortwave_radiation import CombinedGlo
 import xarray as xr
 import numpy as np
 import sklearn
+import scipy as sp
 from atmPy.opt_imports import matplotlib as mpl
 import warnings
 
@@ -1110,6 +1111,17 @@ class RadFlux(CombinedGlobalDiffuseDirect):
                 if self.verbose:
                     print(f'Reset {var} in dataset.')
 
+    def reset_clearsky_irradiance(self):
+        """Resets the clearsky irradiance in the dataset."""
+        for var in ['clearsky_global_horizontal', 'clearsky_diffuse_horizontal']:
+            if var not in self.dataset:
+                if self.verbose:
+                    print(f'Warning: {var} not found in dataset. Skipping.')
+            else:
+                self.dataset = self.dataset.drop_vars(var)
+                if self.verbose:
+                    print(f'Reset {var} in dataset.')
+
     @property
     def mask_clear_sky_shortwave(self) -> xr.DataArray:
         """
@@ -1193,7 +1205,8 @@ class RadFlux(CombinedGlobalDiffuseDirect):
         min_clear_for_update_equivalent : int, optional
             Equivalent minimum number of clear sky points required for updating the parameters. This value is being adjusted based on the time resolution of the data.
             The number is the equivalent for minute data, which was the original resolution of the Radflux algorithm. Default is 100."""
-        
+
+        self.reset_clearsky_irradiance()
         time_resolution_minutes = (
             np.median(np.diff(self.dataset.datetime.values))
             / np.timedelta64(1, 'm')
@@ -1876,4 +1889,254 @@ class RadFlux(CombinedGlobalDiffuseDirect):
             self.dataset.clearsky_global_horizontal.attrs = {}
             self.dataset.clearsky_global_horizontal.attrs['long_name'] = 'Clear sky global horizontal irradiance (empirical power law fit)'
             self.dataset.clearsky_global_horizontal.attrs['unit'] = 'W m-2'
+            self.dataset.clearsky_global_horizontal.attrs['normalized_total_shortwave_power_coefficient'] = params['normalized_total_shortwave_power_coefficient']
+            self.dataset.clearsky_global_horizontal.attrs['normalized_total_shortwave_power_exponent'] = params['normalized_total_shortwave_power_exponent']
         return self.dataset['clearsky_global_horizontal']
+
+    @property
+    def clearsky_direct_horizontal(self):
+        if 'clearsky_direct_horizontal' not in self.dataset:
+            self.dataset['clearsky_direct_horizontal'] = (
+                self.clearsky_global_horizontal - self.clearsky_diffuse_horizontal
+            )
+            self.dataset.clearsky_direct_horizontal.attrs = {}
+            self.dataset.clearsky_direct_horizontal.attrs['long_name'] = 'Clear sky direct horizontal irradiance (empirical power law fit)'
+            self.dataset.clearsky_direct_horizontal.attrs['unit'] = 'W m-2'
+        return self.dataset['clearsky_direct_horizontal']
+
+    @property
+    def clearsky_direct_normal(self):
+        if 'clearsky_direct_normal' not in self.dataset:
+            self.dataset['clearsky_direct_normal'] = (
+                self.clearsky_direct_horizontal / self.mu0
+            )
+            self.dataset.clearsky_direct_normal.attrs = {}
+            self.dataset.clearsky_direct_normal.attrs['long_name'] = 'Clear sky direct normal irradiance (empirical power law fit)'
+            self.dataset.clearsky_direct_normal.attrs['unit'] = 'W m-2'
+        return self.dataset['clearsky_direct_normal']
+        
+
+    @property
+    def cloud_fraction(self):
+        ## Parameters and Variables
+        if 'shortwave_cloud_fraction' not in self.dataset:
+            self._retrieve_cloud_fraction()
+        return self.dataset[['shortwave_cloud_fraction', 'shortwave_cloud_fraction_uncorrected']]
+    
+    def _retrieve_cloud_fraction(self):
+
+        G = self.dataset.global_horizontal
+        G_clr = self.clearsky_global_horizontal
+        D = self.dataset.diffuse_horizontal
+        D_clr = self.clearsky_diffuse_horizontal
+
+        R_d = D/G #diffuse ratio
+
+        ### clear-sky index
+        ## $$    \boxed{K=\frac{G}{G_{\rm clr}}}.    $$
+
+        K = G/G_clr
+
+        ### normalized diffuse cloud effect
+        ## $$    \boxed{    D_n=\frac{D-D_{\rm clr}}{G_{\rm clr}}    }    $$
+
+        D_n=(D-D_clr)  / G_clr
+
+        ## Known clear points -> 0
+        ## $$    \boxed{N_{\rm SW}=0}.    $$
+
+        N_sw = self.dataset.global_horizontal.where(False)
+        N_sw[self.mask_clear_sky_shortwave] = 0
+ 
+        ## Negative Dn, normalized diffuse cloud effect
+        ## Case 1:
+        ## $$    D_n<0,\quad K>0.4    \quad\Rightarrow\quad    \boxed{N_{\rm SW}=0}    $$
+
+        N_sw[np.logical_and(D_n < 0 , K > 0.4)] = 0
+
+        ## Case 2:
+        ## $$    D_n<0,\quad K\le0.4    \quad\Rightarrow\quad    \boxed{N_{\rm SW}=1}.    $$
+
+        N_sw[np.logical_and(D_n < 0 , K <= 0.4)] = 1
+
+        ### Additional thick-overcast test 
+        # For nontrivial positive diffuse cloud effects, Long et al. identify optically thick overcast when all three conditions hold:
+        # $$ Dn<0.37 $$
+        # $$    \boxed{\overline{R_D}^{\,3{\rm pt}}>0.90}    $$
+        # $$    \boxed{\sigma(R_D)^{3{\rm pt}}<0.05}.    $$
+        # Such observations are assigned
+        # $$    \boxed{N_{\rm SW}=1}.    $$
+        # The diffuse-ratio criterion encodes the expectation that essentially all downwelling SW under a thick overcast is diffuse, while the small three-point standard deviation requires the characteristic temporal stability of a uniform cloud deck. [10]
+
+        # todo: generalize the 3 in the periods
+        R_d_roll = R_d.rolling(datetime = 3, center = True)
+        where = (D_n < 0.37) & (R_d_roll.mean() > 0.9) & (R_d_roll.std() < 0.05)
+
+        N_sw[where] = 1
+
+        ### Remaining partly cloudy and optically thinner overcast observations
+        # Long et al.'s empirical fit to sky-imager observations is
+        # $$    \boxed{    N_{\rm SW}=2.255\,D_n^{0.9381}    }    $$
+
+        N_sw_rest = 2.255 * D_n**0.9381
+        where = N_sw.isnull()
+        N_sw[where] = N_sw_rest[where]
+
+        ### The two 11-point corrections
+        #### Test 1
+        # Using a centered 11-sample window
+        # $$
+        # W_i=\{i-5,\ldots,i,\ldots,i+5\},
+        # $$
+
+        # todo: generalize the window size for different measurement frequencies
+        window = 11
+        N_sw_roll = N_sw.rolling(datetime = window, center = True)
+        N_sw_roll_w = N_sw_roll.construct('window')
+
+        N_sw_roll_mad = abs(N_sw_roll_w - N_sw_roll_w.mean('window')).mean('window')
+
+        # limit mad to 0.1
+        N_sw_roll_mad = N_sw_roll_mad.where(N_sw_roll_mad < 0.1, other = 0.1).where(~ N_sw_roll_mad.isnull())
+
+        # number of points overcast
+        N_overcast = (N_sw_roll_w == 1).sum('window')
+
+        # when
+        # a) at least one overcast retrieval
+        # target differs from the 11-point mean by more than both the 
+        # b) local mean absolute deviation and at least 
+        # c) 0.04 in fractional sky cover
+
+        where = (N_overcast >= 1) & (abs(N_sw - N_sw_roll_w.mean()) > N_sw_roll_mad) & (abs(N_sw - N_sw_roll_w.mean()) > 0.04)
+
+        # do a linear fit and replace target with prediction
+
+        x = np.arange(window) - int(np.floor(window/2))
+        if 1:
+            def robust_center_TS(y):
+                valid = np.isfinite(y)
+                if valid.sum() < 2:
+                    return np.nan
+            
+                slope, intercept, *_ = sp.stats.theilslopes(y[valid], x[valid])
+                return intercept
+            
+            N_sw_fit = xr.apply_ufunc(
+                robust_center_TS,
+                N_sw_roll_w,
+                input_core_dims=[["window"]],
+                vectorize=True,
+            )
+
+        # alternative robuset linear fit approach, not sure if this is any better
+        else: 
+            def robust_center_HR(y):
+                valid = np.isfinite(y)
+            
+                if valid.sum() < 2:
+                    return np.nan
+            
+                fit = sklearn.linear_model.HuberRegressor().fit(
+                    x[valid, None],
+                    y[valid],
+                )
+            
+                return fit.intercept_
+
+
+            N_sw_fit = xr.apply_ufunc(
+                robust_center_HR,
+                N_sw_roll_w,
+                input_core_dims=[["window"]],
+                vectorize=True,
+            )
+
+        N_sw_11pcorr_1 = N_sw.copy(deep = True)
+        N_sw_11pcorr_1[where] = N_sw_fit[where]
+
+
+        #### correction 2
+
+        N_C = (N_sw_roll_w == 0).sum('window') #number classified as **clear**
+        N_E = ((N_sw_roll_w < 1) & (N_sw_roll_w > 0)).sum('window') # number whose sky cover was calculated using the empirical sky-cover equation (Eq. 1 in Long et al.)
+        N_O = (N_sw_roll_w == 1).sum('window') # number classified as **overcast**
+
+        # Where
+        # 70% clear or empirically retrieved (<1)
+        where = (((N_C + N_E) / window) >= 0.7 ) & (N_C >= 2) & (N_O <= 2)
+
+        N_sw_11pcorr = N_sw_11pcorr_1.copy(deep = True)
+
+        weighted = N_sw_11pcorr * (N_E/(N_C + N_E))
+        N_sw_11pcorr[where] = weighted[where]
+
+        N_sw_11pcorr.attrs = {
+            "long_name": "Shortwave cloud fraction",
+            "units": "1",
+            "description": (
+                "Fractional sky cover retrieved from broadband shortwave radiation "
+                "following the Long et al. (2006) method, including application of the "
+                f"{window}-point temporal corrections."
+            ),
+        }
+        self.dataset['shortwave_cloud_fraction'] = N_sw_11pcorr
+
+        N_sw.attrs = {
+            "long_name": "Uncorrected shortwave cloud fraction",
+            "units": "1",
+            "description": (
+                "Same as shortwave_cloud_fraction without temporal corrections."
+            ),
+        }
+        self.dataset['shortwave_cloud_fraction_uncorrected'] = N_sw
+        return self.dataset[['shortwave_cloud_fraction', 'shortwave_cloud_fraction_uncorrected']]
+
+    @property
+    def direct_beam_proerties(self):
+        if 'direct_beam_transmittance' not in self.dataset:
+            self._retrieve_direct_beam_proerties()
+        return self.dataset[['direct_beam_transmittance', 'direct_beam_cloud_effect', 'direct_beam_state']]
+
+    def _retrieve_direct_beam_proerties(self):
+        dni_clear = self.clearsky_direct_normal
+        dni = self.dataset.direct_normal
+        direct_beam_transmittance = dni / dni_clear
+        direct_beam_cloud_effect = 1 - direct_beam_transmittance
+
+        direct_beam_state = xr.full_like(direct_beam_transmittance, -1, dtype="int8")
+        direct_beam_state = xr.where(direct_beam_transmittance > 1.1, 4, direct_beam_state)
+        direct_beam_state = xr.where((direct_beam_transmittance >= 0.9) & (direct_beam_transmittance <= 1.1), 0, direct_beam_state)
+        direct_beam_state = xr.where((direct_beam_transmittance >= 0.5) & (direct_beam_transmittance < 0.9), 1, direct_beam_state)
+        direct_beam_state = xr.where((direct_beam_transmittance >= 0.1) & (direct_beam_transmittance < 0.5), 2, direct_beam_state)
+        direct_beam_state = xr.where(direct_beam_transmittance < 0.1, 3, direct_beam_state)
+
+        direct_beam_transmittance.attrs = {
+            "long_name": "Direct-beam transmittance",
+            "units": "1",
+            "description": "Ratio of measured to clear-sky direct normal irradiance.",
+        }
+
+        direct_beam_cloud_effect.attrs = {
+            "long_name": "Direct-beam cloud effect",
+            "units": "1",
+            "description": "Fractional attenuation of the direct beam relative to clear-sky conditions, defined as 1 - direct_beam_transmittance.",
+        }
+
+        direct_beam_state.attrs = {
+            "long_name": "Direct-beam attenuation state",
+            "units": "1",
+            "description": "Categorical state based on direct_beam_transmittance.",
+            "flag_values": np.array([-1, 0, 1, 2, 3, 4], dtype="int8"),
+            "flag_meanings": (
+                "indeterminate unattenuated weakly_attenuated "
+                "strongly_attenuated blocked enhanced"
+            ),    
+            "classification_thresholds": np.array([0.1, 0.5, 0.9, 1.1]),
+            "classification_variable": "direct_beam_transmittance",
+        }
+
+        self.dataset['direct_beam_transmittance'] = direct_beam_transmittance
+        self.dataset['direct_beam_cloud_effect'] = direct_beam_cloud_effect
+        self.dataset['direct_beam_state'] = direct_beam_state
+        return self.dataset[['direct_beam_transmittance', 'direct_beam_cloud_effect', 'direct_beam_state']]

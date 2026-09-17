@@ -228,27 +228,39 @@ class RadfluxParameterDatabase:
                 status = f'No optimized clearsky parameters found for {local_day}.'
                 value = {name: None}       
             elif previous is None:
-                value = following
+                value = following[name]
                 status = f'extrapolated, no previous parameters found, closest valid clearsky day: {following["local_day"]}'
             elif following is None:
-                value = previous
+                value = previous[name]
                 status = f'extrapolated, no following parameters found, closest valid clearsky day: {previous["local_day"]}'
             else:
                 previous_time = pd.to_datetime(previous['local_day']).value
                 following_time = pd.to_datetime(following['local_day']).value
                 date_time = pd.to_datetime(date).value
-                weight = (date_time - previous_time) / (following_time - previous_time)
+                if following_time == previous_time:
+                    if date_time == previous_time:
+                        weight = 0.0
+                        status = f'Current day is a valid clearsky day'
+                    else:
+                        print(f'previous_time: {previous_time}, following_time: {following_time}, date_time: {date_time}')
+                        raise ValueError(f'previous_time and following_time are equal but date_time is different: {date_time}. This should not happen.')
+                else:
+                    status = f'interpolated, closest valid clearsky days: {previous["local_day"]} and {following["local_day"]}'
+                    weight = (date_time - previous_time) / (following_time - previous_time)
+
                 previous_value = previous[name]
                 following_value = following[name]
                 value = previous_value + (
                     following_value - previous_value
                 ) * weight
-                status = f'interpolated, closest valid clearsky days: {previous["local_day"]} and {following["local_day"]}'
+
             out[name] = {'value': value, 'status': status} 
         # return out
         ds = xr.Dataset()
         for k in out:
-            ds[k] = xr.DataArray(out[k]['value'][k], attrs={'status': out[k]['status']})
+            # print(f'k: {k}, value: {out[k]["value"]}, status: {out[k]["status"]}')
+
+            ds[k] = xr.DataArray(out[k]['value'], attrs={'status': out[k]['status']})
         return ds
 
 
