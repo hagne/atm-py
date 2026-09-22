@@ -226,7 +226,7 @@ class RadfluxParameterDatabase:
 
             if previous is None and following is None:
                 status = f'No optimized clearsky parameters found for {local_day}.'
-                value = {name: None}       
+                value = None
             elif previous is None:
                 value = following[name]
                 status = f'extrapolated, no previous parameters found, closest valid clearsky day: {following["local_day"]}'
