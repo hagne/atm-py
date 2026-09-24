@@ -8,6 +8,8 @@ from atmPy.general import vertical_profile as _vertical_profile
 from atmPy.aerosols.instruments.POPS import housekeeping as _pops_hk
 import atmPy.aerosols.size_distribution.sizedistribution as _sizedistribution
 import xarray as _xr
+import pathlib as pl
+
 # import warnings as _warnings
 
 importable_types = {#########
@@ -21,6 +23,57 @@ importable_types = {#########
                     ### Vertical profiles
                     'VerticalProfile':      {'call': _vertical_profile.VerticalProfile, 'category': 'verticalprofile'}
                     }
+
+
+
+def files_between(root: pl.Path, start: _pd.Timestamp|str, end: _pd.Timestamp|str, 
+                  globpattern: str = '*{date:%Y%m%d}*', 
+                  input_directory_structure: str = "yearly", 
+                  verbose = True,
+                  return_date_instances = False
+                  ):
+    """ Generator that yields all files between start and end dates (inclusive) in the given root
+    directory. Dates are determined from the filename. How the date is represented in the filename 
+    needs to be specified in the globpattern kwarg.
+
+    Parameters
+    ----------
+    root : pl.Path
+        Root directory containing year subdirectories with files.
+    start : pd.Timestamp|str
+        Start date.
+    end : pd.Timestamp|str
+        End date.
+    globpattern : str, optional
+        Glob pattern to match files. How to contain the information how the date is formatted in the file names, e.g.  
+        standard: tbl_20250513.nc -> '*{date:%Y%m%d}*', 
+        y2k bug and julian date: tbl_25123.nc '*{date:%Y%m%d}*'
+    Yields
+    -------
+    pl.Path
+        Paths to files between start and end dates.
+    """ 
+    start = _pd.Timestamp(start)
+    end = _pd.Timestamp(end)
+    assert('{date:' in globpattern), f"globpattern ({globpattern}) has to define how timestamps (dates) are formated in the filename. E.g. '*{{date:%Y%m%d}}*' "
+    assert(end > start), f'End must come after start! (end: {end}, start{start})'
+    root = pl.Path(root)
+    day = _pd.to_datetime(start.date())
+    while day <= end:
+        if input_directory_structure == 'yearly':
+            year_dir = root / f"{day.year}"
+        else:
+            year_dir = root
+        if not year_dir.exists():
+            if verbose:
+                print(f'The directory {year_dir} does not exists, be more carefull with you start, end, day arguments.')
+        # yield from year_dir.glob(globpattern.format(date = d))
+        if return_date_instances:
+            yield from ((day, path) for path in year_dir.glob(globpattern.format(date = day)))
+        else:
+            yield from (path for path in year_dir.glob(globpattern.format(date = day)))
+        day += _pd.to_timedelta(1, 'D')
+
 
 def open_atmpy(fname):
     sd = _xr.open_dataset(fname)
