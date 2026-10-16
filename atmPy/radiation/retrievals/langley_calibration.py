@@ -853,7 +853,7 @@ class Langley(object):
         # df_langres = pd.DataFrame(index=['slope', 'intercept', 'stderr'])
         fit_res_dict = {}
         # resid_dict = {}
-        df_resid = pd.DataFrame()
+        df_resid = pd.DataFrame(index=langleys.index)
         for wl in langleys:
             # lrg_res = stats.linregress(langleys.index, langleys[wl])
             # df_langres[wl] = pd.Series({'slope': lrg_res.slope, 'intercept': lrg_res.intercept, 'stderr': lrg_res.stderr})
@@ -884,118 +884,240 @@ class Langley(object):
         self._langley_residual_correlation_prop = lrcp
         return df_langres
     
-    def clean(self, threshold = 3, use_channels = None, clean_channels_individually = False, verbose = False):
-        scale = threshold
+    def clean(self, threshold = 3, use_channels = None, clean_channels_individually = False, verbose = False,
+              *, expected_instrument_noise = None, min_channels = 2, max_iterations = 3):
+        """Remove points using channel-scaled, leverage-adjusted residuals.
+
+        Parameters
+        ----------
+        threshold : float or mapping
+            Dimensionless residual threshold. A mapping may specify a different
+            threshold for each selected wavelength.
+        use_channels : sequence, optional
+            Wavelengths used for screening. By default all channels except 940 nm
+            are used.
+        clean_channels_individually : bool
+            Mask only the flagged channel when true. Otherwise, remove a complete
+            airmass row when at least ``min_channels`` channels flag it.
+        verbose : bool
+            Print the number of newly flagged points after each fit.
+        expected_instrument_noise : float or mapping, optional
+            Lower bound for each channel's residual scale. Values are in log-signal
+            units and may be specified independently for each wavelength.
+        min_channels : int
+            Number of selected channels that must flag a point before its complete
+            airmass row is removed. Ignored when channels are cleaned individually.
+        max_iterations : int
+            Maximum number of removal and refit passes.
+
+        Returns
+        -------
+        dict
+            The cleaned Langley and diagnostics. ``removed_points`` is a boolean
+            mask whose true values identify removed rows or channel values.
+        """
+        if isinstance(max_iterations, bool) or not isinstance(max_iterations, (int, np.integer)) or max_iterations < 1:
+            raise ValueError('max_iterations must be a positive integer.')
+
         langley = copy.deepcopy(self)
         langley.langley_pre_clean = self
-        # converged = False
-        status = 'not convergent'
-        for i in range(20):
+
+        if use_channels is None:
+            channels = [channel for channel in langley.langleys.columns if channel != 940]
+        elif np.isscalar(use_channels):
+            channels = [use_channels]
+        else:
+            channels = list(use_channels)
+        missing_channels = [channel for channel in channels if channel not in langley.langleys.columns]
+        if missing_channels:
+            raise KeyError(f'Channels not found in Langley data: {missing_channels}')
+        if not channels:
+            raise ValueError('No channels available for cleaning.')
+        if not clean_channels_individually:
+            if isinstance(min_channels, bool) or not isinstance(min_channels, (int, np.integer)) or min_channels < 1:
+                raise ValueError('min_channels must be a positive integer.')
+            if len(channels) == 1:
+                min_channels = 1
+            elif min_channels > len(channels):
+                raise ValueError('min_channels cannot exceed the number of selected channels.')
+
+        if np.isscalar(threshold):
+            thresholds = pd.Series(float(threshold), index=channels)
+        else:
+            thresholds = pd.Series(threshold, dtype=float).reindex(channels)
+            if thresholds.isna().any():
+                missing = thresholds.index[thresholds.isna()].to_list()
+                raise KeyError(f'Missing thresholds for channels: {missing}')
+        if np.any(~np.isfinite(thresholds)) or np.any(thresholds <= 0):
+            raise ValueError('All thresholds must be finite and greater than zero.')
+
+        if expected_instrument_noise is None:
+            instrument_noise = pd.Series(0.0, index=channels)
+        elif np.isscalar(expected_instrument_noise):
+            instrument_noise = pd.Series(float(expected_instrument_noise), index=channels)
+        else:
+            instrument_noise = pd.Series(expected_instrument_noise, dtype=float).reindex(channels)
+            if instrument_noise.isna().any():
+                missing = instrument_noise.index[instrument_noise.isna()].to_list()
+                raise KeyError(f'Missing expected instrument noise for channels: {missing}')
+        if np.any(~np.isfinite(instrument_noise)) or np.any(instrument_noise < 0):
+            raise ValueError('Expected instrument noise must be finite and non-negative.')
+
+        if clean_channels_individually:
+            removed_points = pd.DataFrame(False, index=self.langleys.index, columns=self.langleys.columns)
+        else:
+            removed_points = pd.Series(False, index=self.langleys.index, name='removed')
+
+        status = 'maximum iterations reached'
+        removal_iterations = 0
+        standardized_residuals = pd.DataFrame(index=self.langleys.index, columns=channels, dtype=float)
+        residual_scale = pd.Series(np.nan, index=channels, dtype=float)
+
+        for _ in range(max_iterations):
             if verbose:
-                print(f'cleaning iteration {i}')
-            if isinstance(use_channels, type(None)):
-                lfr = langley.langley_fit_residual.drop([940], axis = 1)# we really do not want to use the water channel for outlier detection
-                # normalize the std to the 500 nm channel, this acchieves that not a single channel that is particularly noisy (like the 1625) dominates the cleaning.
-                norm = lfr.std()/lfr[500].std()
-                lfr = lfr/norm
-            else:
-                lfr = langley.langley_fit_residual.loc[:,use_channels]
-                
-            if lfr.dropna().shape[0] == 0: #fit failed from the beginning
+                print(f'cleaning iteration {removal_iterations}')
+
+            lfr = langley.langley_fit_residual.loc[:, channels]
+            if lfr.dropna(how='all').empty:
                 status = 'fit failed'
                 break
             langley.tp_lfr = lfr.copy()
-            if not clean_channels_individually:
-                lfr = lfr.sum(axis = 1)
-            skewness = (lfr.mean()-lfr.median())/lfr.std()
-            # print(f'skewness:\t{skewness:0.4f}')
-            # print(f'lfr.mean():\t{lfr.mean():0.4f} {lfr.std():0.4f}')
-            # print(f'lfr.median():\t{lfr.median():0.4f} {lfr.mad():0.4f}')
-            # print(f'corrdet:\t{spi.am.langley_residual_correlation_prop["determinant"]:0.5f}')
-            
-            # print(f'mad vs std: {lfr.mad():0.3f} vs {lfr.std():0.3f} ... {lfr.mad()/lfr.std():0.5f}')
-            # skescale = scale + (abs(skewness) * 5)
-            skescale = scale * (1 + (scale * abs(skewness)))
 
-            # print(f'skewness: {skewness:0.4f}\t skewscale:{skescale:0.4f}')
-            cutoff = (lfr.median() - (lfr.std() *skescale), lfr.median() + (lfr.std() *skescale))
-            self.tp_cutoff = cutoff
-            # if verbose:
-            #     print(cutoff)                
-            cut = 'both'
-            if cut == 'below':
-                where = lfr > cutoff[0]
-            elif cut == 'above': 
-                where = lfr < cutoff[1]
-            elif cut == 'both':
-                where = np.logical_and(lfr > cutoff[0], lfr < cutoff[1])
+            center = lfr.median()
+            mad = lfr.subtract(center, axis='columns').abs().median() * 1.4826
+            numerical_scale = pd.Series(np.sqrt(np.finfo(float).eps), index=channels) # the only reason for this is to avoid division by zero. It provides machine precision, but is not a realistic scale. 
+            residual_scale = pd.concat([mad, instrument_noise, numerical_scale], axis=1).max(axis=1)
 
-            where = where  | lfr.isna() # in case of clean_channels_individually, the frame does not just get smaller but individual points become nan. To break the loo, we don't want to count those as removed points.
+            leverage = pd.DataFrame(np.nan, index=lfr.index, columns=channels)
+            for channel in channels:
+                channel_residual = lfr[channel].dropna().sort_index(ascending=False)
+                if channel_residual.shape[0] <= 2:
+                    continue
+                idx = channel_residual.index.to_numpy(dtype=float)
+                weights = np.empty_like(idx)
+                weights[0] = (idx[0] - idx[1]) / 2
+                weights[-1] = (idx[-2] - idx[-1]) / 2
+                weights[1:-1] = (idx[:-2] - idx[2:]) / 2
+                design = np.column_stack([np.ones_like(idx), idx])
+                covariance = np.linalg.pinv(design.T @ (weights[:, np.newaxis] * design))
+                channel_leverage = weights * np.einsum('ij,jk,ik->i', design, covariance, design)
+                leverage.loc[channel_residual.index, channel] = np.clip(channel_leverage, 0, 1)
+
+            leverage_adjustment = np.sqrt((1 - leverage).clip(lower=np.finfo(float).eps))
+            denominator = leverage_adjustment.multiply(residual_scale.replace(0, np.nan), axis='columns')
+            iteration_standardized_residuals = lfr.subtract(center, axis='columns').abs().divide(denominator)
+            standardized_residuals.update(iteration_standardized_residuals)
+            threshold_ratio = iteration_standardized_residuals.divide(thresholds, axis='columns')
+
+            if clean_channels_individually:
+                new_removed = threshold_ratio.gt(1) & lfr.notna()
+            else:
+                outlier_channels = threshold_ratio.gt(1) & lfr.notna()
+                new_removed = outlier_channels.sum(axis=1).ge(min_channels)
+
             if verbose:
-                try:
-                    print((~where).sum().to_list())
-                except:
-                    print((~where).sum())
+                print(new_removed.sum().to_list() if clean_channels_individually else int(new_removed.sum()))
 
-            if np.all((~where).sum() == 0):
-                # converged = True
+            if not np.any(new_removed):
                 status = 'converged'
                 break
 
-            self.tp_where = where
-            self.tp_langley = langley.langleys.copy()
-    
-            try:
-                langley.langleys = langley.langleys[where]
-                # print(langley.langleys[where])
-            except:
-                print('possible reason for failure: there are nans in the langley data?')
-                raise
-                
+            # self.tp_cutoff = thresholds * residual_scale
+            # self.tp_where = ~new_removed
+            # self.tp_langley = langley.langleys.copy()
+
+            if clean_channels_individually:
+                langley.langleys.loc[:, channels] = langley.langleys.loc[:, channels].mask(new_removed)
+                removed_points.loc[:, channels] = removed_points.loc[:, channels] | new_removed.reindex(
+                    removed_points.index, fill_value=False
+                )
+            else:
+                langley.langleys = langley.langleys.loc[~new_removed]
+                removed_points = removed_points | new_removed.reindex(removed_points.index, fill_value=False)
+
+            removal_iterations += 1
             langley.refresh()
-            # spi.am._langley_fitres = None
-            # spi.am._langley_residual_correlation_prop = None
-            # spi.am._langley_fit_residual = None
-            # break
+
         out = {'langley': langley}
-        out['iterations'] = i
+        out['iterations'] = removal_iterations
         out['status'] = status
-        out['removed_points'] = where
+        out['removed_points'] = removed_points
+        out['standardized_residuals'] = standardized_residuals
+        out['residual_scale'] = residual_scale
         return out
     
-    def plot(self, wavelength = None, show_pre_clean = True, textpos = [0.1, 0.1], ax = None):
-        def plot_one(wl, ax = None):
+    def plot(self, wavelength = None, show_pre_clean = True, plot_residual = True, textpos = [0.1, 0.1], ax = None):
+        def plot_fit(wl, ax = None):
             res = self.langley_fitres.loc[wl]
             fit_index = self.langleys.index.append(pd.Index([0])).sort_values()
             fit = pd.DataFrame(res.intercept + (res.slope * fit_index), index = fit_index)#, columns=['fit'])
             fit.columns = ['fit',]
             if not isinstance(self.langley_pre_clean, (type(None), bool)) and show_pre_clean: # if there was a cleaning step, plot the original data as well
-                self.langley_pre_clean.langleys[wl].plot(ax = a, marker = '.', ls = '', markersize = 3, 
+                self.langley_pre_clean.langleys[wl].plot(ax = ax, marker = '.', ls = '', markersize = 3, 
                                                          color = 'red', 
                                                         #  alpha = 0.5
                                                          )
-            self.langleys[wl].plot(ax = a, marker = '.', ls = '', markersize = 5)
+            self.langleys[wl].plot(ax = ax, marker = '.', ls = '', markersize = 5)
 
-            fit.plot(ax = a)
+            fit.plot(ax = ax)
             fr = self.langley_fitres.loc[wl]
             txt = f'wavelength: {wl} nm\n'
             txt += f'slope: {fr.slope:0.2g} ± {fr.slope_stderr:0.1g}\n'
             txt += f'intercept: {fr.intercept:0.4f} ± {fr.intercept_stderr:0.4f}\n'
             txt += f'no points: {self.langleys[wl].dropna().shape[0]}'
-            a.text(*textpos, txt, transform = a.transAxes)
+            ax.text(*textpos, txt, transform = ax.transAxes)
+            return None
+        def plot_residual(wl, ax = None):
+            res = self.langley_fit_residual[wl]
+            res.plot(ax = ax, marker = '.', ls = '', markersize = 5, zorder = 10, label = 'cleaned')
+            g = ax.get_lines()[-1]
+            if not isinstance(self.langley_pre_clean, (type(None), bool)) and show_pre_clean: # if there was a cleaning step, plot the original data as well
+                self.langley_pre_clean.langley_fit_residual[wl].plot(ax = ax, marker = '.', ls = '',
+                                                                      markersize = g.get_markersize()*0.8, zorder = 5, label = 'pre-cleaned',
+                                                        #  color = g.get_color(), 
+                                                        #  alpha = 0.5
+                                                         )
+                gr = ax.get_lines()[-1]
+                # gr.set_color(g.get_color())
+                # gr.set_markerfacecolor('red')
+                gr.set_color('red')
+                gr.set_markerfacecolor(g.get_color())
+                gr.set_markeredgewidth(0.5)
+
+            ax.axhline(0, color = 'black', ls = '--')
+            ax.set_ylabel('residual')
+            ax.set_xlabel('airmass')
+            gs = ax.get_lines()
+            ymax = max([np.nanmax(g._y) for g in gs if g.get_label() == 'cleaned'])
+            ymin = min([np.nanmin(g._y) for g in gs if g.get_label() == 'cleaned'])
+            pad = abs(ymax - ymin) * 0.2
+            ax.set_ylim(ymin - pad, ymax + pad)
             return None
         if isinstance(wavelength, type(None)):
-            for wl in self.langleys.columns:
-                f,a = plt.subplots()
-                plot_one(wl, ax)
-        else:
+            wavelength = self.langleys.columns
+            # for wl in self.langleys.columns:
+            #     f,a = plt.subplots()
+            #     plot_fit(wl, ax)
+        elif np.isscalar(wavelength):
+            wavelength = [wavelength,]
+        axout = []
+        for e,wl in enumerate(wavelength):
             if isinstance(ax, type(None)):
-                f,a = plt.subplots()
+                if plot_residual:
+                    f,a = plt.subplots(2, sharex=True, height_ratios=[2,1], gridspec_kw={'hspace': 0})
+                    f.set_figheight(f.get_figheight() * 1.5)
+                else:
+                    f,a = plt.subplots()
+                axout.append(a)
             else:
-                a = ax
-                f = ax.figure
-            plot_one(wavelength, ax = a)
-        return f,a
+                a = ax[e] if isinstance(ax, (list, np.ndarray)) else ax
+                # f = ax.figure
+            if plot_residual:
+                plot_fit(wl, ax = a[0])
+                plot_residual(wl, ax = a[1])
+            else:
+                plot_fit(wl, ax = a)
+        return axout
     
 
 class Calibration_SP02(object):
