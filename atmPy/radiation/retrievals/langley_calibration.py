@@ -639,7 +639,7 @@ class Langley_Timeseries(object):
         return self._v0rol
         
     
-def fit_langley(langley, 
+def fit_langley(langley, robust = True,
                 # airmasslimits = (2.5,4),
                 weighted = True, error_handling = 'skip', parent = None):
     """
@@ -660,24 +660,65 @@ def fit_langley(langley,
     langley = langley.dropna() # this is necessary as otherwise the fit fails
     langley.sort_index(ascending=False, inplace=True) # otherwise the weigted fit will fail for pm
     # langley = langley.truncate(*airmasslimits)
+    if not (langley.shape[0] > 1):
+        # f'Not enough data points to fit langley. Only {langley.shape[0]} points available.'
+        lser = {'slope': np.nan, 'intercept': np.nan, 'slope_stderr': np.nan, 'intercept_stderr': np.nan, 'resid_curvature': np.nan}
+        fitfailed = True
+        res = False
+        out = {}
+        out['res_series'] = pd.Series(lser)
+        out['res'] = res
+        return out
+
+    
     y = langley
     x = langley.index
     x = statsmodels.api.add_constant(x)
-    
-    if not weighted:
-        mod = statsmodels.api.OLS(y,x)
-    else:
+    if weighted:
         idx = langley.index.to_numpy(dtype=float)
         w = np.empty_like(idx)
         w[0] = (idx[0] - idx[1]) / 2
         w[-1] = (idx[-2] - idx[-1]) / 2
         w[1:-1] = (idx[:-2] - idx[2:]) / 2
-        parent.tp_w = w
-        parent.tp_langley = langley
-        mod = statsmodels.api.WLS(y, x, weights = w)
+        if parent is not None:
+            parent.tp_w = w
+            parent.tp_langley = langley
 
     try:
-        res = mod.fit()
+        if robust and langley.shape[0] > x.shape[1]:
+            if weighted:
+                y_values = y.to_numpy(dtype=float)
+                combined_weights = w
+                xtw = x.T * combined_weights
+                params = np.linalg.solve(xtw @ x, xtw @ y_values)
+                huber = statsmodels.api.robust.norms.HuberT()
+
+                for _ in range(50):
+                    resid = y_values - x @ params
+                    scale = statsmodels.api.robust.scale.mad(resid)
+                    if not np.isfinite(scale) or scale <= np.finfo(float).eps:
+                        break
+                    combined_weights = w * huber.weights(resid / scale)
+                    xtw = x.T * combined_weights
+                    next_params = np.linalg.solve(xtw @ x, xtw @ y_values)
+                    if np.max(np.abs(next_params - params)) <= 1e-8 * max(1.0, np.max(np.abs(params))):
+                        params = next_params
+                        break
+                    params = next_params
+
+                mod = statsmodels.api.WLS(y, x, weights=combined_weights)
+            else:
+                mod = statsmodels.api.RLM(y, x)
+        else:
+            if weighted:
+                mod = statsmodels.api.WLS(y, x, weights=w)
+            else:
+                mod = statsmodels.api.OLS(y, x)
+
+        if robust and weighted and langley.shape[0] > x.shape[1]:
+            res = mod.fit(cov_type='HC1')
+        else:
+            res = mod.fit()
         assert(~np.isnan(res.params['x1'])), 'The fit failed and returned a nan. This should not happen.'
         lser = {'slope': res.params['x1'], 'intercept': res.params['const'], 'slope_stderr': res.bse['x1'], 'intercept_stderr': res.bse['const']}
         fitfailed = False
@@ -843,13 +884,15 @@ class Langley(object):
         self._langley_residual_correlation_prop = lrcp
         return df_langres
     
-    def clean(self, threshold = 3, use_channels = None, verbose = False):
+    def clean(self, threshold = 3, use_channels = None, clean_channels_individually = False, verbose = False):
         scale = threshold
         langley = copy.deepcopy(self)
         langley.langley_pre_clean = self
         # converged = False
         status = 'not convergent'
         for i in range(20):
+            if verbose:
+                print(f'cleaning iteration {i}')
             if isinstance(use_channels, type(None)):
                 lfr = langley.langley_fit_residual.drop([940], axis = 1)# we really do not want to use the water channel for outlier detection
                 # normalize the std to the 500 nm channel, this acchieves that not a single channel that is particularly noisy (like the 1625) dominates the cleaning.
@@ -862,7 +905,8 @@ class Langley(object):
                 status = 'fit failed'
                 break
             langley.tp_lfr = lfr.copy()
-            lfr = lfr.sum(axis = 1)
+            if not clean_channels_individually:
+                lfr = lfr.sum(axis = 1)
             skewness = (lfr.mean()-lfr.median())/lfr.std()
             # print(f'skewness:\t{skewness:0.4f}')
             # print(f'lfr.mean():\t{lfr.mean():0.4f} {lfr.std():0.4f}')
@@ -873,25 +917,37 @@ class Langley(object):
             # skescale = scale + (abs(skewness) * 5)
             skescale = scale * (1 + (scale * abs(skewness)))
 
-            print(f'skewness: {skewness:0.4f}\t skewscale:{skescale:0.4f}')
+            # print(f'skewness: {skewness:0.4f}\t skewscale:{skescale:0.4f}')
             cutoff = (lfr.median() - (lfr.std() *skescale), lfr.median() + (lfr.std() *skescale))
+            self.tp_cutoff = cutoff
+            # if verbose:
+            #     print(cutoff)                
             cut = 'both'
             if cut == 'below':
                 where = lfr > cutoff[0]
-            elif cut == 'above': # this is not used yet
+            elif cut == 'above': 
                 where = lfr < cutoff[1]
             elif cut == 'both':
                 where = np.logical_and(lfr > cutoff[0], lfr < cutoff[1])
 
-            if (~where).sum() == 0:
+            where = where  | lfr.isna() # in case of clean_channels_individually, the frame does not just get smaller but individual points become nan. To break the loo, we don't want to count those as removed points.
+            if verbose:
+                try:
+                    print((~where).sum().to_list())
+                except:
+                    print((~where).sum())
+
+            if np.all((~where).sum() == 0):
                 # converged = True
                 status = 'converged'
                 break
 
             self.tp_where = where
             self.tp_langley = langley.langleys.copy()
+    
             try:
                 langley.langleys = langley.langleys[where]
+                # print(langley.langleys[where])
             except:
                 print('possible reason for failure: there are nans in the langley data?')
                 raise
@@ -904,6 +960,7 @@ class Langley(object):
         out = {'langley': langley}
         out['iterations'] = i
         out['status'] = status
+        out['removed_points'] = where
         return out
     
     def plot(self, wavelength = None, show_pre_clean = True, textpos = [0.1, 0.1], ax = None):
@@ -924,7 +981,7 @@ class Langley(object):
             txt = f'wavelength: {wl} nm\n'
             txt += f'slope: {fr.slope:0.2g} ± {fr.slope_stderr:0.1g}\n'
             txt += f'intercept: {fr.intercept:0.4f} ± {fr.intercept_stderr:0.4f}\n'
-            txt += f'no points: {self.langleys.shape[0]}'
+            txt += f'no points: {self.langleys[wl].dropna().shape[0]}'
             a.text(*textpos, txt, transform = a.transAxes)
             return None
         if isinstance(wavelength, type(None)):
