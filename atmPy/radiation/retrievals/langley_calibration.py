@@ -158,16 +158,16 @@ def read_langley_params(p2f = '/home/grad/surfrad/aod/tbl_mfrhead', verbose = Fa
         # V0_err.rename({'162': '1625',
         #                '670': '673'}, inplace=True)
         # return V0
-        assert(np.all([wl in wl_nominal for wl in V0.index])), f'something is strange with the wavelength {V0.index}'
-        assert(np.all([wl in wl_nominal for wl in V0_err.index ])), f'something is strange with the wavelength {V0_err.index}'
-        # assert(np.all([wl in V0.index for wl in ['415', '500', '1625', '670', '870', '940']])), f'something is strange with the wavelength {V0.index}'
-        # assert(np.all([wl in V0_err.index for wl in ['415', '500', '1625', '670', '870', '940']])), f'something is strange with the wavelength {V0_err.index}'
+        assert(np.all([wl in wl_nominal for wl in V0.index])), f'something is strange with the channel {V0.index}'
+        assert(np.all([wl in wl_nominal for wl in V0_err.index ])), f'something is strange with the channel {V0_err.index}'
+        # assert(np.all([wl in V0.index for wl in ['415', '500', '1625', '670', '870', '940']])), f'something is strange with the channel {V0.index}'
+        # assert(np.all([wl in V0_err.index for wl in ['415', '500', '1625', '670', '870', '940']])), f'something is strange with the channel {V0_err.index}'
         V0.index = [int(col) for col in V0.index]
-        V0.index.name = 'wavelength'
+        V0.index.name = 'channel'
         V0.columns.name= 'V0_params'
         
         V0_err.index = [int(col) for col in V0_err.index]
-        V0_err.index.name = 'wavelength'
+        V0_err.index.name = 'channel'
         V0_err.columns.name= 'V0_err_params'
         
         ds = xr.Dataset()
@@ -261,7 +261,7 @@ class CalibrationPrediction(object):
         else:
             a = ax
             
-        dst = self.dataset.sel(wavelength = wl)
+        dst = self.dataset.sel(channel = wl)
         if show_pm5:
             perc = 0.05
             a.fill_between(dst.datetime,  dst.V0 - ( dst.V0 * perc),  dst.V0 + ( dst.V0 * perc), 
@@ -293,7 +293,7 @@ class Langley_Timeseries(object):
     # def rank_by(self, wl = 500, fit_results = 'intercept_stderr'):
     #     """Ranks the current dataset by the given values"""
     #     ds = self.dataset
-    #     dssel = ds.langley_fitres.sel(fit_results = fit_results, wavelength = wl, drop = True)
+    #     dssel = ds.langley_fitres.sel(fit_results = fit_results, channel = wl, drop = True)
     #     ds['ranked'] = dssel.rank('datetime')
     #     ds['ranked'].attrs['description'] = f'Ranked by langley_fitres {fit_results} at {wl}nm'
     #     return
@@ -305,7 +305,7 @@ class Langley_Timeseries(object):
     def sort_by(self, wl = 500, fit_results = 'intercept_stderr'):
         """Sorts the current dataset by the given values"""
         ds = self.dataset
-        ds = ds.sortby(ds.langley_fitres.sel(wavelength = wl, fit_results = fit_results))
+        ds = ds.sortby(ds.langley_fitres.sel(channel = wl, fit_results = fit_results))
         ds['ranked'] = ('datetime', (range(ds.datetime.shape[0])))
         self.dataset = ds
         return
@@ -315,9 +315,9 @@ class Langley_Timeseries(object):
         Parameters
         ----------
         wl: int
-            Wavelength to plot
+            Channel to plot
         wlsort: int 
-            Wavelength to sort by (if None, use wl)
+            Channel to sort by (if None, use wl)
         """
 
         # if 'ranked' not in self.dataset:
@@ -330,7 +330,7 @@ class Langley_Timeseries(object):
         self.sort_by(wl = wlsort, fit_results = sort_by)
         ds = self.dataset
 
-        # ds = ds.sortby(ds.langley_fitres.sel(wavelength = wlsort, fit_results = sort_by))
+        # ds = ds.sortby(ds.langley_fitres.sel(channel = wlsort, fit_results = sort_by))
         # ds['ranked'] = ('datetime', (range(ds.datetime.shape[0])))
         # self.dataset = ds
         if isinstance(aa, type(None)):
@@ -339,8 +339,8 @@ class Langley_Timeseries(object):
             f = aa[0].figure
 
         a = aa[0]
-        # a.plot(ds.ranked, ds.langley_fitres.sel(fit_results = 'intercept', wavelength = wl, drop = True))
-        a.errorbar(ds.ranked, ds.langley_fitres.sel(fit_results = 'intercept', wavelength = wl), ds.langley_fitres.sel(fit_results = 'intercept_stderr', wavelength = wl))
+        # a.plot(ds.ranked, ds.langley_fitres.sel(fit_results = 'intercept', channel = wl, drop = True))
+        a.errorbar(ds.ranked, ds.langley_fitres.sel(fit_results = 'intercept', channel = wl), ds.langley_fitres.sel(fit_results = 'intercept_stderr', channel = wl))
         if hasattr(a, 'at'):
             at = a.at
         else:
@@ -348,7 +348,7 @@ class Langley_Timeseries(object):
             a.at = at
         # next(a._get_lines.prop_cycler)
         at._get_lines.get_next_color()
-        at.plot(ds.ranked, ds.langley_fitres.sel(fit_results = 'intercept_stderr', wavelength = wl), marker = '.', 
+        at.plot(ds.ranked, ds.langley_fitres.sel(fit_results = 'intercept_stderr', channel = wl), marker = '.',
                 # ls = ''
                 # color = at._get_lines.get_next_color()
             )
@@ -356,8 +356,8 @@ class Langley_Timeseries(object):
         at.set_ylabel('std err ln(V0)')
         ##################
         a = aa[1]
-        # a.plot(ds.ranked, ds.langley_fitres.sel(fit_results = 'intercept', wavelength = wl, drop = True))
-        a.errorbar(ds.ranked, ds.langley_fitres.sel(fit_results = 'slope', wavelength = wl), ds.langley_fitres.sel(fit_results = 'slope_stderr', wavelength = wl))
+        # a.plot(ds.ranked, ds.langley_fitres.sel(fit_results = 'intercept', channel = wl, drop = True))
+        a.errorbar(ds.ranked, ds.langley_fitres.sel(fit_results = 'slope', channel = wl), ds.langley_fitres.sel(fit_results = 'slope_stderr', channel = wl))
         if hasattr(a, 'at'):
             at = a.at
         else:
@@ -365,7 +365,7 @@ class Langley_Timeseries(object):
             a.at = at
         # next(a._get_lines.prop_cycler)
         at._get_lines.get_next_color()
-        at.plot(ds.ranked, ds.langley_fitres.sel(fit_results = 'slope_stderr', wavelength = wl), marker = '.', 
+        at.plot(ds.ranked, ds.langley_fitres.sel(fit_results = 'slope_stderr', channel = wl), marker = '.',
                 # ls = ''
                 # color = at._get_lines.get_next_color()
             )
@@ -388,8 +388,8 @@ class Langley_Timeseries(object):
             a = plt.subplot()
         else:
             a = ax
-        intercept = np.exp(self.dataset.sel(wavelength = wl, fit_results = 'intercept', ampm = ampm).langley_fitres)
-        intercept_stdr = self.dataset.sel(wavelength = wl, fit_results = 'intercept_stderr', ampm = ampm).langley_fitres
+        intercept = np.exp(self.dataset.sel(channel = wl, fit_results = 'intercept', ampm = ampm).langley_fitres)
+        intercept_stdr = self.dataset.sel(channel = wl, fit_results = 'intercept_stderr', ampm = ampm).langley_fitres
         weights = 1/intercept_stdr**order_stderr
         intercept = intercept.where(intercept_stdr < th)
         # return intercept.to_pandas()
@@ -416,12 +416,12 @@ class Langley_Timeseries(object):
         lam_overtime *= self.dataset.datetime.shape[0]
         ds_v0_list = []
         
-        for wl in self.dataset.wavelength:
+        for wl in self.dataset.channel:
             wl = int(wl)
             
             ds_v0 = xr.Dataset()
         
-            dfwl =self.dataset.langley_fitres.sel(wavelength = wl).to_pandas().copy() #not sure if the copy is needed, but have to make sure that I don't overwrite the dataset
+            dfwl =self.dataset.langley_fitres.sel(channel = wl).to_pandas().copy() #not sure if the copy is needed, but have to make sure that I don't overwrite the dataset
             no_of_years = (dfwl.iloc[-1].name - dfwl.iloc[0].name) / pd.to_timedelta(365, 'days')
             
             dfwl[dfwl.intercept_stderr > th] = np.nan
@@ -474,11 +474,11 @@ class Langley_Timeseries(object):
             ci.columns.name = 'interval_boundary'
             ds_v0['confidence_interval'] = ci
         
-            ds_v0 = ds_v0.expand_dims(wavelength = [wl,])
+            ds_v0 = ds_v0.expand_dims(channel = [wl,])
         
             ds_v0_list.append(ds_v0)
         
-        ds_v0_all = xr.concat(ds_v0_list, 'wavelength')
+        ds_v0_all = xr.concat(ds_v0_list, 'channel')
         self._v0gam = CalibrationPrediction(ds_v0_all)
         return self._v0gam
         
@@ -495,13 +495,13 @@ class Langley_Timeseries(object):
         wm_list = []
         # new_daterange = pd.date_range(start = self.dataset.datetime.values[0], end = self.dataset.datetime.values[-1], freq='D')
     
-        for wl in self.dataset.wavelength:
+        for wl in self.dataset.channel:
             wl = int(wl)
             # break
         
             # wl = 500
         
-            dfwl =self.dataset.langley_fitres.sel(wavelength = wl).to_pandas()
+            dfwl =self.dataset.langley_fitres.sel(channel = wl).to_pandas()
             rollw = dfwl.rolling(f'{dt_window}d', 
                                 center = True,
                                    # min_periods =1,
@@ -521,7 +521,7 @@ class Langley_Timeseries(object):
             ds = xr.Dataset()
             ds['V0']  = wm
             ds['confidence_interval'] = confint
-            ds = ds.assign_coords({'wavelength': [wl,]})
+            ds = ds.assign_coords({'channel': [wl,]})
             wm_list.append(ds)
             
             if smoothned:
@@ -559,16 +559,16 @@ class Langley_Timeseries(object):
             
                 ds['confidence_interval'] = confint
             
-                ds = ds.assign_coords({'wavelength': [wl,]})
+                ds = ds.assign_coords({'channel': [wl,]})
             
                 ds_list.append(ds)
         
 
         if smoothned:
-            ds_all = xr.concat(ds_list, 'wavelength')        
+            ds_all = xr.concat(ds_list, 'channel')
             self._v0rol =   CalibrationPrediction(ds_all)
         else:
-            wm_all = xr.concat(wm_list, 'wavelength')
+            wm_all = xr.concat(wm_list, 'channel')
             #### interpolate and extrapolate
             wm_all = wm_all.interp(datetime = self.daterange2predict,
                                      method='nearest', 
@@ -589,16 +589,16 @@ class Langley_Timeseries(object):
         ns = []
         osubs = []
         alpha = 0.05
-        for wl in self.dataset.wavelength:
-            n = self.dataset.langley_fitres.sel(fit_results = 'intercept', wavelength = wl).dropna('datetime').shape[0]
+        for wl in self.dataset.channel:
+            n = self.dataset.langley_fitres.sel(fit_results = 'intercept', channel = wl).dropna('datetime').shape[0]
             ns.append(n)
             chi2val = scipy.stats.chi2.ppf(alpha, df=n-1)
             osub = np.sqrt((n-1)/chi2val) # this is the one-sided upper bound factor with a 95% confidence
             osubs.append(osub)
             
-        dsout['number_of_cals'] = ('wavelength', ns)
+        dsout['number_of_cals'] = ('channel', ns)
         dsout.number_of_cals.attrs['description'] = 'Number of langleys used.'
-        dsout['one_sided_upper_bound_factor_95conf'] = ('wavelength', osubs)
+        dsout['one_sided_upper_bound_factor_95conf'] = ('channel', osubs)
         dsout.one_sided_upper_bound_factor_95conf.attrs['description'] = r'one-sided upper bound factor with a 95% confidence, mostly relevant for small number of langleys.'
 
 
@@ -763,7 +763,7 @@ def fit_langley(langley, robust = True,
 
 def plot_langley(lang_ds, wls = 'all', date = 'Test'):
     if wls == 'all':
-        wls = lang_ds.wavelength.values
+        wls = lang_ds.channel.values
     else:
         pass
 #     wl = 500
@@ -802,7 +802,7 @@ class Langley(object):
         ds = langleys.where((langleys.airmass > amf_min) & (langleys.airmass < amf_max), drop = True)
         self.dataset = ds
         langleys = ds.direct_normal.to_pandas()
-        langleys.columns.name = 'wavelength'
+        langleys.columns.name = 'channel'
         # langleys = langleys.truncate(*airmass_limits)
         # langleys = langleys.copy()
         # langleys = langleys.where(aimass_limits[0] < langleys.airmass).where(aimass_limits[1] > langleys.airmass).dropna('airmass')
@@ -1046,12 +1046,12 @@ class Langley(object):
         
         df_langres = pd.DataFrame(fit_res_dict)
         df_langres = df_langres.transpose()
-        df_langres.index.name = 'wavelength'
+        df_langres.index.name = 'channel'
         df_langres.columns.name = 'fit_results'
         self._langley_fitres = df_langres
         
         # df_resid = pd.DataFrame(resid_dict)
-        df_resid.columns.name = 'wavelength'
+        df_resid.columns.name = 'channel'
         
         resid_corr_matrix = df_resid.corr()
         lrcp = {}
@@ -1069,9 +1069,9 @@ class Langley(object):
         ----------
         threshold : float or mapping
             Dimensionless residual threshold. A mapping may specify a different
-            threshold for each selected wavelength.
+            threshold for each selected channel.
         use_channels : sequence, optional
-            Wavelengths used for screening. By default all channels except 940 nm
+            Channels used for screening. By default all channels except 940 nm
             are used.
         clean_channels_individually : bool
             Mask only the flagged channel when true. Otherwise, remove a complete
@@ -1080,7 +1080,7 @@ class Langley(object):
             Print the number of newly flagged points after each fit.
         expected_instrument_noise : float or mapping, optional
             Lower bound for each channel's residual scale. Values are in log-signal
-            units and may be specified independently for each wavelength.
+            units and may be specified independently for each channel.
         min_channels : int
             Number of selected channels that must flag a point before its complete
             airmass row is removed. Ignored when channels are cleaned individually.
@@ -1222,7 +1222,7 @@ class Langley(object):
         out['residual_scale'] = residual_scale
         return out
     
-    def plot(self, wavelength = None, show_pre_clean = True, plot_residual = True, textpos = [0.1, 0.1], ax = None):
+    def plot(self, channel = None, show_pre_clean = True, plot_residual = True, textpos = [0.1, 0.1], ax = None):
         def plot_fit(wl, ax = None):
             res = self.langley_fitres.loc[wl]
             fit_index = self.langleys.index.append(pd.Index([0])).sort_values()
@@ -1237,7 +1237,7 @@ class Langley(object):
 
             fit.plot(ax = ax)
             fr = self.langley_fitres.loc[wl]
-            txt = f'wavelength: {wl} nm\n'
+            txt = f'channel: {wl} nm\n'
             txt += f'slope: {fr.slope:0.2g} ± {fr.slope_stderr:0.1g}\n'
             txt += f'intercept: {fr.intercept:0.4f} ± {fr.intercept_stderr:0.4f}\n'
             txt += f'no points: {self.langleys[wl].dropna().shape[0]}'
@@ -1269,15 +1269,15 @@ class Langley(object):
             pad = abs(ymax - ymin) * 0.2
             ax.set_ylim(ymin - pad, ymax + pad)
             return None
-        if isinstance(wavelength, type(None)):
-            wavelength = self.langleys.columns
+        if isinstance(channel, type(None)):
+            channel = self.langleys.columns
             # for wl in self.langleys.columns:
             #     f,a = plt.subplots()
             #     plot_fit(wl, ax)
-        elif np.isscalar(wavelength):
-            wavelength = [wavelength,]
+        elif np.isscalar(channel):
+            channel = [channel,]
         axout = []
-        for e,wl in enumerate(wavelength):
+        for e,wl in enumerate(channel):
             if isinstance(ax, type(None)):
                 if plot_residual:
                     f,a = plt.subplots(2, sharex=True, height_ratios=[2,1], gridspec_kw={'hspace': 0})
@@ -1378,9 +1378,9 @@ class Calibration_SP02(object):
 
 
         plt.rcParams['hatch.linewidth'] = 4
-        for wl in ds.wavelength.values:
+        for wl in ds.channel.values:
             f,a = plt.subplots()
-            res = ds.langley_fitres.sel(wavelength = wl).to_pandas()
+            res = ds.langley_fitres.sel(channel = wl).to_pandas()
 
             rest = res.copy()
 
@@ -1399,7 +1399,7 @@ class Calibration_SP02(object):
             hs.set_edgecolor([0,0,0,0.5])
             hatch = hs.set_hatch('//')
 
-            a.set_title(f'channle wavelength: {wl}nm')
+            a.set_title(f'channel: {wl}nm')
             a.set_xlabel('Langley fit - slope (mV)')
             a.set_ylabel('Langley fit - std of residual')
 
@@ -1428,7 +1428,7 @@ class Calibration_SP02(object):
     def get_best_results(self, top = 10):
         ds = self.langley_fitres
         def sortbyparam(ds, param, top):
-            df = (ds.langley_fitres.sel(linreg_param = f'{param}_stderr') / ds.langley_fitres.sel(linreg_param = param)).mean(dim = 'wavelength').to_pandas()
+            df = (ds.langley_fitres.sel(linreg_param = f'{param}_stderr') / ds.langley_fitres.sel(linreg_param = param)).mean(dim = 'channel').to_pandas()
             df = df[df>0]
             df.sort_values(inplace=True)
             out = {}
@@ -1438,7 +1438,7 @@ class Calibration_SP02(object):
         out = {}
         slopestdrmin = sortbyparam(ds,'slope', top)
         interceptstdrmin = sortbyparam(ds,'intercept',top)
-        curvature_date = ds.langley_fitres.sel(linreg_param = 'resid_curvature').mean(dim = 'wavelength').to_pandas().abs().sort_values().index[:top].values
+        curvature_date = ds.langley_fitres.sel(linreg_param = 'resid_curvature').mean(dim = 'channel').to_pandas().abs().sort_values().index[:top].values
         curvature = ds.sel(datetime = curvature_date)
         df_cmp = ds.correlation_matrix_properties.to_pandas()
         determimin_dates = df_cmp.sort_values('determinant', ascending=False).index[:top].values
@@ -1462,9 +1462,9 @@ class Calibration_SP02(object):
         # col = 'A'
         colors = plt.rcParams['axes.prop_cycle'].by_key()['color']
 
-        df = self.langley_fitres.langley_fitres.sel(wavelength = col).to_pandas()
+        df = self.langley_fitres.langley_fitres.sel(channel = col).to_pandas()
         df_corr = self.langley_fitres.correlation_matrix_properties.to_pandas()
-        # ['intercept_stderr'].langley_fitres.sel(wavelength = col).to_pandas()
+        # ['intercept_stderr'].langley_fitres.sel(channel = col).to_pandas()
 
         df.sort_values('intercept_stderr', inplace=True)
         # df
@@ -1532,7 +1532,7 @@ class Calibration_SP02(object):
 #         which = 0
 
         best10sel = best10.langley_fitres
-        dtt = best10sel.langley_fitres.sel(linreg_param = 'intercept_stderr', wavelength = 'A').to_pandas().sort_values().index[which]
+        dtt = best10sel.langley_fitres.sel(linreg_param = 'intercept_stderr', channel = 'A').to_pandas().sort_values().index[which]
         date = pd.to_datetime(dtt)
         date = f'{date.year:04d}{date.month:02d}{date.day:02d}'
 
@@ -2135,8 +2135,8 @@ def raw2langleys(site,
         correlation_props = [res['correlation_prop'] for res in reslist_am]    
         coord_linreg = raw.am.langley_fitres.columns.values
         # coord_amf = raw.am.langleys.index
-        coord_wavelengths = raw.am.langley_fitres.index.values
-        langley_fitres_da = xr.DataArray(fitresarray, coords=[coord_time, coord_wavelengths, coord_linreg], dims=['datetime', 'wavelength', 'linreg_param'])
+        coord_channels = raw.am.langley_fitres.index.values
+        langley_fitres_da = xr.DataArray(fitresarray, coords=[coord_time, coord_channels, coord_linreg], dims=['datetime', 'channel', 'linreg_param'])
         
         
         ds = xr.Dataset()
@@ -2253,9 +2253,9 @@ def deprecated_plot_langley_results(result_ds, intensity4ts = 'resid_curvature',
 
 
     plt.rcParams['hatch.linewidth'] = 4
-    for wl in ds.wavelength.values:
+    for wl in ds.channel.values:
         f,a = plt.subplots()
-        res = ds.langley_fitres.sel(wavelength = wl).to_pandas()
+        res = ds.langley_fitres.sel(channel = wl).to_pandas()
 
     #     x,y,z = res.slope.copy(), res.stderr.copy(), res.intercept.copy()
         rest = res.copy()
@@ -2332,7 +2332,7 @@ def deprecated_plot_langley_results(result_ds, intensity4ts = 'resid_curvature',
             a.set_xlim(xlim)
             a.set_ylim(ylim)
     #         print(ylim)
-        a.set_title(f'channle wavelength: {wl}nm')
+        a.set_title(f'channel: {wl}nm')
         a.set_xlabel('Langley fit - slope (mV)')
         a.set_ylabel('Langley fit - std of residual')
 
@@ -2363,7 +2363,7 @@ def deprecated_plot_langley_results(result_ds, intensity4ts = 'resid_curvature',
 
 def deprecated_get_best_results(ds, top = 10):
     def sortbyparam(ds, param, top):
-        df = (ds.langley_fitres.sel(linreg_param = f'{param}_stderr') / ds.langley_fitres.sel(linreg_param = param)).mean(dim = 'wavelength').to_pandas()
+        df = (ds.langley_fitres.sel(linreg_param = f'{param}_stderr') / ds.langley_fitres.sel(linreg_param = param)).mean(dim = 'channel').to_pandas()
         df = df[df>0]
         df.sort_values(inplace=True)
         out = {}
@@ -2373,7 +2373,7 @@ def deprecated_get_best_results(ds, top = 10):
     out = {}
     slopestdrmin = sortbyparam(ds,'slope', top)
     interceptstdrmin = sortbyparam(ds,'intercept',top)
-    curvature_date = ds.langley_fitres.sel(linreg_param = 'resid_curvature').mean(dim = 'wavelength').to_pandas().abs().sort_values().index[:top].values
+    curvature_date = ds.langley_fitres.sel(linreg_param = 'resid_curvature').mean(dim = 'channel').to_pandas().abs().sort_values().index[:top].values
     curvature = ds.sel(datetime = curvature_date)
     df_cmp = ds.correlation_matrix_properties.to_pandas()
     determimin_dates = df_cmp.sort_values('determinant', ascending=False).index[:top].values

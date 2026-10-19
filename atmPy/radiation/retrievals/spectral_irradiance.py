@@ -524,7 +524,7 @@ class SolarIrradiation(object):
         if isinstance(langley_calibration, xr.Dataset):
             # this is the case when the V0_simple variable is passed
             assert('V0' in langley_calibration.variables), 'The langley calibration dataset needs to have a V0 variable'
-            assert('wavelength' in langley_calibration.dims), 'The langley calibration dataset needs to have a wavelength dimension'
+            assert('channel' in langley_calibration.dims), 'The langley calibration dataset needs to have a channel dimension'
             v0 = langley_calibration.V0
         elif isinstance(langley_calibration, atmlangcalib.Langley_Timeseries):
             # this is the case when the Langley_Timeseries instance is passed
@@ -537,8 +537,6 @@ class SolarIrradiation(object):
 
         v0 = v0 / self.sun_position.sun_earth_distance**2 # this will adjust the v0 values to the current sun earth distance
         toasi = self.toa_spectral_irradiance # this is already adjusted to sun earth distan
-        v0 = v0.rename({'wavelength':'channel'})
-        
         dsnew = self.dataset.copy()
         gh = self.dataset.global_horizontal / v0 # transmittance, both at current sun earth distance
         if calibrate_to == 'irradiance':
@@ -1013,8 +1011,8 @@ class DirectNormalIrradiation(SolarIrradiation):
             th_predict = 0.003
             req_no_good_langleys = 15
             wl = 500
-            istderr = lands.dataset.sel(fit_results = 'intercept_stderr', wavelength = wl).langley_fitres
-            date_predict = pd.to_datetime(lands.dataset.sel(fit_results = 'intercept', wavelength = wl).langley_fitres.where(istderr < th_predict).dropna('datetime').datetime[-req_no_good_langleys].values)
+            istderr = lands.dataset.sel(fit_results = 'intercept_stderr', channel = wl).langley_fitres
+            date_predict = pd.to_datetime(lands.dataset.sel(fit_results = 'intercept', channel = wl).langley_fitres.where(istderr < th_predict).dropna('datetime').datetime[-req_no_good_langleys].values)
             lands.date_predict = date_predict
             print('done')
         else:
@@ -1022,7 +1020,6 @@ class DirectNormalIrradiation(SolarIrradiation):
         
         self.lands = lands
         v0 = lands.v0prediction.dataset
-        v0 = v0.rename({'wavelength':'channel'})
         
         #### FIXME: the below should no longer be required
         # v0 = v0.assign_coords({'channel': [ 415,  500, 1625,  670,  870,  940]})

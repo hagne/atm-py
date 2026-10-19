@@ -49,6 +49,19 @@ class FitLangleyTest(unittest.TestCase):
         self.assertAlmostEqual(result['res_series']['intercept'], expected[0])
         self.assertAlmostEqual(result['res_series']['slope'], expected[1])
 
+    def test_fit_results_use_channel_dimension(self):
+        airmass = np.linspace(2.3, 4.6, 8)
+        signal = 8.0 - airmass[:, np.newaxis] * np.array([0.1, 0.12, 0.2])
+        langley = self._langley(signal, airmass)
+
+        fit_results = xr.Dataset({'langley_fitres': langley.langley_fitres})
+
+        self.assertEqual(fit_results.langley_fitres.dims, ('channel', 'fit_results'))
+        self.assertAlmostEqual(
+            fit_results.langley_fitres.sel(channel=500, fit_results='slope').item(),
+            -0.1,
+        )
+
     def test_expected_airmass_cdf_is_the_same_for_am_and_pm(self):
         airmass = np.array([2.1, 2.2, 2.4, 2.8, 3.6, 4.6])
         signal = 8.0 - airmass[:, np.newaxis] * np.array([0.1, 0.12, 0.2])
