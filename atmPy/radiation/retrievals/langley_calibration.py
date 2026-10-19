@@ -641,7 +641,8 @@ class Langley_Timeseries(object):
     
 def fit_langley(langley, robust = True,
                 # airmasslimits = (2.5,4),
-                weighted = True, error_handling = 'skip', parent = None):
+                weighted = True, error_handling = 'skip', parent = None,
+                weights = None):
     """
     Performs a linear fit to the langleys. 
     Parameters
@@ -650,6 +651,9 @@ def fit_langley(langley, robust = True,
         DESCRIPTION.
     weighted : bool, optional
         If the fit is to be weighted. This is a good idea due to the change in density of data points as the AMF decreases. The default is ....
+    weights : pandas.Series or xarray.DataArray, optional
+        Fixed fit weights indexed by airmass. When omitted, weights are
+        calculated from the spacing of the points supplied to this function.
 
     Returns
     -------
@@ -657,6 +661,11 @@ def fit_langley(langley, robust = True,
 
     """
     langley = langley.copy()
+    if weighted and weights is not None:
+        if isinstance(weights, xr.DataArray):
+            weights = weights.to_series()
+        elif not isinstance(weights, pd.Series):
+            weights = pd.Series(np.asarray(weights, dtype=float), index=langley.index)
     langley = langley.dropna() # this is necessary as otherwise the fit fails
     langley.sort_index(ascending=False, inplace=True) # otherwise the weigted fit will fail for pm
     # langley = langley.truncate(*airmasslimits)
@@ -675,11 +684,18 @@ def fit_langley(langley, robust = True,
     x = langley.index
     x = statsmodels.api.add_constant(x)
     if weighted:
-        idx = langley.index.to_numpy(dtype=float)
-        w = np.empty_like(idx)
-        w[0] = (idx[0] - idx[1]) / 2
-        w[-1] = (idx[-2] - idx[-1]) / 2
-        w[1:-1] = (idx[:-2] - idx[2:]) / 2
+        if weights is None:
+            idx = langley.index.to_numpy(dtype=float)
+            w = np.empty_like(idx)
+            w[0] = (idx[0] - idx[1]) / 2
+            w[-1] = (idx[-2] - idx[-1]) / 2
+            w[1:-1] = (idx[:-2] - idx[2:]) / 2
+        else:
+            fit_weights = weights.reindex(langley.index)
+            w = fit_weights.to_numpy(dtype=float, copy=True)
+            if np.any(~np.isfinite(w)) or np.any(w <= 0):
+                raise ValueError('Fit weights must be finite and greater than zero for every retained point.')
+            w /= w.mean()
         if parent is not None:
             parent.tp_w = w
             parent.tp_langley = langley
@@ -801,6 +817,165 @@ class Langley(object):
         self._langley_residual_correlation_prop = None
         self._langley_fit_residual = None
 
+    @property
+    def expected_airmass_cdf(self):
+        """Expected airmass CDF for uniform temporal sampling."""
+        if 'expected_airmass_cdf' not in self.dataset:
+            ds = self.dataset.sortby('airmass')
+            count = ds.sizes['airmass']
+            if count == 0:
+                cdf = xr.DataArray(
+                    np.empty(0, dtype=float),
+                    coords={'airmass': ds.airmass},
+                    dims=('airmass',),
+                )
+            elif count == 1:
+                cdf = xr.zeros_like(ds.airmass, dtype=float)
+            else:
+                if bool(ds.datetime.isnull().any()):
+                    raise ValueError('Langley datetime values must not contain missing values.')
+                timestamp = ds.datetime.astype('datetime64[ns]').astype('int64')
+                time_span = timestamp.isel(airmass=-1) - timestamp.isel(airmass=0)
+                if time_span.item() == 0:
+                    raise ValueError('Langley datetime values must span more than one instant.')
+                cdf = (timestamp - timestamp.isel(airmass=0)) / time_span
+                if bool((cdf.diff('airmass') <= 0).any()):
+                    raise ValueError('Langley datetime must vary monotonically with airmass.')
+
+            cdf = cdf.rename('expected_airmass_cdf')
+            cdf.attrs = {
+                'long_name': 'expected cumulative distribution of airmass',
+                'description': 'Normalized elapsed time, oriented from low to high airmass.',
+                'units': '1',
+            }
+            self.dataset['expected_airmass_cdf'] = cdf
+        return self.dataset.expected_airmass_cdf.sortby('airmass')
+
+    @property
+    def airmass_weights(self):
+        """Fixed inverse-density weights on the original airmass sequence."""
+        if 'airmass_weights' not in self.dataset:
+            cdf = self.expected_airmass_cdf
+            airmass = np.asarray(cdf.airmass.data, dtype=float)
+            expected_quantile = np.asarray(cdf.data, dtype=float)
+            count = airmass.size
+
+            weights = np.ones(count, dtype=float)
+            if count > 1:
+                weights[0] = ((airmass[1] - airmass[0]) /
+                              (expected_quantile[1] - expected_quantile[0]))
+                weights[-1] = ((airmass[-1] - airmass[-2]) /
+                               (expected_quantile[-1] - expected_quantile[-2]))
+                if count > 2:
+                    weights[1:-1] = ((airmass[2:] - airmass[:-2]) /
+                                     (expected_quantile[2:] - expected_quantile[:-2]))
+
+            if np.any(~np.isfinite(weights)) or np.any(weights <= 0):
+                raise ValueError('Expected airmass weights must be finite and greater than zero.')
+            if count:
+                weights /= weights.mean()
+
+            self.dataset['airmass_weights'] = xr.DataArray(
+                weights,
+                coords={'airmass': cdf.airmass},
+                dims=('airmass',),
+                name='airmass_weights',
+                attrs={
+                    'long_name': 'fixed Langley airmass fit weights',
+                    'description': 'Inverse expected sampling density, dm/du, normalized to mean one.',
+                    'units': '1',
+                },
+            )
+        return self.dataset.airmass_weights.sortby('airmass')
+
+    @property
+    def airmass_coverage_metrics(self):
+        """Coverage of retained observations in expected-CDF coordinates."""
+        expected_cdf = self.expected_airmass_cdf.to_pandas()
+        expected_weights = self.airmass_weights.to_pandas()
+        channels = self.langleys.columns.to_numpy()
+        channel_count = channels.size
+        retained_points = np.zeros(channel_count, dtype=int)
+        retained_fraction = np.full(channel_count, np.nan)
+        cdf_span = np.full(channel_count, np.nan)
+        maximum_cdf_gap = np.full(channel_count, np.nan)
+        maximum_cdf_gap_ratio = np.full(channel_count, np.nan)
+        cdf_spacing_cv = np.full(channel_count, np.nan)
+        effective_airmass = np.full(channel_count, np.nan)
+        effective_airmass_offset = np.full(channel_count, np.nan)
+
+        if expected_cdf.size > 1:
+            reference_spacing = np.median(np.diff(expected_cdf.to_numpy(dtype=float)))
+        else:
+            reference_spacing = np.nan
+        if expected_cdf.size:
+            airmass_min = float(expected_cdf.index.min())
+            airmass_max = float(expected_cdf.index.max())
+            airmass_midpoint = (airmass_min + airmass_max) / 2
+            airmass_half_range = (airmass_max - airmass_min) / 2
+        else:
+            airmass_midpoint = np.nan
+            airmass_half_range = np.nan
+
+        for position, channel in enumerate(channels):
+            retained_airmass = self.langleys[channel].dropna().index
+            retained_cdf = expected_cdf.reindex(retained_airmass).dropna().sort_values().to_numpy(dtype=float)
+            retained_weights = expected_weights.reindex(retained_airmass).dropna()
+            retained_points[position] = retained_cdf.size
+            if expected_cdf.size:
+                retained_fraction[position] = retained_cdf.size / expected_cdf.size
+            if retained_weights.size:
+                effective_airmass[position] = np.average(
+                    retained_weights.index.to_numpy(dtype=float),
+                    weights=retained_weights.to_numpy(dtype=float),
+                )
+                if airmass_half_range > 0:
+                    effective_airmass_offset[position] = (
+                        (effective_airmass[position] - airmass_midpoint) / airmass_half_range
+                    )
+            if retained_cdf.size:
+                cdf_span[position] = retained_cdf[-1] - retained_cdf[0]
+                coverage_spacing = np.diff(np.concatenate(([0.0], retained_cdf, [1.0])))
+                maximum_cdf_gap[position] = coverage_spacing.max()
+                maximum_cdf_gap_ratio[position] = coverage_spacing.max() / reference_spacing
+            elif expected_cdf.size:
+                maximum_cdf_gap[position] = 1.0
+                maximum_cdf_gap_ratio[position] = 1.0 / reference_spacing
+            if retained_cdf.size > 1:
+                spacing = np.diff(retained_cdf)
+                cdf_spacing_cv[position] = spacing.std() / spacing.mean()
+
+        metrics = xr.Dataset(
+            data_vars={
+                'retained_points': ('channel', retained_points),
+                'retained_fraction': ('channel', retained_fraction),
+                'cdf_span': ('channel', cdf_span),
+                'maximum_cdf_gap': ('channel', maximum_cdf_gap),
+                'maximum_cdf_gap_ratio': ('channel', maximum_cdf_gap_ratio),
+                'cdf_spacing_cv': ('channel', cdf_spacing_cv),
+                'effective_airmass': ('channel', effective_airmass),
+                'effective_airmass_offset': ('channel', effective_airmass_offset),
+            },
+            coords={'channel': self.dataset.channel},
+            attrs={
+                'expected_points': expected_cdf.size,
+                'airmass_midpoint': airmass_midpoint,
+                'airmass_half_range': airmass_half_range,
+            },
+        )
+        metrics.retained_points.attrs = {'long_name': 'number of retained points', 'units': '1'}
+        metrics.retained_fraction.attrs = {'long_name': 'fraction of expected points retained', 'units': '1'}
+        metrics.cdf_span.attrs = {'long_name': 'span of retained expected-airmass CDF', 'units': '1'}
+        metrics.maximum_cdf_gap.attrs = {'long_name': 'maximum uncovered expected-airmass CDF interval', 'units': '1'}
+        metrics.maximum_cdf_gap_ratio.attrs = {'long_name': 'maximum CDF gap relative to expected spacing', 'units': '1'}
+        metrics.cdf_spacing_cv.attrs = {'long_name': 'coefficient of variation of retained CDF spacing', 'units': '1'}
+        metrics.effective_airmass.attrs = {'long_name': 'weighted mean airmass of retained points', 'units': '1'}
+        metrics.effective_airmass_offset.attrs = {
+            'long_name': 'effective airmass offset from the range midpoint, normalized by the half-range',
+            'units': '1',
+        }
+        return metrics
+
     
     def to_xarray_dataset(self):
         if "sn_mfrsr" in self.parent.dataset.attrs:
@@ -850,6 +1025,7 @@ class Langley(object):
     
     def _fit_langles(self, verbose = False, error_handling = 'raise'):
         langleys = self.langleys
+        airmass_weights = self.airmass_weights.to_pandas()
         # df_langres = pd.DataFrame(index=['slope', 'intercept', 'stderr'])
         fit_res_dict = {}
         # resid_dict = {}
@@ -857,7 +1033,8 @@ class Langley(object):
         for wl in langleys:
             # lrg_res = stats.linregress(langleys.index, langleys[wl])
             # df_langres[wl] = pd.Series({'slope': lrg_res.slope, 'intercept': lrg_res.intercept, 'stderr': lrg_res.stderr})
-            out =  fit_langley(langleys[wl], error_handling=error_handling, parent = self)
+            out =  fit_langley(langleys[wl], error_handling=error_handling, parent = self,
+                               weights=airmass_weights)
             # df_langres[wl] = out['res_series']
             fit_res_dict[wl] = out['res_series']
             if out['res']:
@@ -972,6 +1149,7 @@ class Langley(object):
         removal_iterations = 0
         standardized_residuals = pd.DataFrame(index=self.langleys.index, columns=channels, dtype=float)
         residual_scale = pd.Series(np.nan, index=channels, dtype=float)
+        reference_weights = langley.airmass_weights.to_pandas()
 
         for _ in range(max_iterations):
             if verbose:
@@ -994,10 +1172,8 @@ class Langley(object):
                 if channel_residual.shape[0] <= 2:
                     continue
                 idx = channel_residual.index.to_numpy(dtype=float)
-                weights = np.empty_like(idx)
-                weights[0] = (idx[0] - idx[1]) / 2
-                weights[-1] = (idx[-2] - idx[-1]) / 2
-                weights[1:-1] = (idx[:-2] - idx[2:]) / 2
+                weights = reference_weights.reindex(channel_residual.index).to_numpy(dtype=float, copy=True)
+                weights /= weights.mean()
                 design = np.column_stack([np.ones_like(idx), idx])
                 covariance = np.linalg.pinv(design.T @ (weights[:, np.newaxis] * design))
                 channel_leverage = weights * np.einsum('ij,jk,ik->i', design, covariance, design)
