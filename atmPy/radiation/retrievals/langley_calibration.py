@@ -12,6 +12,7 @@ import pandas as pd
 import numpy as np
 import pathlib
 from typing import Union
+# from scipy.fftpack import dst
 import xarray as xr
 import datetime
 from atmPy.opt_imports import plt
@@ -26,6 +27,7 @@ import scipy.interpolate as scint
 import scipy.stats
 # import matplotlib.dates as pltdates
 
+from atmPy.radiation.retrievals import langley_db
 from atmPy.opt_imports import pptx
 from atmPy.opt_imports import statsmodels
 import atmPy.opt_imports as opt_imports
@@ -666,7 +668,8 @@ def fit_langley(langley, robust = True,
             weights = weights.to_series()
         elif not isinstance(weights, pd.Series):
             weights = pd.Series(np.asarray(weights, dtype=float), index=langley.index)
-    langley = langley.dropna() # this is necessary as otherwise the fit fails
+    langley = langley.replace([np.inf, -np.inf], np.nan).dropna()    
+    # langley = langley.dropna() # this is necessary as otherwise the fit fails
     langley.sort_index(ascending=False, inplace=True) # otherwise the weigted fit will fail for pm
     # langley = langley.truncate(*airmasslimits)
     if not (langley.shape[0] > 1):
@@ -947,6 +950,18 @@ class Langley(object):
 
         metrics = xr.Dataset(
             data_vars={
+                'expected_points': (
+                    'channel',
+                    np.full(channel_count, expected_cdf.size, dtype=int),
+                ),
+                'airmass_midpoint': (
+                    'channel',
+                    np.full(channel_count, airmass_midpoint),
+                ),
+                'airmass_half_range': (
+                    'channel',
+                    np.full(channel_count, airmass_half_range),
+                ),
                 'retained_points': ('channel', retained_points),
                 'retained_fraction': ('channel', retained_fraction),
                 'cdf_span': ('channel', cdf_span),
@@ -957,12 +972,10 @@ class Langley(object):
                 'effective_airmass_offset': ('channel', effective_airmass_offset),
             },
             coords={'channel': self.dataset.channel},
-            attrs={
-                'expected_points': expected_cdf.size,
-                'airmass_midpoint': airmass_midpoint,
-                'airmass_half_range': airmass_half_range,
-            },
         )
+        metrics.expected_points.attrs = {'long_name': 'number of expected points', 'units': '1'}
+        metrics.airmass_midpoint.attrs = {'long_name': 'midpoint of the expected airmass range', 'units': '1'}
+        metrics.airmass_half_range.attrs = {'long_name': 'half-width of the expected airmass range', 'units': '1'}
         metrics.retained_points.attrs = {'long_name': 'number of retained points', 'units': '1'}
         metrics.retained_fraction.attrs = {'long_name': 'fraction of expected points retained', 'units': '1'}
         metrics.cdf_span.attrs = {'long_name': 'span of retained expected-airmass CDF', 'units': '1'}
@@ -998,12 +1011,34 @@ class Langley(object):
                          'sp02_serial_no': serialno},)
         ds.attrs = dict(when = self.when,
                         date= pd.to_datetime(self.parent.dataset.datetime.values[0]).strftime('%Y%m%d'))
+
+        ds['airmass_coverage_metrics'] = self.airmass_coverage_metrics.to_dataarray()        
+
         return ds
     
     def save2netcdf(self, path2file):
         ds = self.to_xarray_dataset()
         ds.to_netcdf(path2file)
         return ds
+
+    def save2database(self, langley_results_db, path2file = None, version = None):
+        """
+        Parameters
+        ----------
+        langley_results_db: str or pathlib.Path
+            Path to database file. If it does not exist, it will be created.
+            """
+        database = langley_db.LangleyResultDatabase(
+            langley_results_db,
+            create_if_not_exist=True,
+            version=version
+        )
+        database.write_langley(
+            date=self.parent.dataset.datetime.values[0],
+            path2file=path2file,
+            langley=self,
+        )
+        return database
     
     @property
     def langley_fit_residual(self):
@@ -1034,7 +1069,7 @@ class Langley(object):
             # lrg_res = stats.linregress(langleys.index, langleys[wl])
             # df_langres[wl] = pd.Series({'slope': lrg_res.slope, 'intercept': lrg_res.intercept, 'stderr': lrg_res.stderr})
             out =  fit_langley(langleys[wl], error_handling=error_handling, parent = self,
-                               weights=airmass_weights)
+                                   weights=airmass_weights)
             # df_langres[wl] = out['res_series']
             fit_res_dict[wl] = out['res_series']
             if out['res']:
@@ -1061,8 +1096,8 @@ class Langley(object):
         self._langley_residual_correlation_prop = lrcp
         return df_langres
     
-    def clean(self, threshold = 3, use_channels = None, clean_channels_individually = False, verbose = False,
-              *, expected_instrument_noise = None, min_channels = 2, max_iterations = 3):
+    def clean(self, threshold = 3, use_channels = None, clean_channels_individually = True, verbose = False,
+              *, expected_instrument_noise = 0.01, min_channels = 2, max_iterations = 3):
         """Remove points using channel-scaled, leverage-adjusted residuals.
 
         Parameters
@@ -1075,7 +1110,10 @@ class Langley(object):
             are used.
         clean_channels_individually : bool
             Mask only the flagged channel when true. Otherwise, remove a complete
-            airmass row when at least ``min_channels`` channels flag it.
+            airmass row when at least ``min_channels`` channels flag it. While a 
+            nice idea, this is not recommended because if a single channel
+            malfunctions, it will effect all other channels and might not be detected
+            as a problem.
         verbose : bool
             Print the number of newly flagged points after each fit.
         expected_instrument_noise : float or mapping, optional

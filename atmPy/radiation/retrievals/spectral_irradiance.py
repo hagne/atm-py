@@ -1954,6 +1954,7 @@ class DirectNormalIrradiation(SolarIrradiation):
             print('get min airmass')
 
         #### get the minimum airmass befor I start cutting it out
+        breakpoint()
         noon = ds.airmass.idxmin()
 
         if verbose:
