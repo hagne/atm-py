@@ -387,9 +387,30 @@ class GamClimatology(object):
             ds['prediction'] = _xr.DataArray(pred, coords = {'datetime_full': dindex})
             ds.attrs['intercept'] = gam.coef_[-1]
             if hasattr(gam, 'prediction_intervals'):
-                pred = gam.prediction_intervals(XX, width=self.prediction_confidence)
-                ds['prediction_confidence'] = _xr.DataArray(pred, coords = {'datetime_full': dindex,
-                                                                            'boundary': ['bottom', 'top']})
+                interval = gam.prediction_intervals(
+                    XX,
+                    width=self.prediction_confidence,
+                )
+                confidence = (interval[:, 1] - interval[:, 0]) / 2
+                ds['prediction_confidence'] = _xr.DataArray(
+                    confidence,
+                    coords={'datetime_full': dindex},
+                )
+                ds['prediction_confidence'].attrs.update(
+                    {
+                        'description': (
+                            'Pointwise symmetric prediction half-width for an '
+                            'individual response; includes residual observation '
+                            'variability. Add and subtract this value from '
+                            'prediction to construct the interval.'
+                        ),
+                        'confidence_level': float(self.prediction_confidence),
+                        'interval_construction': (
+                            'lower = prediction - prediction_confidence; '
+                            'upper = prediction + prediction_confidence'
+                        ),
+                    }
+                )
 
             #### add residual
             res = self.data.iloc[:,0] - ds.prediction
@@ -656,9 +677,10 @@ class GamClimatology(object):
         g = a.get_lines()[-1]
         col_major = g.get_color()
         if show_confidence:
+            confidence = self.prediction.prediction_confidence
             a.fill_between(self.prediction.datetime_full, 
-                           self.prediction.prediction_confidence.sel(boundary='top'), 
-                           self.prediction.prediction_confidence.sel(boundary='bottom'), 
+                           self.prediction.prediction + confidence,
+                           self.prediction.prediction - confidence,
                            alpha = 0.3, 
                            zorder = 2, 
                            # color = '0.5', 
@@ -1427,8 +1449,8 @@ class GamClimatology(object):
 _mgcv_r_script = r'''
 args <- commandArgs(trailingOnly = TRUE)
 
-if (length(args) != 12L) {
-    stop("Expected 12 arguments for the atmPy mgcv runner.", call. = FALSE)
+if (length(args) != 14L) {
+    stop("Expected 14 arguments for the atmPy mgcv runner.", call. = FALSE)
 }
 
 input_path <- args[[1]]
@@ -1443,6 +1465,12 @@ interactions <- identical(args[[9]], "TRUE")
 interactions_only <- identical(args[[10]], "TRUE")
 interaction_time_k <- as.integer(args[[11]])
 interaction_doy_k <- as.integer(args[[12]])
+serial_method <- args[[13]]
+serial_parameter <- suppressWarnings(as.numeric(args[[14]]))
+
+if (!serial_method %in% c("none", "ncv", "ar1", "newey_west")) {
+    stop("Unknown serial-correlation method.", call. = FALSE)
+}
 
 if (!requireNamespace("mgcv", quietly = TRUE)) {
     stop(
@@ -1451,6 +1479,10 @@ if (!requireNamespace("mgcv", quietly = TRUE)) {
     )
 }
 suppressPackageStartupMessages(library(mgcv))
+if (serial_method == "ncv" &&
+        utils::packageVersion("mgcv") < base::package_version("1.9-2")) {
+    stop("ncv requires mgcv version 1.9-2 or newer.", call. = FALSE)
+}
 
 data_all <- read.csv(input_path, check.names = FALSE)
 required_columns <- c("row_id", "y", "days_since_start", "doy")
@@ -1462,6 +1494,8 @@ fit_rows <- is.finite(data_all$y) &
     is.finite(data_all$days_since_start) &
     is.finite(data_all$doy)
 fit_data <- data_all[fit_rows, required_columns, drop = FALSE]
+fit_data <- fit_data[order(fit_data$days_since_start, fit_data$row_id), , drop = FALSE]
+row.names(fit_data) <- NULL
 
 if (nrow(fit_data) < 10L) {
     stop("At least 10 finite observations are required for an mgcv fit.", call. = FALSE)
@@ -1512,28 +1546,309 @@ if (interactions_only) {
 model_formula <- as.formula(formula_text)
 model_family <- if (robust) mgcv::scat(link = "identity") else gaussian(link = "identity")
 
-model <- mgcv::gam(
-    model_formula,
-    family = model_family,
-    data = fit_data,
-    method = "REML",
-    knots = list(doy = c(0, 366))
-)
+fit_independent <- function() {
+    mgcv::gam(
+        model_formula,
+        family = model_family,
+        data = fit_data,
+        method = "REML",
+        knots = list(doy = c(0, 366))
+    )
+}
+
+automatic_lag <- function(residuals, z_score = 1.96) {
+    residuals <- as.numeric(residuals)
+    residuals <- residuals[is.finite(residuals)]
+    n <- length(residuals)
+    if (n < 4L) return(0L)
+    maximum_lag <- min(n - 2L, 1000L)
+    if (maximum_lag < 1L) return(0L)
+
+    autocorrelation <- 1
+    selected <- NA_integer_
+    stop_at <- maximum_lag
+    for (lag in seq_len(maximum_lag)) {
+        ac <- suppressWarnings(stats::cor(
+            residuals[seq_len(n - lag)],
+            residuals[(lag + 1L):n]
+        ))
+        autocorrelation <- c(autocorrelation, ac)
+        finite_acf <- autocorrelation[-1L]
+        finite_acf <- finite_acf[is.finite(finite_acf)]
+        confidence_limit <- z_score * sqrt(
+            (1 + 2 * sum(finite_acf^2)) / n
+        )
+        recent <- tail(autocorrelation, 3L)
+        recent <- recent[is.finite(recent)]
+        if (is.na(selected) && length(recent) &&
+                confidence_limit > max(abs(recent))) {
+            selected <- max(0L, lag - 1L)
+            stop_at <- min(maximum_lag, max(lag, ceiling(1.5 * lag)))
+        } else if (is.na(selected) && lag >= 3L && !length(recent)) {
+            selected <- max(0L, lag - 3L)
+            stop_at <- lag
+        }
+        if (lag >= stop_at) break
+    }
+    if (is.na(selected)) selected <- length(autocorrelation) - 1L
+    as.integer(selected)
+}
+
+build_ncv_neighbourhoods <- function(time, window) {
+    n <- length(time)
+    tolerance <- sqrt(.Machine$double.eps) * max(1, window)
+    left <- right <- integer(n)
+    lower <- 1L
+    upper <- 0L
+    for (index in seq_len(n)) {
+        while (lower < n && time[lower] < time[index] - window - tolerance) {
+            lower <- lower + 1L
+        }
+        if (upper < index) upper <- index
+        while (upper < n &&
+                time[upper + 1L] <= time[index] + window + tolerance) {
+            upper <- upper + 1L
+        }
+        left[index] <- lower
+        right[index] <- upper
+    }
+    sizes <- right - left + 1L
+    if (any(sizes >= n)) {
+        stop(
+            "ncv_window_days leaves no observations for at least one fit.",
+            call. = FALSE
+        )
+    }
+    neighbours <- unlist(
+        Map(seq.int, from = left, to = right),
+        use.names = FALSE
+    )
+    list(
+        a = as.integer(neighbours),
+        ma = as.integer(cumsum(sizes)),
+        d = seq_len(n),
+        md = seq_len(n),
+        sample = seq_len(n)
+    )
+}
+
+regular_sections <- function(time, method_name) {
+    differences <- diff(time)
+    if (!length(differences) || any(!is.finite(differences)) ||
+            any(differences <= 0)) {
+        stop(
+            paste0(method_name, " requires strictly increasing timestamps."),
+            call. = FALSE
+        )
+    }
+    cadence <- stats::median(differences)
+    multiples <- differences / cadence
+    rounded <- round(multiples)
+    if (any(rounded < 1L) || any(abs(multiples - rounded) > 0.1)) {
+        stop(
+            paste0(
+                method_name,
+                " requires regularly spaced data. Use ncv for irregular timestamps."
+            ),
+            call. = FALSE
+        )
+    }
+    starts <- c(TRUE, rounded > 1L)
+    list(
+        cadence = cadence,
+        starts = starts,
+        section = cumsum(starts)
+    )
+}
+
+ncv_window <- NA_real_
+ncv_window_estimated <- FALSE
+ar1_rho <- NA_real_
+ar1_rho_estimated <- FALSE
+newey_west_lag <- NA_integer_
+newey_west_lag_estimated <- FALSE
+serial_cadence <- NA_real_
+serial_sections <- NULL
+
+if (serial_method == "none" || serial_method == "newey_west") {
+    model <- fit_independent()
+} else if (serial_method == "ncv") {
+    ncv_window <- serial_parameter
+    if (!is.finite(ncv_window)) {
+        preliminary_model <- fit_independent()
+        lag <- max(
+            1L,
+            automatic_lag(residuals(preliminary_model, type = "pearson"))
+        )
+        separations <-
+            fit_data$days_since_start[(lag + 1L):nrow(fit_data)] -
+            fit_data$days_since_start[seq_len(nrow(fit_data) - lag)]
+        separations <- separations[is.finite(separations) & separations > 0]
+        if (!length(separations)) {
+            stop("Could not estimate an NCV time window.", call. = FALSE)
+        }
+        ncv_window <- stats::median(separations)
+        ncv_window_estimated <- TRUE
+    }
+    if (!is.finite(ncv_window) || ncv_window <= 0) {
+        stop("ncv_window_days must be finite and greater than zero.", call. = FALSE)
+    }
+    neighbourhoods <- build_ncv_neighbourhoods(
+        fit_data$days_since_start,
+        ncv_window
+    )
+    model <- mgcv::gam(
+        model_formula,
+        family = model_family,
+        data = fit_data,
+        method = "NCV",
+        nei = neighbourhoods,
+        knots = list(doy = c(0, 366))
+    )
+} else if (serial_method == "ar1") {
+    structure <- regular_sections(fit_data$days_since_start, "ar1")
+    serial_cadence <- structure$cadence
+    serial_sections <- structure$section
+    fit_data$ar_start <- structure$starts
+    ar1_rho <- serial_parameter
+    if (!is.finite(ar1_rho)) {
+        preliminary_model <- fit_independent()
+        preliminary_residual <- residuals(preliminary_model, type = "pearson")
+        right <- seq.int(2L, nrow(fit_data))
+        within_section <- !structure$starts[right]
+        ar1_rho <- suppressWarnings(stats::cor(
+            preliminary_residual[right[within_section] - 1L],
+            preliminary_residual[right[within_section]]
+        ))
+        if (!is.finite(ar1_rho)) ar1_rho <- 0
+        ar1_rho <- max(-0.99, min(0.99, ar1_rho))
+        ar1_rho_estimated <- TRUE
+    }
+    if (!is.finite(ar1_rho) || abs(ar1_rho) >= 1) {
+        stop("ar1_rho must be finite and strictly between -1 and 1.", call. = FALSE)
+    }
+    model <- mgcv::bam(
+        model_formula,
+        family = model_family,
+        data = fit_data,
+        method = "fREML",
+        rho = ar1_rho,
+        AR.start = fit_data$ar_start,
+        discrete = robust,
+        knots = list(doy = c(0, 366))
+    )
+}
+
+newey_west_covariance <- NULL
+if (serial_method == "newey_west") {
+    structure <- regular_sections(fit_data$days_since_start, "newey_west")
+    serial_cadence <- structure$cadence
+    serial_sections <- structure$section
+    if (is.finite(serial_parameter)) {
+        newey_west_lag <- as.integer(serial_parameter)
+    } else {
+        newey_west_lag <- automatic_lag(residuals(model, type = "pearson"))
+        newey_west_lag_estimated <- TRUE
+    }
+    if (newey_west_lag < 0L || newey_west_lag >= nrow(fit_data)) {
+        stop(
+            "newey_west_lag must be non-negative and smaller than the number of observations.",
+            call. = FALSE
+        )
+    }
+
+    design <- model.matrix(model)
+    if (inherits(model$family, "extended.family")) {
+        derivatives <- model$family$Dd(
+            model$y,
+            model$fitted.values,
+            model$family$getTheta(),
+            model$prior.weights,
+            level = 0
+        )
+        score_weight <- 0.5 / model$sig2 * derivatives$Dmu
+    } else {
+        mu <- model$fitted.values
+        score_weight <- model$family$mu.eta(model$linear.predictors) *
+            (model$y - mu) /
+            (model$sig2 * model$family$variance(mu))
+    }
+    score <- score_weight * design
+    score <- sweep(score, 2, colMeans(score), "-")
+    meat <- crossprod(score)
+    if (newey_west_lag > 0L) {
+        for (lag in seq_len(newey_west_lag)) {
+            later <- (lag + 1L):nrow(score)
+            earlier <- seq_len(nrow(score) - lag)
+            keep <- serial_sections[later] == serial_sections[earlier]
+            if (any(keep)) {
+                lag_covariance <- crossprod(
+                    score[later[keep], , drop = FALSE],
+                    score[earlier[keep], , drop = FALSE]
+                )
+                weight <- 1 - lag / (newey_west_lag + 1)
+                meat <- meat + weight *
+                    (lag_covariance + t(lag_covariance))
+            }
+        }
+    }
+    frequentist <- model$Vp %*% meat %*% model$Vp
+    if (!is.null(model$Vc) && !is.null(model$Ve)) {
+        covariance_extra <- model$Vc - model$Ve
+    } else if (!is.null(model$Ve)) {
+        covariance_extra <- model$Vp - model$Ve
+    } else {
+        covariance_extra <- matrix(0, ncol(design), ncol(design))
+    }
+    newey_west_covariance <- frequentist + covariance_extra
+    newey_west_covariance <-
+        (newey_west_covariance + t(newey_west_covariance)) / 2
+}
 
 alpha <- (1 - confidence) / 2
 z_critical <- qnorm(1 - alpha)
+use_unconditional <- serial_method != "ar1"
+
+prediction_standard_error <- function(newdata, terms = NULL) {
+    if (is.null(newey_west_covariance)) {
+        prediction <- predict(
+            model,
+            newdata = newdata,
+            type = if (is.null(terms)) "response" else "terms",
+            terms = terms,
+            se.fit = TRUE,
+            unconditional = use_unconditional
+        )
+        return(as.numeric(prediction$se.fit))
+    }
+    prediction_matrix <- predict(
+        model,
+        newdata = newdata,
+        type = "lpmatrix",
+        terms = terms
+    )
+    variance <- rowSums(
+        (prediction_matrix %*% newey_west_covariance) * prediction_matrix
+    )
+    if (any(variance < -sqrt(.Machine$double.eps), na.rm = TRUE)) {
+        stop(
+            "The Newey-West covariance produced a negative prediction variance.",
+            call. = FALSE
+        )
+    }
+    sqrt(pmax(0, variance))
+}
 
 extract_term <- function(newdata, term_label) {
-    pred <- predict(
+    estimate <- predict(
         model,
         newdata = newdata,
         type = "terms",
         terms = term_label,
-        se.fit = TRUE,
-        unconditional = TRUE
+        se.fit = FALSE
     )
-    estimate <- as.numeric(pred$fit)
-    standard_error <- as.numeric(pred$se.fit)
+    estimate <- as.numeric(estimate)
+    standard_error <- prediction_standard_error(newdata, terms = term_label)
     data.frame(
         effect = estimate,
         standard_error = standard_error,
@@ -1592,18 +1907,13 @@ if (!is.null(interaction_term)) {
         days_since_start = time_grid,
         doy = doy_grid
     )
-    interaction_prediction <- predict(
-        model,
-        newdata = interaction_newdata,
-        type = "terms",
-        terms = interaction_label,
-        se.fit = TRUE,
-        unconditional = TRUE
+    interaction_prediction <- extract_term(
+        interaction_newdata,
+        interaction_label
     )
     interaction_output <- data.frame(
         interaction_newdata,
-        effect = as.numeric(interaction_prediction$fit),
-        standard_error = as.numeric(interaction_prediction$se.fit)
+        interaction_prediction
     )
     write.csv(
         interaction_output,
@@ -1620,11 +1930,12 @@ full_prediction <- predict(
     model,
     newdata = data_all[prediction_rows, , drop = FALSE],
     type = "response",
-    se.fit = TRUE,
-    unconditional = TRUE
+    se.fit = FALSE
 )
-prediction[prediction_rows] <- as.numeric(full_prediction$fit)
-prediction_se[prediction_rows] <- as.numeric(full_prediction$se.fit)
+prediction[prediction_rows] <- as.numeric(full_prediction)
+prediction_se[prediction_rows] <- prediction_standard_error(
+    data_all[prediction_rows, , drop = FALSE]
+)
 
 robust_df <- NA_real_
 if (robust) {
@@ -1647,13 +1958,18 @@ if (robust) {
 # coefficient uncertainty returned by predict.gam, including smoothing
 # uncertainty.
 prediction_scale <- sqrt(prediction_se^2 + residual_scale^2)
+autocorrelation_residual <- data_all$y - prediction
+if (serial_method == "ar1" && !is.null(model$std.rsd)) {
+    autocorrelation_residual <- rep(NA_real_, nrow(data_all))
+    autocorrelation_residual[fit_data$row_id + 1L] <- as.numeric(model$std.rsd)
+}
 prediction_output <- data.frame(
     row_id = data_all$row_id,
     prediction = prediction,
     standard_error = prediction_se,
     mean_confidence = z_critical * prediction_se,
-    lower = prediction - interval_critical * prediction_scale,
-    upper = prediction + interval_critical * prediction_scale
+    autocorrelation_residual = autocorrelation_residual,
+    confidence = interval_critical * prediction_scale
 )
 write.csv(
     prediction_output,
@@ -1673,6 +1989,20 @@ outer_convergence <- if (is.null(model$outer.info) ||
 converged <- isTRUE(model$converged) &&
     (identical(outer_convergence, "not reported") ||
         identical(outer_convergence, "full convergence"))
+covariance_description <- if (serial_method == "newey_west") {
+    "a coefficient-level Newey-West HAC covariance"
+} else if (serial_method == "ncv") {
+    "mgcv's neighbourhood-aware NCV covariance"
+} else if (serial_method == "ar1") {
+    "mgcv's conditional AR1 fit covariance"
+} else {
+    "mgcv's unconditional covariance"
+}
+number_of_sections <- if (is.null(serial_sections)) {
+    NA_integer_
+} else {
+    max(serial_sections)
+}
 metadata <- data.frame(
     key = c(
         "backend",
@@ -1691,13 +2021,29 @@ metadata <- data.frame(
         "converged",
         "outer_convergence",
         "r_version",
-        "mgcv_version"
+        "mgcv_version",
+        "serial_correlation_method",
+        "serial_correlation_modelled",
+        "uncertainty_adjusted_for_serial_correlation",
+        "covariance_description",
+        "ncv_window_days",
+        "ncv_window_estimated",
+        "ar1_rho",
+        "ar1_rho_estimated",
+        "serial_correlation_cadence_days",
+        "serial_correlation_sections",
+        "newey_west_lag",
+        "newey_west_lag_estimated",
+        "newey_west_kernel",
+        "newey_west_score_centered",
+        "newey_west_small_sample_correction",
+        "ar1_approximation"
     ),
     value = c(
         "mgcv",
         model$family$family,
         as.character(robust),
-        "REML",
+        model$method,
         formula_text,
         format(unname(coef(model)["(Intercept)"]), digits = 17),
         as.character(nobs(model)),
@@ -1710,7 +2056,23 @@ metadata <- data.frame(
         as.character(converged),
         outer_convergence,
         as.character(getRversion()),
-        as.character(utils::packageVersion("mgcv"))
+        as.character(utils::packageVersion("mgcv")),
+        serial_method,
+        as.character(serial_method == "ar1"),
+        as.character(serial_method != "none"),
+        covariance_description,
+        format(ncv_window, digits = 17),
+        as.character(ncv_window_estimated),
+        format(ar1_rho, digits = 17),
+        as.character(ar1_rho_estimated),
+        format(serial_cadence, digits = 17),
+        format(number_of_sections, digits = 17),
+        format(newey_west_lag, digits = 17),
+        as.character(newey_west_lag_estimated),
+        if (serial_method == "newey_west") "Bartlett" else "",
+        as.character(serial_method == "newey_west"),
+        if (serial_method == "newey_west") "none" else "",
+        if (serial_method == "ar1" && robust) "working-residual GEE" else "none"
     ),
     stringsAsFactors = FALSE
 )
@@ -1731,7 +2093,8 @@ class GamClimatologyR(GamClimatology):
     This class mirrors the cached prediction and plotting workflow of
     :class:`GamClimatology`, but fits the model in an isolated R process.
     Setting ``robust=True`` uses ``mgcv::scat``; otherwise a Gaussian response
-    is used. Smoothing parameters are estimated by REML in both cases.
+    is used. Smoothing parameters are estimated by REML unless NCV or AR1 is
+    enabled.
 
     Parameters
     ----------
@@ -1744,16 +2107,25 @@ class GamClimatologyR(GamClimatology):
 
     Notes
     -----
-    Robust fitting protects against heavy-tailed observations. It does not
-    model serial correlation. Robust response intervals combine coefficient
-    uncertainty and scaled-t noise with a pointwise approximation; partial
-    effect confidence intervals use ``mgcv``'s unconditional covariance.
+    Robust fitting protects against heavy-tailed observations. Optional serial
+    correlation handling is enabled after construction with exactly one of
+    ``ncv=True``, ``ar1=True``, or ``newey_west=True``. Their numerical controls
+    are ``ncv_window_days``, ``ar1_rho``, and ``newey_west_lag``; leaving a
+    control as ``None`` estimates it automatically. Explicit values are
+    preferable for scientific analyses. Robust response intervals combine
+    coefficient uncertainty and scaled-t noise with a pointwise approximation.
     """
 
     def __init__(self, parent_stats=None, robust=False, rscript="Rscript"):
         if not isinstance(robust, (bool, _np.bool_)):
             raise TypeError("robust must be a boolean.")
         self._robust = bool(robust)
+        self._ncv = False
+        self._ncv_window_days = None
+        self._ar1 = False
+        self._ar1_rho = None
+        self._newey_west = False
+        self._newey_west_lag = None
         self._rscript_path = str(rscript)
         self._trend_model_r = None
         self._interactions_r = None
@@ -1782,6 +2154,130 @@ class GamClimatologyR(GamClimatology):
         value = bool(value)
         if value != self._robust:
             self._robust = value
+            self._rerun()
+
+    def _validate_serial_correlation_choice(self, name):
+        enabled = {
+            "ncv": self._ncv,
+            "ar1": self._ar1,
+            "newey_west": self._newey_west,
+        }
+        conflicts = [key for key, value in enabled.items() if key != name and value]
+        if conflicts:
+            raise ValueError(
+                f"{name} cannot be enabled while {conflicts[0]} is enabled. "
+                "Disable the existing serial-correlation method first."
+            )
+
+    @property
+    def ncv(self):
+        return self._ncv
+
+    @ncv.setter
+    def ncv(self, value):
+        if not isinstance(value, (bool, _np.bool_)):
+            raise TypeError("ncv must be a boolean.")
+        value = bool(value)
+        if value:
+            self._validate_serial_correlation_choice("ncv")
+        if value != self._ncv:
+            self._ncv = value
+            self._rerun()
+
+    @property
+    def ncv_window_days(self):
+        return self._ncv_window_days
+
+    @ncv_window_days.setter
+    def ncv_window_days(self, value):
+        if value is None:
+            parsed = None
+        elif (
+            isinstance(value, (str, bytes, bool, _np.bool_))
+            or not _np.isscalar(value)
+        ):
+            raise TypeError("ncv_window_days must be a positive number or None.")
+        else:
+            parsed = float(value)
+            if not _np.isfinite(parsed) or parsed <= 0:
+                raise ValueError(
+                    "ncv_window_days must be finite and greater than zero."
+                )
+        if parsed != self._ncv_window_days:
+            self._ncv_window_days = parsed
+            self._rerun()
+
+    @property
+    def ar1(self):
+        return self._ar1
+
+    @ar1.setter
+    def ar1(self, value):
+        if not isinstance(value, (bool, _np.bool_)):
+            raise TypeError("ar1 must be a boolean.")
+        value = bool(value)
+        if value:
+            self._validate_serial_correlation_choice("ar1")
+        if value != self._ar1:
+            self._ar1 = value
+            self._rerun()
+
+    @property
+    def ar1_rho(self):
+        return self._ar1_rho
+
+    @ar1_rho.setter
+    def ar1_rho(self, value):
+        if value is None:
+            parsed = None
+        elif (
+            isinstance(value, (str, bytes, bool, _np.bool_))
+            or not _np.isscalar(value)
+        ):
+            raise TypeError("ar1_rho must be a number between -1 and 1 or None.")
+        else:
+            parsed = float(value)
+            if not _np.isfinite(parsed) or not -1 < parsed < 1:
+                raise ValueError(
+                    "ar1_rho must be finite and strictly between -1 and 1."
+                )
+        if parsed != self._ar1_rho:
+            self._ar1_rho = parsed
+            self._rerun()
+
+    @property
+    def newey_west(self):
+        return self._newey_west
+
+    @newey_west.setter
+    def newey_west(self, value):
+        if not isinstance(value, (bool, _np.bool_)):
+            raise TypeError("newey_west must be a boolean.")
+        value = bool(value)
+        if value:
+            self._validate_serial_correlation_choice("newey_west")
+        if value != self._newey_west:
+            self._newey_west = value
+            self._rerun()
+
+    @property
+    def newey_west_lag(self):
+        return self._newey_west_lag
+
+    @newey_west_lag.setter
+    def newey_west_lag(self, value):
+        if value is None:
+            parsed = None
+        elif isinstance(value, (bool, _np.bool_)) or not isinstance(
+            value, (int, _np.integer)
+        ):
+            raise TypeError("newey_west_lag must be a non-negative integer or None.")
+        elif value < 0:
+            raise ValueError("newey_west_lag must be non-negative.")
+        else:
+            parsed = int(value)
+        if parsed != self._newey_west_lag:
+            self._newey_west_lag = parsed
             self._rerun()
 
     @property
@@ -1848,7 +2344,7 @@ class GamClimatologyR(GamClimatology):
     def interactions_lam(self, value):
         if value is not None:
             raise NotImplementedError(
-                "mgcv estimates interaction smoothing parameters by REML; "
+                "mgcv estimates interaction smoothing parameters during fitting; "
                 "pyGAM lambda values are not transferable."
             )
 
@@ -1893,7 +2389,7 @@ class GamClimatologyR(GamClimatology):
     def trend_lambda(self, value):
         if value is not None:
             raise NotImplementedError(
-                "mgcv estimates smoothing parameters by REML; "
+                "mgcv estimates smoothing parameters during fitting; "
                 "pyGAM lambda values are not transferable."
             )
 
@@ -1905,7 +2401,7 @@ class GamClimatologyR(GamClimatology):
     def seasonality_lambda(self, value):
         if value is not None:
             raise NotImplementedError(
-                "mgcv estimates smoothing parameters by REML; "
+                "mgcv estimates smoothing parameters during fitting; "
                 "pyGAM lambda values are not transferable."
             )
 
@@ -1988,6 +2484,29 @@ class GamClimatologyR(GamClimatology):
         else:
             interaction_time_k, interaction_doy_k = 3, 4
 
+        if self.ncv:
+            serial_method = "ncv"
+            serial_parameter = self.ncv_window_days
+        elif self.ar1:
+            serial_method = "ar1"
+            serial_parameter = self.ar1_rho
+        elif self.newey_west:
+            serial_method = "newey_west"
+            serial_parameter = self.newey_west_lag
+        else:
+            serial_method = "none"
+            serial_parameter = None
+        serial_parameter_argument = (
+            "NA" if serial_parameter is None else repr(float(serial_parameter))
+        )
+        if self.ar1 and self.robust:
+            warnings.warn(
+                "mgcv applies AR1 correlation to working residuals for the "
+                "scaled-t family; this is a GEE approximation.",
+                RuntimeWarning,
+                stacklevel=2,
+            )
+
         r_input = _pd.DataFrame(
             {
                 "row_id": _np.arange(data.shape[0], dtype=int),
@@ -2022,6 +2541,8 @@ class GamClimatologyR(GamClimatology):
                 str(bool(self.interactions_only)).upper(),
                 str(interaction_time_k),
                 str(interaction_doy_k),
+                serial_method,
+                serial_parameter_argument,
             ]
             try:
                 result = subprocess.run(
@@ -2051,8 +2572,8 @@ class GamClimatologyR(GamClimatology):
                     "prediction",
                     "standard_error",
                     "mean_confidence",
-                    "lower",
-                    "upper",
+                    "autocorrelation_residual",
+                    "confidence",
                 ),
             ).sort_values("row_id")
             if prediction.shape[0] != data.shape[0]:
@@ -2070,6 +2591,16 @@ class GamClimatologyR(GamClimatology):
             if set(("key", "value")).difference(metadata_table.columns):
                 raise RuntimeError("The mgcv metadata output is malformed.")
             metadata = dict(zip(metadata_table.key, metadata_table.value))
+            default_covariance_description = {
+                "none": "mgcv's unconditional covariance",
+                "ncv": "mgcv's neighbourhood-aware NCV covariance",
+                "ar1": "mgcv's conditional AR1 fit covariance",
+                "newey_west": "a coefficient-level Newey-West HAC covariance",
+            }
+            covariance_description = metadata.get(
+                "covariance_description",
+                default_covariance_description[serial_method],
+            )
 
             ds = _xr.Dataset()
             full_index = _pd.DatetimeIndex(data.index, name="datetime_full")
@@ -2086,8 +2617,8 @@ class GamClimatologyR(GamClimatology):
                 dims=("datetime_full",),
             )
             ds["prediction_standard_error"].attrs["description"] = (
-                "Standard error of the fitted mean from mgcv's unconditional "
-                "covariance; excludes residual observation variability."
+                f"Standard error of the fitted mean from {covariance_description}; "
+                "excludes residual observation variability."
             )
             ds["prediction_mean_confidence"] = _xr.DataArray(
                 prediction.mean_confidence.to_numpy(),
@@ -2098,7 +2629,7 @@ class GamClimatologyR(GamClimatology):
                 {
                     "description": (
                         "Pointwise symmetric confidence half-width for the "
-                        "fitted mean based on mgcv's unconditional covariance; "
+                        f"fitted mean based on {covariance_description}; "
                         "excludes residual observation variability. Add and "
                         "subtract this value from prediction to construct the "
                         "interval."
@@ -2111,23 +2642,39 @@ class GamClimatologyR(GamClimatology):
                 }
             )
             ds["prediction_confidence"] = _xr.DataArray(
-                prediction.loc[:, ["lower", "upper"]].to_numpy(),
-                coords={"datetime_full": full_index, "boundary": boundary},
-                dims=("datetime_full", "boundary"),
+                prediction.confidence.to_numpy(),
+                coords={"datetime_full": full_index},
+                dims=("datetime_full",),
             )
             ds["prediction_confidence"].attrs.update(
                 {
                     "description": (
-                        "Pointwise prediction interval for an individual "
-                        "response; includes residual observation variability."
+                        "Pointwise symmetric prediction half-width for an "
+                        "individual response; includes residual observation "
+                        "variability. Add and subtract this value from prediction "
+                        "to construct the interval."
                     ),
                     "confidence_level": float(self.prediction_confidence),
+                    "interval_construction": (
+                        "lower = prediction - prediction_confidence; "
+                        "upper = prediction + prediction_confidence"
+                    ),
                 }
             )
             ds["residual"] = _xr.DataArray(
                 r_input.y.to_numpy() - prediction.prediction.to_numpy(),
                 coords={"datetime_full": full_index},
                 dims=("datetime_full",),
+            )
+            ds["residual_for_autocorrelation"] = _xr.DataArray(
+                prediction.autocorrelation_residual.to_numpy(),
+                coords={"datetime_full": full_index},
+                dims=("datetime_full",),
+            )
+            ds["residual_for_autocorrelation"].attrs["description"] = (
+                "Whitened standardized residual from the AR1 fit."
+                if serial_method == "ar1"
+                else "Raw response residual used for autocorrelation diagnostics."
             )
 
             if not self.interactions_only:
@@ -2184,21 +2731,62 @@ class GamClimatologyR(GamClimatology):
             if interactions:
                 interaction = self._read_r_output(
                     temp_path / "interaction.csv",
-                    ("days_since_start", "doy", "effect", "standard_error"),
+                    (
+                        "days_since_start",
+                        "doy",
+                        "effect",
+                        "standard_error",
+                        "lower",
+                        "upper",
+                    ),
                 )
-                interaction = interaction.pivot(
+                interaction_effect = interaction.pivot(
                     index="days_since_start", columns="doy", values="effect"
                 )
+                interaction_standard_error = interaction.pivot(
+                    index="days_since_start",
+                    columns="doy",
+                    values="standard_error",
+                ).reindex_like(interaction_effect)
+                interaction_lower = interaction.pivot(
+                    index="days_since_start", columns="doy", values="lower"
+                ).reindex_like(interaction_effect)
+                interaction_upper = interaction.pivot(
+                    index="days_since_start", columns="doy", values="upper"
+                ).reindex_like(interaction_effect)
                 interaction_index = self._start_date + _pd.to_timedelta(
-                    interaction.index.to_numpy(), unit="D"
+                    interaction_effect.index.to_numpy(), unit="D"
                 )
                 ds["interactions"] = _xr.DataArray(
-                    interaction.to_numpy(),
+                    interaction_effect.to_numpy(),
                     coords={
                         "datetime": interaction_index,
-                        "doy": interaction.columns.to_numpy(),
+                        "doy": interaction_effect.columns.to_numpy(),
                     },
                     dims=("datetime", "doy"),
+                )
+                ds["interactions_standard_error"] = _xr.DataArray(
+                    interaction_standard_error.to_numpy(),
+                    coords={
+                        "datetime": interaction_index,
+                        "doy": interaction_effect.columns,
+                    },
+                    dims=("datetime", "doy"),
+                )
+                ds["interactions_confidence"] = _xr.DataArray(
+                    _np.stack(
+                        (
+                            interaction_lower.to_numpy(),
+                            interaction_upper.to_numpy(),
+                        ),
+                        axis=-1,
+                    ),
+                    coords={
+                        "datetime": interaction_index,
+                        "doy": interaction_effect.columns,
+                        "boundary": boundary,
+                    },
+                    dims=("datetime", "doy", "boundary"),
                 )
 
         numeric_metadata = (
@@ -2209,6 +2797,11 @@ class GamClimatologyR(GamClimatology):
             "residual_scale",
             "robust_degrees_of_freedom",
             "residual_degrees_of_freedom",
+            "ncv_window_days",
+            "ar1_rho",
+            "serial_correlation_cadence_days",
+            "serial_correlation_sections",
+            "newey_west_lag",
         )
         fit_metadata = metadata.copy()
         for key in numeric_metadata:
@@ -2216,6 +2809,28 @@ class GamClimatologyR(GamClimatology):
             fit_metadata[key] = float(value) if value not in ("", "NA", "NaN") else _np.nan
         fit_metadata["robust"] = metadata.get("robust") == "TRUE"
         fit_metadata["converged"] = metadata.get("converged") == "TRUE"
+        fit_metadata["serial_correlation_method"] = metadata.get(
+            "serial_correlation_method", serial_method
+        )
+        fit_metadata["serial_correlation_modelled"] = (
+            metadata.get("serial_correlation_modelled", "FALSE") == "TRUE"
+        )
+        fit_metadata["uncertainty_adjusted_for_serial_correlation"] = (
+            metadata.get(
+                "uncertainty_adjusted_for_serial_correlation",
+                str(serial_method != "none").upper(),
+            )
+            == "TRUE"
+        )
+        fit_metadata["ncv_window_estimated"] = (
+            metadata.get("ncv_window_estimated", "FALSE") == "TRUE"
+        )
+        fit_metadata["ar1_rho_estimated"] = (
+            metadata.get("ar1_rho_estimated", "FALSE") == "TRUE"
+        )
+        fit_metadata["newey_west_lag_estimated"] = (
+            metadata.get("newey_west_lag_estimated", "FALSE") == "TRUE"
+        )
 
         ds.attrs.update(
             {
@@ -2242,7 +2857,42 @@ class GamClimatologyR(GamClimatology):
                 "outer_convergence": metadata.get("outer_convergence", ""),
                 "r_version": metadata.get("r_version", ""),
                 "mgcv_version": metadata.get("mgcv_version", ""),
-                "serial_correlation_modelled": 0,
+                "serial_correlation_method": fit_metadata[
+                    "serial_correlation_method"
+                ],
+                "serial_correlation_modelled": int(
+                    fit_metadata["serial_correlation_modelled"]
+                ),
+                "uncertainty_adjusted_for_serial_correlation": int(
+                    fit_metadata[
+                        "uncertainty_adjusted_for_serial_correlation"
+                    ]
+                ),
+                "covariance_description": covariance_description,
+                "ncv_window_days": fit_metadata["ncv_window_days"],
+                "ncv_window_estimated": int(
+                    fit_metadata["ncv_window_estimated"]
+                ),
+                "ar1_rho": fit_metadata["ar1_rho"],
+                "ar1_rho_estimated": int(fit_metadata["ar1_rho_estimated"]),
+                "serial_correlation_cadence_days": fit_metadata[
+                    "serial_correlation_cadence_days"
+                ],
+                "serial_correlation_sections": fit_metadata[
+                    "serial_correlation_sections"
+                ],
+                "newey_west_lag": fit_metadata["newey_west_lag"],
+                "newey_west_lag_estimated": int(
+                    fit_metadata["newey_west_lag_estimated"]
+                ),
+                "newey_west_kernel": metadata.get("newey_west_kernel", ""),
+                "newey_west_score_centered": int(
+                    metadata.get("newey_west_score_centered", "FALSE") == "TRUE"
+                ),
+                "newey_west_small_sample_correction": metadata.get(
+                    "newey_west_small_sample_correction", ""
+                ),
+                "ar1_approximation": metadata.get("ar1_approximation", "none"),
                 "prediction_interval": (
                     "approximate pointwise response interval"
                     if self.robust
@@ -2279,7 +2929,7 @@ class GamClimatologyR(GamClimatology):
 
     def optimize_lambda(self, *args, **kwargs):
         raise NotImplementedError(
-            "mgcv estimates smoothing parameters during fitting by REML."
+            "mgcv estimates smoothing parameters during fitting."
         )
 
     def get_quantile(self, q=None, std=None):
@@ -2315,7 +2965,13 @@ class GamClimatologyR(GamClimatology):
 
     def autocorrelation_create_custom(self, lagmax=None, z_score=1.96):
         """Create a bounded, pairwise-complete residual autocorrelation."""
-        residuals = _np.asarray(self.prediction.residual, dtype=float)
+        prediction = self.prediction
+        residual_name = (
+            "residual_for_autocorrelation"
+            if "residual_for_autocorrelation" in prediction
+            else "residual"
+        )
+        residuals = _np.asarray(prediction[residual_name], dtype=float)
         finite_count = int(_np.isfinite(residuals).sum())
         if finite_count < 3:
             raise ValueError(
@@ -2402,6 +3058,7 @@ class GamClimatologyR(GamClimatology):
         self.prediction.autocorrelation.attrs[
             "lagmax_above_ci"
         ] = lagmax_above_ci
+        self.prediction.autocorrelation.attrs["residual_source"] = residual_name
         self._autocorrelation = self.prediction.autocorrelation
         return self._autocorrelation
 
@@ -2424,9 +3081,24 @@ class GamClimatologyR(GamClimatology):
     @property
     def standard_error_adjustment_newey_west(self):
         raise NotImplementedError(
-            "The existing Newey-West adjustment depends on pyGAM coefficient "
-            "internals and is not available for the mgcv backend."
+            "The mgcv backend uses a point-dependent coefficient-level "
+            "Newey-West covariance, so there is no single standard-error "
+            "multiplier. Set newey_west=True and use the returned standard "
+            "errors and confidence intervals."
         )
+
+    @property
+    def confidence_interval_adjusted_newey_wet(self):
+        if not self.newey_west:
+            raise RuntimeError(
+                "Set newey_west=True before requesting the Newey-West "
+                "confidence interval."
+            )
+        return self.prediction.partial_datetime_confidence
+
+    @property
+    def confidence_interval_adjusted_newey_west(self):
+        return self.confidence_interval_adjusted_newey_wet
 
     def plot_test_dist_of_res(self, bins=50, ax=None):
         if ax is None:
