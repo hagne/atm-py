@@ -18,6 +18,11 @@ import atmPy.tools.plt_tool_kit.colors as _atmcols
 # from pygam import LinearGAM, pygam_s, pygam_l
 
 import datetime
+import pathlib
+import shutil
+import subprocess
+import tempfile
+import warnings
 import xarray as _xr 
 # import matplotlib.dates as mdates
 # import  matplotlib.lines as _mpllines
@@ -36,6 +41,7 @@ class Statistics(object):
         self.seasonality = Seasonality(self)
         self.diurnality = Diurnality(self)
         self.gamcl = GamClimatology(self)
+        self.gamcl_r = GamClimatologyR(self)
 
     def define_custom(self,reference = 'index', frequency = 'M', bins = None):
         self.custom = Climatology(self, reference = reference, frequency = frequency, bins = bins)
@@ -1416,6 +1422,1158 @@ class GamClimatology(object):
         a.set_title('Observation vs Prediction')
         # a.set_
         return f,a 
+
+
+_mgcv_r_script = r'''
+args <- commandArgs(trailingOnly = TRUE)
+
+if (length(args) != 12L) {
+    stop("Expected 12 arguments for the atmPy mgcv runner.", call. = FALSE)
+}
+
+input_path <- args[[1]]
+output_dir <- args[[2]]
+robust <- identical(args[[3]], "TRUE")
+trend_model <- args[[4]]
+trend_k <- as.integer(args[[5]])
+season_k <- as.integer(args[[6]])
+grid_size <- as.integer(args[[7]])
+confidence <- as.numeric(args[[8]])
+interactions <- identical(args[[9]], "TRUE")
+interactions_only <- identical(args[[10]], "TRUE")
+interaction_time_k <- as.integer(args[[11]])
+interaction_doy_k <- as.integer(args[[12]])
+
+if (!requireNamespace("mgcv", quietly = TRUE)) {
+    stop(
+        "The R package 'mgcv' is required. Install conda-forge::r-mgcv.",
+        call. = FALSE
+    )
+}
+suppressPackageStartupMessages(library(mgcv))
+
+data_all <- read.csv(input_path, check.names = FALSE)
+required_columns <- c("row_id", "y", "days_since_start", "doy")
+if (!all(required_columns %in% names(data_all))) {
+    stop("The input data are missing required columns.", call. = FALSE)
+}
+
+fit_rows <- is.finite(data_all$y) &
+    is.finite(data_all$days_since_start) &
+    is.finite(data_all$doy)
+fit_data <- data_all[fit_rows, required_columns, drop = FALSE]
+
+if (nrow(fit_data) < 10L) {
+    stop("At least 10 finite observations are required for an mgcv fit.", call. = FALSE)
+}
+if (!interactions_only && trend_model == "spline" &&
+        length(unique(fit_data$days_since_start)) < trend_k) {
+    stop("trend_nsplines exceeds the number of unique elapsed-time values.", call. = FALSE)
+}
+if (!interactions_only && length(unique(fit_data$doy)) < season_k) {
+    stop("seasonality_nsplines exceeds the number of unique day-of-year values.", call. = FALSE)
+}
+if ((interactions || interactions_only) &&
+        length(unique(fit_data$days_since_start)) < interaction_time_k) {
+    stop("The interaction time basis exceeds the unique elapsed-time values.", call. = FALSE)
+}
+if ((interactions || interactions_only) &&
+        length(unique(fit_data$doy)) < interaction_doy_k) {
+    stop("The interaction day-of-year basis exceeds the unique values.", call. = FALSE)
+}
+
+trend_term <- if (trend_model == "linear") {
+    "days_since_start"
+} else if (trend_model == "spline") {
+    sprintf("s(days_since_start, bs='tp', k=%d)", trend_k)
+} else {
+    stop("trend_model must be either 'linear' or 'spline'.", call. = FALSE)
+}
+season_term <- sprintf("s(doy, bs='cc', k=%d)", season_k)
+
+interaction_term <- NULL
+if (interactions || interactions_only) {
+    interaction_function <- if (interactions_only) "te" else "ti"
+    interaction_term <- sprintf(
+        "%s(days_since_start, doy, bs=c('tp','cc'), k=c(%d,%d))",
+        interaction_function,
+        interaction_time_k,
+        interaction_doy_k
+    )
+}
+
+if (interactions_only) {
+    formula_text <- paste("y ~", interaction_term)
+} else {
+    model_terms <- c(trend_term, season_term)
+    if (!is.null(interaction_term)) model_terms <- c(model_terms, interaction_term)
+    formula_text <- paste("y ~", paste(model_terms, collapse = " + "))
+}
+model_formula <- as.formula(formula_text)
+model_family <- if (robust) mgcv::scat(link = "identity") else gaussian(link = "identity")
+
+model <- mgcv::gam(
+    model_formula,
+    family = model_family,
+    data = fit_data,
+    method = "REML",
+    knots = list(doy = c(0, 366))
+)
+
+alpha <- (1 - confidence) / 2
+z_critical <- qnorm(1 - alpha)
+
+extract_term <- function(newdata, term_label) {
+    pred <- predict(
+        model,
+        newdata = newdata,
+        type = "terms",
+        terms = term_label,
+        se.fit = TRUE,
+        unconditional = TRUE
+    )
+    estimate <- as.numeric(pred$fit)
+    standard_error <- as.numeric(pred$se.fit)
+    data.frame(
+        effect = estimate,
+        standard_error = standard_error,
+        lower = estimate - z_critical * standard_error,
+        upper = estimate + z_critical * standard_error
+    )
+}
+
+time_grid <- seq(
+    min(fit_data$days_since_start),
+    max(fit_data$days_since_start),
+    length.out = grid_size
+)
+doy_grid <- seq(0, 366, length.out = grid_size + 1L)[seq_len(grid_size)]
+
+if (!interactions_only) {
+    trend_label <- if (trend_model == "linear") "days_since_start" else "s(days_since_start)"
+    trend_newdata <- data.frame(
+        days_since_start = time_grid,
+        doy = median(fit_data$doy)
+    )
+    trend_output <- cbind(
+        days_since_start = time_grid,
+        extract_term(trend_newdata, trend_label)
+    )
+    write.csv(
+        trend_output,
+        file.path(output_dir, "trend.csv"),
+        row.names = FALSE,
+        na = ""
+    )
+
+    season_newdata <- data.frame(
+        days_since_start = median(fit_data$days_since_start),
+        doy = doy_grid
+    )
+    season_output <- cbind(
+        doy = doy_grid,
+        extract_term(season_newdata, "s(doy)")
+    )
+    write.csv(
+        season_output,
+        file.path(output_dir, "seasonality.csv"),
+        row.names = FALSE,
+        na = ""
+    )
+}
+
+if (!is.null(interaction_term)) {
+    interaction_label <- if (interactions_only) {
+        "te(days_since_start,doy)"
+    } else {
+        "ti(days_since_start,doy)"
+    }
+    interaction_newdata <- expand.grid(
+        days_since_start = time_grid,
+        doy = doy_grid
+    )
+    interaction_prediction <- predict(
+        model,
+        newdata = interaction_newdata,
+        type = "terms",
+        terms = interaction_label,
+        se.fit = TRUE,
+        unconditional = TRUE
+    )
+    interaction_output <- data.frame(
+        interaction_newdata,
+        effect = as.numeric(interaction_prediction$fit),
+        standard_error = as.numeric(interaction_prediction$se.fit)
+    )
+    write.csv(
+        interaction_output,
+        file.path(output_dir, "interaction.csv"),
+        row.names = FALSE,
+        na = ""
+    )
+}
+
+prediction <- rep(NA_real_, nrow(data_all))
+prediction_se <- rep(NA_real_, nrow(data_all))
+prediction_rows <- is.finite(data_all$days_since_start) & is.finite(data_all$doy)
+full_prediction <- predict(
+    model,
+    newdata = data_all[prediction_rows, , drop = FALSE],
+    type = "response",
+    se.fit = TRUE,
+    unconditional = TRUE
+)
+prediction[prediction_rows] <- as.numeric(full_prediction$fit)
+prediction_se[prediction_rows] <- as.numeric(full_prediction$se.fit)
+
+robust_df <- NA_real_
+if (robust) {
+    theta <- model$family$getTheta(TRUE)
+    robust_df <- unname(theta[[1]])
+    residual_scale <- unname(theta[[2]])
+    interval_critical <- qt(1 - alpha, df = robust_df)
+} else {
+    residual_scale <- sqrt(model$sig2)
+    if (is.finite(model$df.residual) && model$df.residual > 0) {
+        interval_critical <- qt(1 - alpha, df = model$df.residual)
+    } else {
+        interval_critical <- qnorm(1 - alpha)
+    }
+}
+
+# This is a pointwise response interval. For the scaled-t family it is an
+# approximation to the convolution of coefficient uncertainty and t noise.
+# The fitted-mean confidence half-width uses the approximately Gaussian
+# coefficient uncertainty returned by predict.gam, including smoothing
+# uncertainty.
+prediction_scale <- sqrt(prediction_se^2 + residual_scale^2)
+prediction_output <- data.frame(
+    row_id = data_all$row_id,
+    prediction = prediction,
+    standard_error = prediction_se,
+    mean_confidence = z_critical * prediction_se,
+    lower = prediction - interval_critical * prediction_scale,
+    upper = prediction + interval_critical * prediction_scale
+)
+write.csv(
+    prediction_output,
+    file.path(output_dir, "prediction.csv"),
+    row.names = FALSE,
+    na = ""
+)
+
+smoothing_parameters <- model$full.sp
+if (is.null(smoothing_parameters)) smoothing_parameters <- model$sp
+outer_convergence <- if (is.null(model$outer.info) ||
+        is.null(model$outer.info$conv)) {
+    "not reported"
+} else {
+    as.character(model$outer.info$conv)
+}
+converged <- isTRUE(model$converged) &&
+    (identical(outer_convergence, "not reported") ||
+        identical(outer_convergence, "full convergence"))
+metadata <- data.frame(
+    key = c(
+        "backend",
+        "family",
+        "robust",
+        "method",
+        "formula",
+        "intercept",
+        "nobs",
+        "effective_degrees_of_freedom",
+        "deviance_explained",
+        "residual_scale",
+        "robust_degrees_of_freedom",
+        "residual_degrees_of_freedom",
+        "smoothing_parameters",
+        "converged",
+        "outer_convergence",
+        "r_version",
+        "mgcv_version"
+    ),
+    value = c(
+        "mgcv",
+        model$family$family,
+        as.character(robust),
+        "REML",
+        formula_text,
+        format(unname(coef(model)["(Intercept)"]), digits = 17),
+        as.character(nobs(model)),
+        format(sum(model$edf), digits = 17),
+        format(summary(model)$dev.expl, digits = 17),
+        format(residual_scale, digits = 17),
+        format(robust_df, digits = 17),
+        format(model$df.residual, digits = 17),
+        paste(format(smoothing_parameters, digits = 17), collapse = ","),
+        as.character(converged),
+        outer_convergence,
+        as.character(getRversion()),
+        as.character(utils::packageVersion("mgcv"))
+    ),
+    stringsAsFactors = FALSE
+)
+write.table(
+    metadata,
+    file.path(output_dir, "metadata.tsv"),
+    sep = "\t",
+    row.names = FALSE,
+    quote = TRUE,
+    na = ""
+)
+'''
+
+
+class GamClimatologyR(GamClimatology):
+    """Trend and seasonality analysis using ``mgcv`` through ``Rscript``.
+
+    This class mirrors the cached prediction and plotting workflow of
+    :class:`GamClimatology`, but fits the model in an isolated R process.
+    Setting ``robust=True`` uses ``mgcv::scat``; otherwise a Gaussian response
+    is used. Smoothing parameters are estimated by REML in both cases.
+
+    Parameters
+    ----------
+    parent_stats : Statistics, optional
+        Parent statistics object supplying the time-series data.
+    robust : bool, optional
+        Use the scaled-Student-t response family from ``mgcv``.
+    rscript : str or pathlib.Path, optional
+        Rscript executable name or path.
+
+    Notes
+    -----
+    Robust fitting protects against heavy-tailed observations. It does not
+    model serial correlation. Robust response intervals combine coefficient
+    uncertainty and scaled-t noise with a pointwise approximation; partial
+    effect confidence intervals use ``mgcv``'s unconditional covariance.
+    """
+
+    def __init__(self, parent_stats=None, robust=False, rscript="Rscript"):
+        if not isinstance(robust, (bool, _np.bool_)):
+            raise TypeError("robust must be a boolean.")
+        self._robust = bool(robust)
+        self._rscript_path = str(rscript)
+        self._trend_model_r = None
+        self._interactions_r = None
+        self._interactions_only_r = None
+        self._interactions_nsplines_r = None
+        self._interactions_lam_r = None
+        self._distribution_r = None
+        self._link_r = None
+        self.rscript_timeout = None
+        self._fit_metadata = None
+        super().__init__(parent_stats=parent_stats)
+
+    def _rerun(self):
+        super()._rerun()
+        self._fit_metadata = None
+        self._autocorrelation = None
+
+    @property
+    def robust(self):
+        return self._robust
+
+    @robust.setter
+    def robust(self, value):
+        if not isinstance(value, (bool, _np.bool_)):
+            raise TypeError("robust must be a boolean.")
+        value = bool(value)
+        if value != self._robust:
+            self._robust = value
+            self._rerun()
+
+    @property
+    def trend_model(self):
+        return self._trend_model_r
+
+    @trend_model.setter
+    def trend_model(self, value):
+        if value not in ("linear", "spline"):
+            raise ValueError("trend_model must be either 'linear' or 'spline'.")
+        if value != self._trend_model_r:
+            self._trend_model_r = value
+            self._rerun()
+
+    @property
+    def interactions(self):
+        return self._interactions_r
+
+    @interactions.setter
+    def interactions(self, value):
+        if not isinstance(value, (bool, _np.bool_)):
+            raise TypeError("interactions must be a boolean.")
+        value = bool(value)
+        if value != self._interactions_r:
+            self._interactions_r = value
+            self._rerun()
+
+    @property
+    def interactions_only(self):
+        return self._interactions_only_r
+
+    @interactions_only.setter
+    def interactions_only(self, value):
+        if not isinstance(value, (bool, _np.bool_)):
+            raise TypeError("interactions_only must be a boolean.")
+        value = bool(value)
+        if value != self._interactions_only_r:
+            self._interactions_only_r = value
+            self._rerun()
+
+    @property
+    def interactions_nsplines(self):
+        return self._interactions_nsplines_r
+
+    @interactions_nsplines.setter
+    def interactions_nsplines(self, value):
+        if value is None:
+            parsed = None
+        elif _np.isscalar(value):
+            parsed = int(value)
+        else:
+            if len(value) != 2:
+                raise ValueError("interactions_nsplines must contain two values.")
+            parsed = (int(value[0]), int(value[1]))
+        if parsed != self._interactions_nsplines_r:
+            self._interactions_nsplines_r = parsed
+            self._rerun()
+
+    @property
+    def interactions_lam(self):
+        return None
+
+    @interactions_lam.setter
+    def interactions_lam(self, value):
+        if value is not None:
+            raise NotImplementedError(
+                "mgcv estimates interaction smoothing parameters by REML; "
+                "pyGAM lambda values are not transferable."
+            )
+
+    @property
+    def distribution(self):
+        return self._distribution_r
+
+    @distribution.setter
+    def distribution(self, value):
+        if value != "normal":
+            raise ValueError("GamClimatologyR currently supports distribution='normal'.")
+        if value != self._distribution_r:
+            self._distribution_r = value
+            self._rerun()
+
+    @property
+    def link(self):
+        return self._link_r
+
+    @link.setter
+    def link(self, value):
+        if value != "identity":
+            raise ValueError("GamClimatologyR currently supports link='identity'.")
+        if value != self._link_r:
+            self._link_r = value
+            self._rerun()
+
+    @property
+    def rscript_path(self):
+        return self._rscript_path
+
+    @rscript_path.setter
+    def rscript_path(self, value):
+        self._rscript_path = str(value)
+        self._rerun()
+
+    @property
+    def trend_lambda(self):
+        return None
+
+    @trend_lambda.setter
+    def trend_lambda(self, value):
+        if value is not None:
+            raise NotImplementedError(
+                "mgcv estimates smoothing parameters by REML; "
+                "pyGAM lambda values are not transferable."
+            )
+
+    @property
+    def seasonality_lambda(self):
+        return None
+
+    @seasonality_lambda.setter
+    def seasonality_lambda(self, value):
+        if value is not None:
+            raise NotImplementedError(
+                "mgcv estimates smoothing parameters by REML; "
+                "pyGAM lambda values are not transferable."
+            )
+
+    def _resolve_rscript(self):
+        rscript = shutil.which(self.rscript_path)
+        if rscript is None:
+            raise RuntimeError(
+                f"Could not find Rscript at {self.rscript_path!r}. Install "
+                "conda-forge packages 'r-base' and 'r-mgcv', or set "
+                "rscript_path to the executable."
+            )
+        return rscript
+
+    def _interaction_spline_counts(self):
+        value = getattr(self, "interactions_nsplines", None)
+        if value is None:
+            return (
+                max(3, min(10, self.trend_nsplines)),
+                max(4, min(10, self.seasonality_nsplines)),
+            )
+        if _np.isscalar(value):
+            value = int(value)
+            return value, value
+        if len(value) != 2:
+            raise ValueError("interactions_nsplines must contain two values.")
+        return int(value[0]), int(value[1])
+
+    @staticmethod
+    def _read_r_output(path, required_columns):
+        path = pathlib.Path(path)
+        if not path.is_file():
+            raise RuntimeError(f"The mgcv runner did not create {path.name!r}.")
+        output = _pd.read_csv(path)
+        missing = set(required_columns).difference(output.columns)
+        if missing:
+            raise RuntimeError(
+                f"The mgcv output {path.name!r} is missing columns: "
+                f"{sorted(missing)}."
+            )
+        return output
+
+    def _run_r_fit(self):
+        if self.distribution != "normal" or self.link != "identity":
+            raise ValueError(
+                "GamClimatologyR currently supports a continuous response "
+                "with distribution='normal' and link='identity'."
+            )
+
+        data = self.data
+        if data.shape[0] < 10:
+            raise ValueError("At least 10 observations are required for an mgcv fit.")
+
+        interactions = bool(self.interactions or self.interactions_only)
+        if self.interactions_only:
+            trend_k = 3
+            season_k = 4
+        else:
+            if self.trend_model == "spline" or interactions:
+                trend_k = int(self.trend_nsplines)
+            else:
+                trend_k = 3
+            season_k = int(self.seasonality_nsplines)
+        grid_size = int(self.prediction_grid_size)
+        if not self.interactions_only and self.trend_model == "spline" and trend_k < 3:
+            raise ValueError("trend_nsplines must be at least 3 for mgcv.")
+        if not self.interactions_only and season_k < 4:
+            raise ValueError("seasonality_nsplines must be at least 4 for mgcv.")
+        if grid_size < 2:
+            raise ValueError("prediction_grid_size must be at least 2.")
+        if not 0 < self.prediction_confidence < 1:
+            raise ValueError("prediction_confidence must be between zero and one.")
+
+        if interactions:
+            interaction_time_k, interaction_doy_k = self._interaction_spline_counts()
+            if interaction_time_k < 3 or interaction_doy_k < 4:
+                raise ValueError(
+                    "The interaction spline counts must be at least 3 for time "
+                    "and 4 for day of year."
+                )
+        else:
+            interaction_time_k, interaction_doy_k = 3, 4
+
+        r_input = _pd.DataFrame(
+            {
+                "row_id": _np.arange(data.shape[0], dtype=int),
+                "y": _pd.to_numeric(data.iloc[:, 0], errors="coerce"),
+                "days_since_start": _pd.to_numeric(
+                    data["x_dsincestart"], errors="coerce"
+                ),
+                "doy": _pd.to_numeric(data["x_doy"], errors="coerce"),
+            }
+        )
+        if _np.isfinite(r_input.y).sum() < 10:
+            raise ValueError("At least 10 finite observations are required for an mgcv fit.")
+
+        with tempfile.TemporaryDirectory(prefix="atmpy-gam-") as temp_dir:
+            temp_path = pathlib.Path(temp_dir)
+            input_path = temp_path / "input.csv"
+            r_input.to_csv(input_path, index=False)
+
+            command = [
+                self._resolve_rscript(),
+                "--vanilla",
+                "-",
+                str(input_path),
+                str(temp_path),
+                str(self.robust).upper(),
+                self.trend_model,
+                str(trend_k),
+                str(season_k),
+                str(grid_size),
+                repr(float(self.prediction_confidence)),
+                str(interactions).upper(),
+                str(bool(self.interactions_only)).upper(),
+                str(interaction_time_k),
+                str(interaction_doy_k),
+            ]
+            try:
+                result = subprocess.run(
+                    command,
+                    input=_mgcv_r_script,
+                    capture_output=True,
+                    text=True,
+                    timeout=self.rscript_timeout,
+                    check=False,
+                )
+            except subprocess.TimeoutExpired as error:
+                raise RuntimeError("The mgcv R process timed out.") from error
+
+            if result.returncode:
+                detail = result.stderr.strip() or result.stdout.strip()
+                raise RuntimeError(
+                    f"The mgcv R process failed with exit code "
+                    f"{result.returncode}: {detail}"
+                )
+            if result.stderr.strip():
+                warnings.warn(result.stderr.strip(), RuntimeWarning, stacklevel=2)
+
+            prediction = self._read_r_output(
+                temp_path / "prediction.csv",
+                (
+                    "row_id",
+                    "prediction",
+                    "standard_error",
+                    "mean_confidence",
+                    "lower",
+                    "upper",
+                ),
+            ).sort_values("row_id")
+            if prediction.shape[0] != data.shape[0]:
+                raise RuntimeError("The mgcv prediction output has the wrong length.")
+            expected_row_id = _np.arange(data.shape[0], dtype=int)
+            if not _np.array_equal(prediction.row_id.to_numpy(), expected_row_id):
+                raise RuntimeError("The mgcv prediction output has invalid row IDs.")
+
+            metadata_path = temp_path / "metadata.tsv"
+            if not metadata_path.is_file():
+                raise RuntimeError("The mgcv runner did not create 'metadata.tsv'.")
+            metadata_table = _pd.read_csv(
+                metadata_path, sep="\t", dtype=str, keep_default_na=False
+            )
+            if set(("key", "value")).difference(metadata_table.columns):
+                raise RuntimeError("The mgcv metadata output is malformed.")
+            metadata = dict(zip(metadata_table.key, metadata_table.value))
+
+            ds = _xr.Dataset()
+            full_index = _pd.DatetimeIndex(data.index, name="datetime_full")
+            boundary = ["bottom", "top"]
+
+            ds["prediction"] = _xr.DataArray(
+                prediction.prediction.to_numpy(),
+                coords={"datetime_full": full_index},
+                dims=("datetime_full",),
+            )
+            ds["prediction_standard_error"] = _xr.DataArray(
+                prediction.standard_error.to_numpy(),
+                coords={"datetime_full": full_index},
+                dims=("datetime_full",),
+            )
+            ds["prediction_standard_error"].attrs["description"] = (
+                "Standard error of the fitted mean from mgcv's unconditional "
+                "covariance; excludes residual observation variability."
+            )
+            ds["prediction_mean_confidence"] = _xr.DataArray(
+                prediction.mean_confidence.to_numpy(),
+                coords={"datetime_full": full_index},
+                dims=("datetime_full",),
+            )
+            ds["prediction_mean_confidence"].attrs.update(
+                {
+                    "description": (
+                        "Pointwise symmetric confidence half-width for the "
+                        "fitted mean based on mgcv's unconditional covariance; "
+                        "excludes residual observation variability. Add and "
+                        "subtract this value from prediction to construct the "
+                        "interval."
+                    ),
+                    "confidence_level": float(self.prediction_confidence),
+                    "interval_construction": (
+                        "lower = prediction - prediction_mean_confidence; "
+                        "upper = prediction + prediction_mean_confidence"
+                    ),
+                }
+            )
+            ds["prediction_confidence"] = _xr.DataArray(
+                prediction.loc[:, ["lower", "upper"]].to_numpy(),
+                coords={"datetime_full": full_index, "boundary": boundary},
+                dims=("datetime_full", "boundary"),
+            )
+            ds["prediction_confidence"].attrs.update(
+                {
+                    "description": (
+                        "Pointwise prediction interval for an individual "
+                        "response; includes residual observation variability."
+                    ),
+                    "confidence_level": float(self.prediction_confidence),
+                }
+            )
+            ds["residual"] = _xr.DataArray(
+                r_input.y.to_numpy() - prediction.prediction.to_numpy(),
+                coords={"datetime_full": full_index},
+                dims=("datetime_full",),
+            )
+
+            if not self.interactions_only:
+                trend = self._read_r_output(
+                    temp_path / "trend.csv",
+                    (
+                        "days_since_start",
+                        "effect",
+                        "standard_error",
+                        "lower",
+                        "upper",
+                    ),
+                )
+                trend_index = self._start_date + _pd.to_timedelta(
+                    trend.days_since_start, unit="D"
+                )
+                ds["partial_datetime"] = _xr.DataArray(
+                    trend.effect.to_numpy(),
+                    coords={"datetime": trend_index},
+                    dims=("datetime",),
+                )
+                ds["partial_datetime_standard_error"] = _xr.DataArray(
+                    trend.standard_error.to_numpy(),
+                    coords={"datetime": trend_index},
+                    dims=("datetime",),
+                )
+                ds["partial_datetime_confidence"] = _xr.DataArray(
+                    trend.loc[:, ["lower", "upper"]].to_numpy(),
+                    coords={"datetime": trend_index, "boundary": boundary},
+                    dims=("datetime", "boundary"),
+                )
+
+                seasonality = self._read_r_output(
+                    temp_path / "seasonality.csv",
+                    ("doy", "effect", "standard_error", "lower", "upper"),
+                )
+                doy = seasonality.doy.to_numpy()
+                ds["partial_doy"] = _xr.DataArray(
+                    seasonality.effect.to_numpy(),
+                    coords={"doy": doy},
+                    dims=("doy",),
+                )
+                ds["partial_doy_standard_error"] = _xr.DataArray(
+                    seasonality.standard_error.to_numpy(),
+                    coords={"doy": doy},
+                    dims=("doy",),
+                )
+                ds["partial_doy_confidence"] = _xr.DataArray(
+                    seasonality.loc[:, ["lower", "upper"]].to_numpy(),
+                    coords={"doy": doy, "boundary": boundary},
+                    dims=("doy", "boundary"),
+                )
+
+            if interactions:
+                interaction = self._read_r_output(
+                    temp_path / "interaction.csv",
+                    ("days_since_start", "doy", "effect", "standard_error"),
+                )
+                interaction = interaction.pivot(
+                    index="days_since_start", columns="doy", values="effect"
+                )
+                interaction_index = self._start_date + _pd.to_timedelta(
+                    interaction.index.to_numpy(), unit="D"
+                )
+                ds["interactions"] = _xr.DataArray(
+                    interaction.to_numpy(),
+                    coords={
+                        "datetime": interaction_index,
+                        "doy": interaction.columns.to_numpy(),
+                    },
+                    dims=("datetime", "doy"),
+                )
+
+        numeric_metadata = (
+            "intercept",
+            "nobs",
+            "effective_degrees_of_freedom",
+            "deviance_explained",
+            "residual_scale",
+            "robust_degrees_of_freedom",
+            "residual_degrees_of_freedom",
+        )
+        fit_metadata = metadata.copy()
+        for key in numeric_metadata:
+            value = metadata.get(key, "")
+            fit_metadata[key] = float(value) if value not in ("", "NA", "NaN") else _np.nan
+        fit_metadata["robust"] = metadata.get("robust") == "TRUE"
+        fit_metadata["converged"] = metadata.get("converged") == "TRUE"
+
+        ds.attrs.update(
+            {
+                "intercept": fit_metadata["intercept"],
+                "backend": "mgcv",
+                "family": metadata.get("family", ""),
+                "robust": int(self.robust),
+                "method": metadata.get("method", "REML"),
+                "formula": metadata.get("formula", ""),
+                "nobs": int(fit_metadata["nobs"]),
+                "effective_degrees_of_freedom": fit_metadata[
+                    "effective_degrees_of_freedom"
+                ],
+                "deviance_explained": fit_metadata["deviance_explained"],
+                "residual_scale": fit_metadata["residual_scale"],
+                "robust_degrees_of_freedom": fit_metadata[
+                    "robust_degrees_of_freedom"
+                ],
+                "residual_degrees_of_freedom": fit_metadata[
+                    "residual_degrees_of_freedom"
+                ],
+                "smoothing_parameters": metadata.get("smoothing_parameters", ""),
+                "converged": int(fit_metadata["converged"]),
+                "outer_convergence": metadata.get("outer_convergence", ""),
+                "r_version": metadata.get("r_version", ""),
+                "mgcv_version": metadata.get("mgcv_version", ""),
+                "serial_correlation_modelled": 0,
+                "prediction_interval": (
+                    "approximate pointwise response interval"
+                    if self.robust
+                    else "pointwise response interval"
+                ),
+            }
+        )
+        self._fit_metadata = fit_metadata
+        self._fit_res = fit_metadata
+        return ds
+
+    @property
+    def prediction(self):
+        if self._prediction is None:
+            self._prediction = self._run_r_fit()
+        return self._prediction
+
+    @prediction.setter
+    def prediction(self, value):
+        self._prediction = value
+
+    @property
+    def fit_res(self):
+        if self._fit_res is None:
+            self._prediction = self._run_r_fit()
+        return self._fit_res
+
+    @property
+    def gam_inst(self):
+        raise AttributeError(
+            "GamClimatologyR runs mgcv in an isolated process and does not "
+            "expose a live R model. Use fit_res for model metadata."
+        )
+
+    def optimize_lambda(self, *args, **kwargs):
+        raise NotImplementedError(
+            "mgcv estimates smoothing parameters during fitting by REML."
+        )
+
+    def get_quantile(self, q=None, std=None):
+        """Return a response quantile; robust quantiles are approximate."""
+        if q is None:
+            if std is None:
+                raise ValueError("Either q or std must be provided.")
+            q = scistats.norm.cdf(std)
+        if not 0 < q < 1:
+            raise ValueError("q must be between zero and one.")
+
+        prediction = self.prediction
+        standard_error = prediction.prediction_standard_error
+        residual_scale = prediction.attrs["residual_scale"]
+        total_scale = _np.sqrt(standard_error**2 + residual_scale**2)
+        if self.robust:
+            degrees_of_freedom = prediction.attrs["robust_degrees_of_freedom"]
+        else:
+            degrees_of_freedom = self._fit_metadata["residual_degrees_of_freedom"]
+        quantile = prediction.prediction + scistats.t.ppf(q, degrees_of_freedom) * total_scale
+        quantile.name = "prediction_quantile"
+        return quantile
+
+    @property
+    def autocorrelation(self):
+        prediction = self.prediction
+        if (
+            self._autocorrelation is None
+            or "autocorrelation" not in prediction.variables
+        ):
+            self.autocorrelation_create_custom()
+        return self._autocorrelation
+
+    def autocorrelation_create_custom(self, lagmax=None, z_score=1.96):
+        """Create a bounded, pairwise-complete residual autocorrelation."""
+        residuals = _np.asarray(self.prediction.residual, dtype=float)
+        finite_count = int(_np.isfinite(residuals).sum())
+        if finite_count < 3:
+            raise ValueError(
+                "At least three finite residuals are required for autocorrelation."
+            )
+
+        maximum_lag = residuals.size - 2
+        if lagmax is not None:
+            if not isinstance(lagmax, (int, _np.integer)) or lagmax < 1:
+                raise ValueError("lagmax must be a positive integer.")
+            maximum_lag = min(int(lagmax), maximum_lag)
+
+        lags = [0]
+        autocorr = [1.0]
+        acfconf = [z_score / _np.sqrt(finite_count)]
+        ci_bartlett = [z_score / _np.sqrt(finite_count)]
+        lagmax_above_ci = None
+        automatic_stop = None
+
+        for lag in range(1, maximum_lag + 1):
+            left = residuals[:-lag]
+            right = residuals[lag:]
+            valid = _np.isfinite(left) & _np.isfinite(right)
+            pair_count = int(valid.sum())
+
+            if pair_count < 2:
+                ac = _np.nan
+                ci = _np.nan
+            else:
+                left_valid = left[valid]
+                right_valid = right[valid]
+                if left_valid.std() == 0 or right_valid.std() == 0:
+                    ac = _np.nan
+                else:
+                    ac = float(_np.corrcoef(left_valid, right_valid)[0, 1])
+                ci = z_score / _np.sqrt(pair_count)
+
+            lags.append(lag)
+            autocorr.append(ac)
+            acfconf.append(ci)
+
+            finite_acf = _np.asarray(autocorr[1:], dtype=float)
+            finite_acf = finite_acf[_np.isfinite(finite_acf)]
+            bartlett_se = _np.sqrt(
+                (1 + 2 * _np.sum(finite_acf**2)) / finite_count
+            )
+            ci_b = z_score * bartlett_se
+            ci_bartlett.append(ci_b)
+
+            if lagmax is None and lagmax_above_ci is None:
+                recent = _np.asarray(autocorr[-3:], dtype=float)
+                recent = recent[_np.isfinite(recent)]
+                if recent.size and ci_b > _np.max(_np.abs(recent)):
+                    lagmax_above_ci = lag - 1
+                    automatic_stop = min(
+                        maximum_lag,
+                        max(lag, int(_np.ceil(lag * 1.5))),
+                    )
+                elif lag >= 3 and not recent.size:
+                    lagmax_above_ci = max(0, lag - 3)
+                    automatic_stop = lag
+
+            if automatic_stop is not None and lag >= automatic_stop:
+                break
+
+        if lagmax_above_ci is None:
+            lagmax_above_ci = lags[-1]
+
+        acfdf = _pd.DataFrame(
+            {
+                "acf": autocorr,
+                "ci": acfconf,
+                "ci_bartlett": ci_bartlett,
+            },
+            index=lags,
+        )
+        acfdf.index.name = "lag"
+        acfdf.columns.name = "acf_params"
+        if "autocorrelation" in self.prediction.variables:
+            self.prediction = self.prediction.drop_vars(["autocorrelation", "lag"])
+
+        self.prediction["autocorrelation"] = acfdf
+        self.prediction.autocorrelation.attrs["lagmax"] = lags[-1]
+        self.prediction.autocorrelation.attrs[
+            "lagmax_above_ci"
+        ] = lagmax_above_ci
+        self._autocorrelation = self.prediction.autocorrelation
+        return self._autocorrelation
+
+    @property
+    def standard_error_adjustment_autocorr(self):
+        autocorrelation = self.autocorrelation
+        lagmax = autocorrelation.attrs["lagmax_above_ci"]
+        autocorrs = autocorrelation.sel(
+            acf_params="acf", lag=slice(1, lagmax)
+        )
+        rho_sum = float(autocorrs.sum(skipna=True))
+        n = self.prediction.attrs["nobs"]
+        n_eff = n / (1 + 2 * rho_sum)
+        adjustment = float(_np.sqrt(n / n_eff))
+        autocorrelation.attrs[
+            "sandard_error_adjustment_autocorr"
+        ] = adjustment
+        return adjustment
+
+    @property
+    def standard_error_adjustment_newey_west(self):
+        raise NotImplementedError(
+            "The existing Newey-West adjustment depends on pyGAM coefficient "
+            "internals and is not available for the mgcv backend."
+        )
+
+    def plot_test_dist_of_res(self, bins=50, ax=None):
+        if ax is None:
+            f, a = mpl.pyplot.subplots()
+        else:
+            a = ax
+            f = a.get_figure()
+
+        residual = _np.asarray(self.prediction.residual, dtype=float)
+        residual = residual[_np.isfinite(residual)]
+        if residual.size < 3:
+            raise ValueError(
+                "At least three finite residuals are required for this plot."
+            )
+
+        a.hist(residual, bins=bins, density=True, alpha=0.6)
+        x = _np.linspace(residual.min(), residual.max(), bins * 3)
+        if self.robust:
+            degrees_of_freedom = self.prediction.attrs[
+                "robust_degrees_of_freedom"
+            ]
+            residual_scale = self.prediction.attrs["residual_scale"]
+            density = scistats.t.pdf(
+                x,
+                degrees_of_freedom,
+                loc=0,
+                scale=residual_scale,
+            )
+            label = "fitted scaled-t density"
+        else:
+            mu, sigma = scistats.norm.fit(residual)
+            density = scistats.norm.pdf(x, mu, sigma)
+            label = "fitted normal density"
+        a.plot(x, density, "k", linewidth=2, label=label)
+
+        self.tp_residual = residual
+        self.tp_bins = bins
+        a.set_title("Distribution of residual")
+        a.set_xlabel("Residual")
+        a.axvline(0, color=[0, 0, 0, 0.5], ls="--")
+        return f, a
+
+    def plot_test_qq(self, ax=None, textpos=(0.1, 0.9), sig_fig=2, gridsize=50):
+        if ax is None:
+            f, a = mpl.pyplot.subplots()
+        else:
+            a = ax
+            f = a.get_figure()
+
+        residual = _np.asarray(self.prediction.residual, dtype=float)
+        residual = residual[_np.isfinite(residual)]
+        if residual.size < 3:
+            raise ValueError(
+                "At least three finite residuals are required for this plot."
+            )
+
+        if self.robust:
+            degrees_of_freedom = self.prediction.attrs[
+                "robust_degrees_of_freedom"
+            ]
+            distribution = scistats.t
+            shape_parameters = (degrees_of_freedom,)
+            distribution_name = "scaled t"
+        else:
+            distribution = "norm"
+            shape_parameters = ()
+            distribution_name = "normal"
+
+        (theoretical, ordered), (slope, intercept, correlation) = (
+            scistats.probplot(
+                residual,
+                dist=distribution,
+                sparams=shape_parameters,
+            )
+        )
+        self.prediction.residual.attrs["qq_intercept"] = intercept
+        self.prediction.residual.attrs["qq_correlation"] = correlation
+
+        pc = a.hexbin(
+            theoretical,
+            ordered,
+            cmap=mpl.pyplot.cm.plasma,
+            vmin=0.000000001,
+            linewidths=0.2,
+            gridsize=gridsize,
+        )
+        regression = a.plot(
+            theoretical,
+            slope * theoretical + intercept,
+            color="k",
+            label=(
+                f"linear regression\n"
+                f"intercept = {intercept:.{sig_fig}g}\n"
+                f"correlation = {correlation:.{sig_fig}g}"
+            ),
+        )[0]
+        a.axvline(0, ls="--", color=[0, 0, 0, 0.5])
+        a.axhline(0, ls="--", color=[0, 0, 0, 0.5])
+        a.set_xlabel(f"Theoretical quantiles ({distribution_name})")
+        a.set_ylabel("Ordered residuals")
+        legend = a.legend(handles=[regression], loc=4, fontsize="small")
+        return f, a, pc, legend
+
+    def plot_trend(
+        self,
+        ax=None,
+        shade_seasons=False,
+        show_obs=True,
+        show_confidence=True,
+        show_confidence_adjusted=False,
+        offset=0,
+        transform=None,
+        **plot_kwargs,
+    ):
+        if self.interactions_only:
+            raise NotImplementedError(
+                "An interaction-only model has no separate trend to plot. "
+                "Use plot_prediction() or plot_interactions()."
+            )
+        return super().plot_trend(
+            ax=ax,
+            shade_seasons=shade_seasons,
+            show_obs=show_obs,
+            show_confidence=show_confidence,
+            show_confidence_adjusted=show_confidence_adjusted,
+            offset=offset,
+            transform=transform,
+            **plot_kwargs,
+        )
+
+    def plot_seasonality(self, *args, **kwargs):
+        if self.interactions_only:
+            raise NotImplementedError(
+                "An interaction-only model has no separate seasonality to plot. "
+                "Use plot_prediction() or plot_interactions()."
+            )
+        return super().plot_seasonality(*args, **kwargs)
+
+    def plot_overview(self, *args, **kwargs):
+        if self.interactions_only:
+            raise NotImplementedError(
+                "plot_overview() requires separate trend and seasonality terms. "
+                "Use plot_prediction() and plot_interactions() for an "
+                "interaction-only model."
+            )
+        return super().plot_overview(*args, **kwargs)
+
 
 class Climatology(object):
     def __init__(self, parent_stats = None, reference = 'index', frequency = 'M', bins = None):
