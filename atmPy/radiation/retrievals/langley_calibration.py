@@ -27,9 +27,10 @@ import scipy.interpolate as scint
 import scipy.stats
 # import matplotlib.dates as pltdates
 
-from atmPy.radiation.retrievals import langley_db
+import atmPy.radiation.retrievals.langley_db as atmlldb
 from atmPy.opt_imports import pptx
 from atmPy.opt_imports import statsmodels
+import atmPy.general.timeseries as atmts
 import atmPy.opt_imports as opt_imports
 pltdates = opt_imports.OptionalImport('matplotlib.dates')
 
@@ -226,6 +227,34 @@ def open_langleys(p2fld: Union[str, pl.Path, list], pattern = '*.nc'):
     ds = xr.concat(dslist, 'datetime', join='outer')
     return Langley_Timeseries(ds)
 
+def read_langleys_from_database(path2db, start = None, end = None, days = None):
+    db = atmlldb.LangleyResultDatabase(path2db)
+    start = pd.to_datetime(start) if start is not None else None
+    end = pd.to_datetime(end) if end is not None else None
+    days = pd.to_timedelta(days, 'd') if days is not None else None
+
+    if start is not None and end is not None and days is not None:
+        raise ValueError('one of start, end, and days must be None')
+    if start is None and end is None and days is None:
+        raise ValueError('at least one of start, end, and days must be given')
+    if start is not None and end is not None:
+        pass
+    elif end is not None and days is not None:
+        start = end - days
+    elif start is not None and days is not None:
+        end = start + days
+    elif days is not None:
+        end = pd.Timestamp.now()
+        start = end - days
+    elif start is not None:
+        end = pd.Timestamp.now()
+    else:
+        raise ValueError('end alone cannot determine the start date')
+
+    ds = db.dump_langley_results(local_day_range=(start, end),channel = None)
+
+    return Langley_Timeseries(ds)
+
 def open_langley_dailys(start = None, #'20160101',  
                         end = None, #'20220101',
                         p2fld = '/home/grad/htelg/data/grad/surfrad/mfrsr/langleys_concat/tbl/',
@@ -284,13 +313,18 @@ class CalibrationPrediction(object):
 
 class Langley_Timeseries(object):
     def __init__(self, dataset):
-        self.dataset = dataset
+        if isinstance(dataset, xr.Dataset):
+            self.dataset = dataset
+        elif isinstance(dataset, str):
+            self.dataset = xr.open_dataset(dataset)
         self.predict_until = self.dataset.datetime.values[-1] + pd.to_timedelta(60, 'days')
         # self.daterange2predict = pd.date_range(start = self.dataset.datetime.values[0], end = end, freq='D')
         self._v0rol = None
         self._v0gam = None
         self._v0 = None
         self._ranked = None    
+        self._threshold_mask = None
+        self._prediction = None
 
     # def rank_by(self, wl = 500, fit_results = 'intercept_stderr'):
     #     """Ranks the current dataset by the given values"""
@@ -374,8 +408,57 @@ class Langley_Timeseries(object):
         a.set_ylabel('slope')
         at.set_ylabel('std err slope')
         return f,aa
-    
 
+    @property
+    def threshold_mask(self):
+        if self._threshold_mask is None:
+            fitresults = self.dataset.fitresults
+            coverage_metrics = self.dataset.coverage_metrics
+
+            slope = fitresults.sel(fitresult='slope', drop=True)
+            intercept = fitresults.sel(fitresult='intercept', drop=True)
+            slope_stderr = fitresults.sel(fitresult='slope_stderr', drop=True)
+            intercept_stderr = fitresults.sel(
+                fitresult='intercept_stderr', drop=True
+            )
+            resid_curvature = fitresults.sel(
+                fitresult='resid_curvature', drop=True
+            )
+
+            effective_airmass_offset = coverage_metrics.sel(
+                coverage_metric='effective_airmass_offset', drop=True
+            )
+            maximum_cdf_gap_ratio = coverage_metrics.sel(
+                coverage_metric='maximum_cdf_gap_ratio', drop=True
+            )
+            retained_points = coverage_metrics.sel(
+                coverage_metric='retained_points', drop=True
+            )
+            retained_fraction = coverage_metrics.sel(
+                coverage_metric='retained_fraction', drop=True
+            )
+            cdf_spacing_cv = coverage_metrics.sel(
+                coverage_metric='cdf_spacing_cv', drop=True
+            )
+
+            slope_lower_bound = slope.quantile(0.5,'datetime') * 1.3
+            intercept_stderr_upper_bound = 7 * intercept.median('datetime') * 1e-4
+            self.tp_intercept_stderr_upper_bound = intercept_stderr_upper_bound
+            self._threshold_mask = xr.Dataset({
+                'slope': (slope_lower_bound < slope) & (slope < 0),
+                'intercept': intercept > 0,
+                'intercept_stderr': (
+                    intercept_stderr < intercept_stderr_upper_bound
+                ),
+                'slope_stderr': slope_stderr < 0.001,
+                'resid_curvature': resid_curvature < 0.005,
+                'effective_airmass_offset': abs(effective_airmass_offset) < 0.2,
+                'maximum_cdf_gap_ratio': maximum_cdf_gap_ratio < 50,
+                'retained_points': retained_points > 100,
+                'retained_fraction': retained_fraction > 0.8,
+                'cdf_spacing_cv': cdf_spacing_cv < 1,
+            })
+        return self._threshold_mask
 
     def plot(self, wl = 500, th = 0.2, order_stderr = 2, ampm = 'am', ax = None, **kwargs):
         """Plots all langleys as a scatterplot where the color is a measure of the standard error.
@@ -402,9 +485,10 @@ class Langley_Timeseries(object):
         df.sort_values('intercept_stderr', ascending=False, inplace=True)
         a.scatter(df.index, df.intercept, s = 8, c = df.weights, cmap =plt.cm.Greens, **kwargs)
         return a 
+
     
-    
-    def _get_v0_gam(self,
+   
+    def _get_v0_gam_old(self,
                     th = 0.02, # this is about half the annual variability (winter vs summer) of ~0.035
                     order_stderr = 2, # determines the weights
                     lam_overtime = 2.5e4,
@@ -582,6 +666,7 @@ class Langley_Timeseries(object):
     
     @property
     def V0_simple(self):
+        #todo: expand this documentation
         """This simply returns the V0 based on all langley result in this object. Therefore, kick out what you don't want!"""
         dsout = xr.Dataset()
         v0 = np.exp(self.dataset.langley_fitres.sel(fit_results = 'intercept', drop = True))
@@ -611,6 +696,46 @@ class Langley_Timeseries(object):
         # dsout = dsout.drop_vars('quantile')
         return dsout
 
+    def makev0prediction4date(self, date):
+
+        where_ds = self.threshold_mask
+        # todo: the below (and a few lines below that) is only when am and pm (time_of_day) are combined, there is probably interested in separating that out at some point?
+        where_ds = where_ds.stack(obs = ("datetime", "time_of_day"), create_index=False).drop_vars("time_of_day").swap_dims({"obs": "datetime"})
+        where = ~xr.zeros_like(where_ds.intercept, dtype = bool)
+        for thd in where_ds:
+            where &= where_ds[thd]
+
+        intercept = self.dataset.fitresults.sel({'fitresult' : 'intercept',
+                                    # 'channel': channel,
+                                    # 'time_of_day': time_of_day
+                                            }, drop = True)
+
+        intercept = intercept.stack(obs = ("datetime", "time_of_day"), create_index=False).drop_vars("time_of_day").swap_dims({"obs": "datetime"})
+
+        channel_l = []
+        for ch in intercept.channel.values:
+            # break
+            interc = np.exp(intercept.where(where).sel(channel = ch, drop = True))
+            # df = pd.DataFrame(interc).dropna()
+            df = interc.drop_vars('quantile', errors='ignore').to_dataframe().dropna()
+            df.loc[pd.to_datetime(date)] = np.nan
+            # df.loc[pd.to_datetime('2029-02-01')] = np.nan
+            df = df.sort_index()
+        
+            ts = atmts.TimeSeries(df)
+            gam = ts.statistics.gamcl_r
+            gam.robust = True
+            # gam.
+            gam.rscript_path = "/Users/htelg/miniconda3/envs/py13/bin/Rscript"
+            # gam.ncv = True
+            # gam.ncv_window_days = 1
+            # gam.ar1 = True
+            # gam.newey_west = True
+            gamall = gam
+            channel_l.append(dict(channel = ch, gam = gam, prediction = gam.prediction.sel(datetime_full = date, drop = True)))
+        self._prediction = channel_l
+        return channel_l
+
     @property
     def v0prediction(self):
         """
@@ -639,6 +764,64 @@ class Langley_Timeseries(object):
         if isinstance(self._v0rol, type(None)):
             self._get_v0_rolling()
         return self._v0rol
+
+    def plot_threshold_effects(self):
+        where_ds = self.threshold_mask
+        # todo: the below (and a few lines below that) is only when am and pm (time_of_day) are combined, there is probably interested in separating that out at some point?
+        where_ds = where_ds.stack(obs = ("datetime", "time_of_day"), create_index=False).drop_vars("time_of_day").swap_dims({"obs": "datetime"})
+        intercept = self.dataset.fitresults.sel({'fitresult' : 'intercept',
+                                    # 'channel': channel,
+                                    # 'time_of_day': time_of_day
+                                            }, drop = True)
+
+        intercept = intercept.stack(obs = ("datetime", "time_of_day"), create_index=False).drop_vars("time_of_day").swap_dims({"obs": "datetime"})
+        for ch in where_ds.channel.values:
+            intercept_sel = intercept.sel(channel = ch, drop = True)
+            where_ds_sel = where_ds.sel(channel = ch, drop = True)
+            lim = (0,15)
+            # lim = (6,9)
+            # lim = (7,8)
+            # center = intercept_sel
+            # width = 0.5
+            # lim = (center-width, center+width)
+            
+            
+            f,aa = plt.subplots(2)
+            f.set_figheight(f.get_figheight() * 1.5)
+            bins = np.linspace(lim[0], lim[1], 30)
+            aa[0].hist(intercept_sel, bins = bins)
+            intercept_sel.plot(marker = '.', ls = '', ax = aa[1])
+            
+            
+            where = ~xr.zeros_like(where_ds_sel.datetime, dtype = bool)
+            for thd in where_ds_sel:
+                where &= where_ds_sel[thd]
+                aa[0].hist(intercept_sel.where(where), bins = bins, label = f'{thd}')
+                intercept_sel.where(where).plot(marker = '.', ls = '', ax = aa[1])
+            
+                
+            a = aa[0]
+            a.set_xlim(*lim)
+            a.legend()
+            a.set_title(f'channel = {ch} nm')
+            
+            a = aa[1]
+            a.set_ylim(*lim)
+            
+            g = a.get_lines()[-1]
+            g.set_color('black')
+            
+            no_month = ((intercept_sel.datetime.max() - intercept_sel.datetime.min()) / pd.to_timedelta(30, 'D'))
+            points_per_month = where.sum()/ no_month # points per month
+            a.text(0.05, 0.85, f'{points_per_month:0.2f}', transform = a.transAxes)
+
+    def plot_gam_results(self):
+        if self._prediction is None:
+            raise ValueError('Make a prediction first. Use makev0prediction4date')
+        for ch in self._prediction:
+            out = ch['gam'].plot_overview()
+            f,aa = out
+            aa[0].set_title(ch['channel'])
         
     
 def fit_langley(langley, robust = True,
@@ -1028,7 +1211,7 @@ class Langley(object):
         langley_results_db: str or pathlib.Path
             Path to database file. If it does not exist, it will be created.
             """
-        database = langley_db.LangleyResultDatabase(
+        database = atmlldb.LangleyResultDatabase(
             langley_results_db,
             create_if_not_exist=True,
             version=version

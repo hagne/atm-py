@@ -223,8 +223,45 @@ class LangleyResultDatabase:
                     conn,
                     params=parameters,
                 )
-        return results#.set_index(['local_day', 'time_of_day', 'channel'])
+        results = results.rename(columns={'local_day': 'datetime'})
+        results['datetime'] = pd.to_datetime(results.datetime)
+        results = results.set_index(['datetime', 'time_of_day', 'channel'])
 
+        ds = results.to_xarray()
+        fitresults = ds[list(langley_fitresult_names)].to_array(
+            'fitresult'
+        ).transpose('datetime', 'time_of_day', 'channel', 'fitresult')
+        coverage_metrics = ds[list(airmass_coverage_metric_names)].to_array(
+            'coverage_metric'
+        ).transpose(
+            'datetime', 'time_of_day', 'channel', 'coverage_metric'
+        )
+        ds = ds.drop_vars(
+            [*langley_fitresult_names, *airmass_coverage_metric_names]
+        )
+        ds['fitresults'] = fitresults
+        ds['coverage_metrics'] = coverage_metrics
+
+        long_names = {
+            'datetime': 'Local day',
+            'fitresult': 'Langley fit result',
+            'coverage_metric': 'Airmass coverage metric',
+            'fitresults': 'Langley regression fit results',
+            'coverage_metrics': 'Airmass coverage metrics',
+            'time_of_day': 'Time of day',
+            'channel': 'Instrument channel',
+            'input_file': 'Input file',
+            'processed_at': 'Processing timestamp',
+            'process_version': 'Processing version',
+            'processing_server': 'Processing server',
+            'residual_correlation_determinant': (
+                'Residual correlation determinant'
+            ),
+        }
+        for name, long_name in long_names.items():
+            ds[name].attrs['long_name'] = long_name
+
+        return ds
     def write_langley(self, date, path2file, langley, processing_date=None,
                       processing_server=None):
         """Insert or update the fit and coverage results from a Langley object."""
