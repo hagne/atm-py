@@ -1,10 +1,15 @@
 import unittest
+from unittest import mock
 
 import numpy as np
 import pandas as pd
 import xarray as xr
 
-from atmPy.radiation.retrievals.langley_calibration import Langley, fit_langley
+from atmPy.radiation.retrievals.langley_calibration import (
+    Langley,
+    Langley_Timeseries,
+    fit_langley,
+)
 
 
 class FitLangleyTest(unittest.TestCase):
@@ -163,6 +168,65 @@ class FitLangleyTest(unittest.TestCase):
         self.assertIn(airmass[5], result['langley'].langleys.index)
         self.assertTrue(result['removed_points'].loc[airmass[10]])
         self.assertFalse(result['removed_points'].loc[airmass[5]])
+
+
+class LangleyTimeseriesTest(unittest.TestCase):
+    def test_prediction_reports_distance_to_surrounding_valid_langleys(self):
+        datetimes = pd.to_datetime(['2026-01-01', '2026-01-11', '2026-01-21'])
+        coords = {
+            'datetime': datetimes,
+            'time_of_day': ['am'],
+            'channel': [500],
+            'fitresult': ['intercept'],
+        }
+        fitresults = xr.DataArray(
+            np.ones((3, 1, 1, 1)),
+            coords=coords,
+            dims=('datetime', 'time_of_day', 'channel', 'fitresult'),
+        )
+        langleys = Langley_Timeseries(xr.Dataset({'fitresults': fitresults}))
+        langleys._threshold_mask = xr.Dataset(
+            {
+                'intercept': (
+                    ('datetime', 'time_of_day', 'channel'),
+                    np.ones((3, 1, 1), dtype=bool),
+                ),
+            },
+            coords={key: value for key, value in coords.items() if key != 'fitresult'},
+        )
+
+        class FakeGam:
+            def __init__(self, data):
+                self.data = data
+
+            @property
+            def prediction(self):
+                return xr.Dataset(
+                    {'prediction': ('datetime_full', np.ones(self.data.shape[0]))},
+                    coords={'datetime_full': self.data.index},
+                )
+
+        class FakeTimeSeries:
+            def __init__(self, data):
+                self.statistics = mock.Mock(gamcl_r=FakeGam(data))
+
+        cases = {
+            '2026-01-15': [4.0, 6.0],
+            '2026-01-11': [0.0, 0.0],
+            '2025-12-25': [np.nan, 7.0],
+            '2026-01-25': [4.0, np.nan],
+        }
+        with mock.patch(
+            'atmPy.radiation.retrievals.langley_calibration.atmts.TimeSeries',
+            FakeTimeSeries,
+        ):
+            for date, expected in cases.items():
+                with self.subTest(date=date):
+                    prediction = langleys.makev0prediction4date(date)[0]['prediction']
+                    distance = prediction.days_to_next_valid_langley
+                    np.testing.assert_allclose(distance, expected, equal_nan=True)
+                    self.assertEqual(distance.direction.to_numpy().tolist(), ['before', 'after'])
+                    self.assertEqual(distance.attrs['units'], 'days')
 
 
 if __name__ == '__main__':

@@ -718,9 +718,22 @@ class Langley_Timeseries(object):
             interc = np.exp(intercept.where(where).sel(channel = ch, drop = True))
             # df = pd.DataFrame(interc).dropna()
             df = interc.drop_vars('quantile', errors='ignore').to_dataframe().dropna()
-            df.loc[pd.to_datetime(date)] = np.nan
+            prediction_date = pd.to_datetime(date)
+            valid_dates = df.index.sort_values()
+            before_index = valid_dates.searchsorted(prediction_date, side='right') - 1
+            after_index = valid_dates.searchsorted(prediction_date, side='left')
+            df.loc[prediction_date] = np.nan
             # df.loc[pd.to_datetime('2029-02-01')] = np.nan
             df = df.sort_index()
+            days_to_next_valid_langley = np.full(2, np.nan)
+            if before_index >= 0:
+                days_to_next_valid_langley[0] = (
+                    prediction_date - valid_dates[before_index]
+                ) / pd.to_timedelta(1, 'day')
+            if after_index < valid_dates.size:
+                days_to_next_valid_langley[1] = (
+                    valid_dates[after_index] - prediction_date
+                ) / pd.to_timedelta(1, 'day')
         
             ts = atmts.TimeSeries(df)
             gam = ts.statistics.gamcl_r
@@ -732,7 +745,23 @@ class Langley_Timeseries(object):
             # gam.ar1 = True
             # gam.newey_west = True
             gamall = gam
-            channel_l.append(dict(channel = ch, gam = gam, prediction = gam.prediction.sel(datetime_full = date, drop = True)))
+            ch_prediction = gam.prediction.sel(datetime_full = date, drop = True)
+            ch_prediction['days_to_next_valid_langley'] = xr.DataArray(
+                days_to_next_valid_langley,
+                coords={'direction': ['before', 'after']},
+                dims=('direction',),
+                attrs={
+                    'long_name': 'Days to nearest valid Langley calibration',
+                    'description': (
+                        'Distance from the prediction date to the nearest valid '
+                        'Langley calibration on or before and on or after it. '
+                        'The value is NaN when the prediction is extrapolated '
+                        'in that direction.'
+                    ),
+                    'units': 'days',
+                },
+            )
+            channel_l.append(dict(channel = ch, gam = gam, prediction = ch_prediction))
         self._prediction = channel_l
         return channel_l
 
