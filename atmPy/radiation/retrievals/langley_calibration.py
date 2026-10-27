@@ -745,7 +745,10 @@ class Langley_Timeseries(object):
             # gam.ar1 = True
             # gam.newey_west = True
             gamall = gam
-            ch_prediction = gam.prediction.sel(datetime_full = date, drop = True)
+
+            ch_prediction = gam.prediction.sel(datetime_full = date, drop = True).isel(
+                datetime_full=0, drop=True, missing_dims='ignore' #this is needed in case date was also a valid langley day, because then there are two timestamps at date
+                )
             ch_prediction['days_to_next_valid_langley'] = xr.DataArray(
                 days_to_next_valid_langley,
                 coords={'direction': ['before', 'after']},
