@@ -60,6 +60,7 @@ timezonefinder = OptionalImport('timezonefinder')
 mpl_toolkits_basemap = OptionalImport('mpl_toolkits.basemap')
 metpy = OptionalImport('metpy')
 pptx = OptionalImport('pptx')
+PIL = OptionalImport('PIL', submodules='Image')
 
 ephem = OptionalImport('ephem')
 

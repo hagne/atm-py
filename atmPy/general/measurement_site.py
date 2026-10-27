@@ -4,11 +4,6 @@ import numpy as _np
 import pandas as _pd
 import xarray as _xr
 from atmPy.radiation import solar as _solar
-try:
-    from PIL import Image as _image
-    _image.MAX_IMAGE_PIXELS = None
-except ModuleNotFoundError:
-    warnings.warn('PIL not installed. This is needed to plot images of arbitrary resolution, e.g. when plotting satellite images.')
 import atmPy.tools.plt_tool_kit as _plt_tools
 
 
@@ -18,6 +13,10 @@ from atmPy.opt_imports import geopy as _geopy
 from atmPy.opt_imports import cartopy
 from atmPy.opt_imports import matplotlib
 from atmPy.opt_imports import pytz as _pytz
+from atmPy.opt_imports import PIL as _PIL
+
+if _PIL.module_available:
+    _PIL.Image.MAX_IMAGE_PIXELS = None
 
 
 class NetworkStations(object):

@@ -739,7 +739,7 @@ class Langley_Timeseries(object):
             gam = ts.statistics.gamcl_r
             gam.robust = True
             # gam.
-            gam.rscript_path = "/Users/htelg/miniconda3/envs/py13/bin/Rscript"
+            # gam.rscript_path = "/Users/htelg/miniconda3/envs/py13/bin/Rscript"
             # gam.ncv = True
             # gam.ncv_window_days = 1
             # gam.ar1 = True
