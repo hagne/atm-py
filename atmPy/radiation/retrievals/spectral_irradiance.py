@@ -525,16 +525,15 @@ class SolarIrradiation(object):
             # this is the case when the V0_simple variable is passed
             assert('V0' in langley_calibration.variables), 'The langley calibration dataset needs to have a V0 variable'
             assert('channel' in langley_calibration.dims), 'The langley calibration dataset needs to have a channel dimension'
-            v0 = langley_calibration.V0
+            calibration = langley_calibration
         elif isinstance(langley_calibration, atmlangcalib.Langley_Timeseries):
             # this is the case when the Langley_Timeseries instance is passed
-            assert(hasattr(langley_calibration, 'V0_simple')), 'The langley calibration needs to have a V0_simple variable'
-            v0 = langley_calibration.V0_simple.V0
+            calibration = langley_calibration.V0_simple
         else:
             raise TypeError(f'langley_calibration needs to be either an xarray.Dataset or an instance of atmPy.radiation.retrievals.langley_calibration.Langley_Timeseries, but it is a {type(langley_calibration)}')
         assert('calibrated_langley' not in self.dataset.attrs), 'it seems like langley calibrations have already been applied.'
 
-
+        v0 = calibration.V0
         v0 = v0 / self.sun_position.sun_earth_distance**2 # this will adjust the v0 values to the current sun earth distance
         toasi = self.toa_spectral_irradiance # this is already adjusted to sun earth distan
         dsnew = self.dataset.copy()
@@ -542,20 +541,45 @@ class SolarIrradiation(object):
         if calibrate_to == 'irradiance':
             gh = gh * toasi # actual irradiance observed 
         dsnew['global_horizontal'] = gh
-        dsnew.global_horizontal.attrs['unit'] = 'W/m^2/nm'
-        
+        dsnew.global_horizontal.attrs['units'] = "W m-2 nm-1"
+        dsnew.global_horizontal.attrs['long_name'] = "Downwelling spectral irradiance"
+        dsnew.global_horizontal.attrs['standard_name'] = "surface_downwelling_spectral_radiative_flux_in_air"
+       
         dh = self.dataset.diffuse_horizontal / v0 
         if calibrate_to == 'irradiance':
             dh = dh * toasi
         dsnew['diffuse_horizontal'] = dh
-        dsnew.diffuse_horizontal.attrs['units'] = 'W/m^2/nm'   
+        dsnew.diffuse_horizontal.attrs['units'] = "W m-2 nm-1"  
+        dsnew.diffuse_horizontal.attrs['long_name'] = "Diffuse downwelling spectral irradiance"  
         
         dn = self.dataset.direct_normal / v0 
         if calibrate_to == 'irradiance':
             dn = dn * toasi
         dsnew['direct_normal'] = dn
-        dsnew.direct_normal.attrs['units'] = 'W/m^2/nm'
-        
+        dsnew.direct_normal.attrs['units'] = "W m-2 nm-1"
+        dsnew.direct_normal.attrs['long_name'] = "Direct normal spectral irradiance"
+
+        if 'V0_uncertainty' in calibration:
+            relative_v0_uncertainty = calibration.V0_uncertainty / calibration.V0
+            dsnew['irradiance_uncertainty'] = relative_v0_uncertainty * 100
+            dsnew.irradiance_uncertainty.attrs['units'] = "%"
+            dsnew.irradiance_uncertainty.attrs['long_name'] = "Spectral irradiance uncertainty"
+            dsnew.irradiance_uncertainty.attrs['confidence_level'] = "95%"
+            dsnew.irradiance_uncertainty.attrs['description'] = (
+                "Relative uncertainty from the Langley V0 calibration at 95% confidence; "
+                "applies to global_horizontal, diffuse_horizontal, and direct_normal."
+            )
+            dsnew['aod_uncertainty'] = relative_v0_uncertainty
+            dsnew.aod_uncertainty.attrs['units'] = "1"
+            dsnew.aod_uncertainty.attrs['long_name'] = "V0-derived absolute AOD uncertainty at air mass factor 1"
+            dsnew.aod_uncertainty.attrs['confidence_level'] = "95%"
+            dsnew.aod_uncertainty.attrs['reference_air_mass_factor'] = 1.0
+            dsnew.aod_uncertainty.attrs['description'] = (
+                "Absolute AOD uncertainty due only to the Langley V0 calibration, reported at AMF 1. "
+                "Calculate the time-dependent absolute AOD uncertainty as aod_uncertainty / airmass, "
+                "where airmass is the provided AMF variable. Other measurement and atmospheric-correction "
+                "uncertainties are not included."
+            )
 
         dsnew.attrs['calibrated_langley'] = 'True'
 
@@ -738,19 +762,21 @@ class SolarIrradiation(object):
     def met_data(self):
         # if isinstance(self._metdata, type(None)):
         if 'pressure' not in self.dataset:
-            try:
-                if isinstance(self.settings_metdata, types.FunctionType):
-                    self._metdata = self.settings_metdata()
-                else:
-                    if self.settings_metdata == 'surfrad':
-                        self._metdata = self._get_surfrad_met_data()
-                    elif self.settings_metdata == 'baseline':
-                        self._metdata = self._get_baseline_met_data()
-                    else:
-                        assert(False), 'moeeeep!'
-            except FileNotFoundError as e:
-                # print('Could not find met data. Make sure to set this value and or that the "settings_metdata" attribute is set correctly! The following error was raised:')
-                raise FileNotFoundError(f'Could not find met data. Make sure the "settings_metdata" attribute is set correctly! The following error was raised: {e}') from e
+            raise ValueError('Met_data is not set. use self.met_data = try_out_what_works')
+
+            # try:
+            #     if isinstance(self.settings_metdata, types.FunctionType):
+            #         self._metdata = self.settings_metdata()
+            #     else:
+            #         if self.settings_metdata == 'surfrad':
+            #             self._metdata = self._get_surfrad_met_data()
+            #         elif self.settings_metdata == 'baseline':
+            #             self._metdata = self._get_baseline_met_data()
+            #         else:
+            #             assert(False), 'moeeeep!'
+            # except FileNotFoundError as e:
+            #     # print('Could not find met data. Make sure to set this value and or that the "settings_metdata" attribute is set correctly! The following error was raised:')
+            #     raise FileNotFoundError(f'Could not find met data. Make sure the "settings_metdata" attribute is set correctly! The following error was raised: {e}') from e
         return self.dataset[['pressure','temperature']]
     
     @met_data.setter
@@ -775,17 +801,28 @@ class SolarIrradiation(object):
         if 'pressure' not in dsmet:
             altcoords = []
             found = [coo for coo in dsmet if coo in altcoords]    
-            assert(len(found) == 1), f'Problem with pressure variable. Expeced one of: {altcoords + ['pressure']}. Available coordinates: {list(dsmet.coords)}'
+            assert(len(found) == 1), f'Problem with pressure variable. Expeced one of: {altcoords + ['pressure']}. Available variables: {[v for v in dsmet]}'
             dsmet = dsmet.rename_vars({found[0]:'pressure'})
         dsmet_clean['pressure'] = dsmet['pressure']
 
         if 'temperature' not in dsmet:
             altcoords = ['air_temperature', 'temp']
             found = [coo for coo in dsmet if coo in altcoords]    
-            assert(len(found) == 1), f'Problem with temperature variable. Expeced one of: {altcoords + ['pressure']}. Available coordinates: {list(dsmet.coords)}'
+            assert(len(found) == 1), f'Problem with temperature variable. Expeced one of: {altcoords + ['temperature']}. Available variables: {[v for v in dsmet]}'
             dsmet = dsmet.rename_vars({found[0]:'temperature'})
         dsmet_clean['temperature'] = dsmet['temperature']
-      
+
+        reqired_units = {
+            'pressure': 'hPa',
+            'temperature': 'DegC'
+        }
+        for v in reqired_units:
+            hasunit = dsmet_clean[v].attrs.get('units','units attrs does not exist')
+            assert(hasunit == reqired_units[v]), f'The {v} variable requires the unit "{reqired_units[v]}" (it currently has "{hasunit}"). Sorry if this is not an SI unit. If you dont like it, change it ... but dont break anything!'
+
+        assert(np.any(np.logical_and(self.dataset.datetime.max() > dsmet_clean.datetime, self.dataset.datetime.min() < dsmet_clean.datetime))), 'The provide met data has no temporal overlab with radiation data, did you provide data for the right day?'
+
+        dsmet_clean = dsmet_clean.assign_coords(datetime=dsmet_clean.datetime.astype(self.dataset.datetime.dtype)) #if the precisions are different the interpolation will fail
         dsmet_clean = dsmet_clean.interp({'datetime':self.dataset.datetime}, method = 'linear')
         self.tp_dsmet_clean = dsmet_clean
         # dst = dsmet[['pressure','temperature']].interp({'datetime':self.dataset.datetime})
@@ -810,7 +847,7 @@ class DirectNormalIrradiation(SolarIrradiation):
     def __init__(self, dataset, 
                  site = None, 
                  langley_fit_settings = None,
-                 calibration_strategy = 'johns',
+                #  calibration_strategy = 'johns',
                 #  metdata = 'surfrad',
                 #  raise_error_if_no_channel_wavelength = True, #this is for the actual wavelength, the calibrated ones not the nominal ones in the channel dimension
                 #  settings_ozone = None
@@ -872,7 +909,7 @@ class DirectNormalIrradiation(SolarIrradiation):
 
         self.langley_fit_settings = langley_fit_settings
         self.settings_langley_airmass_limits = (2.2,4.7) #default values used by john
-        self.settings_calibration = calibration_strategy 
+        # self.settings_calibration = calibration_strategy 
         # self.settings_metdata = metdata
         # self.settings_ozone = settings_ozone
         self.mfrsr_history = '/Users/htelg/projects/AOD_redesign/MFRSR_History.xlsx'
@@ -906,7 +943,8 @@ class DirectNormalIrradiation(SolarIrradiation):
             ds = self.dataset
             ds['direct_normal'] = ds.direct_horizontal / xr.DataArray(np.cos(self.sun_position.zenith))
         return ds['direct_normal']
-    
+
+    # todo: this should not be here
     def _get_baseline_met_data(self):
         site = self.dataset.attrs['site']
         dtf = pd.to_datetime(self.dataset.datetime.values[0])
@@ -1212,6 +1250,8 @@ class DirectNormalIrradiation(SolarIrradiation):
             #     ozone = atmsrf.read_ozon(p2f)
             #     dt = pd.to_datetime(pd.to_datetime(self.dataset.datetime.values[0]).date())
             #     ozone_data = float(ozone.interp(datetime = dt).ozone)
+
+            # todo: this is GRAD specific and should not be in atmPy
             elif value == 'sp02':
                 assert(self.site.abb == 'brw'), 'only works for barrow so far'
 
@@ -1260,7 +1300,16 @@ class DirectNormalIrradiation(SolarIrradiation):
             assert(len(found) == 1), f'Problem with time coordinate. Expeced one of: {time_coord_options + ['datetime']}. Available coordinates: {list(ozone_data.coords)}'
             ozone_data = ozone_data.rename({found[0]:'datetime'})
 
+        
+        
         # interp to match times
+        assert(np.any(np.logical_and(self.dataset.datetime.max() > ozone_data.datetime, self.dataset.datetime.min() < ozone_data.datetime))), 'The provide ozone data has no temporal overlab with radiation data, did you provide data for the right day?'
+
+
+        hasunit = ozone_data.attrs.get('units','units attrs does not exist')
+        assert(hasunit == 'DU'), f'The ozone data requires the unit "DU" (Dobsons units) (it currently has "{hasunit}"). Sorry if the required unit is not an SI unit. If you dont like it, change it ... but dont break anything!'
+
+        ozone_data = ozone_data.assign_coords(datetime=ozone_data.datetime.astype(self.dataset.datetime.dtype)) #if the precisions are different the interpolation will fail
         ozone_data = ozone_data.interp(datetime = self.dataset.datetime)
 
         if ozone_data.sum() == 0:
@@ -1506,7 +1555,7 @@ class DirectNormalIrradiation(SolarIrradiation):
             if len(varlist) > 0:
                 assert(len(varlist) == 1), f'more then one variable found that indicate precipitable water ({varlist}). Try setting self.precipitable_water_varname with the appropriete variable name.'
                 ds_clean = ds[varlist[0]]
-        
+        # todo: This kind of merger is happening now the 3rd time (met_data, ozone_data). In all cases i need to check overalap (if its the right day), precision of the datetime coord, the existence of the variable and the unit. finally the new data becomes a new variable in self.dataset.
         ds_clean = ds_clean.interp({'datetime':self.dataset.datetime}, method = 'linear')
         # self.tp_dsmet_clean = ds_clean
         if 'units' in ds_clean.attrs:
@@ -1574,6 +1623,7 @@ class DirectNormalIrradiation(SolarIrradiation):
                     mfrsr_info = pd.read_excel(self.mfrsr_history, sheet_name='Overview')
                     # print(self.dataset.serial_no)
                     # print(type(self.dataset.serial_no))
+                    hasattr(self.dataset,'serial_no'), "Provide the serial number of the MFRSR through the 'serial_no' attribute of the data. The MFRSR's serial number is requrie to determine the water calibration. Note, this is specific to SURFRAD and should be the actual sn of the MFRSR, not the the head of logger id! todo: this should probably be passed differently"
                     inst_info = mfrsr_info[mfrsr_info.Instrument == int(self.dataset.serial_no)]
                     # print(mfrsr_info.Instrument)
                     assert(len(inst_info) == 1), f'Could not find unique MFRSR instrument info for serial no {self.dataset.serial_no} in MFRSR history file {self.mfrsr_history} (found {len(inst_info)} matches). Make sure the correct serial number is stored in dataset.attrs["serial_no"]'
@@ -1730,8 +1780,11 @@ class DirectNormalIrradiation(SolarIrradiation):
             for ap in angpairs:
                 
                 coords = {'angstrom_exponent_pair':[f'{ap[0]}_{ap[1]}']}
-
-                angt,betat = get_ang(self, ap[0], ap[1])
+                try:
+                    angt,betat = get_ang(self, ap[0], ap[1])
+                except KeyError:
+                    warnings.warn(f'Anstrom exponent for channels {ap} not calculated due to missing channel.')
+                    continue
                 angt = angt.expand_dims(coords)
                 angs.append(angt)
 
@@ -1844,18 +1897,17 @@ class DirectNormalIrradiation(SolarIrradiation):
         if 'transmission' not in self.dataset:
             if self.verbose:
                 print('Calculating transmission.')
-            if self.dataset.attrs.get('calibrated_langley', False) and self.dataset.global_horizontal.attrs.get('unit', 'bla') == 'W/m^2/nm':
-                self._transmission_from_toa_radiation()
-            # elif self.settings_calibration == 'johns':
-            #     self._apply_calibration_johns()
-            elif self.settings_calibration == 'atm_gam':
-                self._apply_calibration_atm_gam()
-            # elif self.settings_calibration == 'sp02':
-            #     self._apply_calibration_sp02()
-            elif self.settings_calibration == 'toa_radiation':
-                self._transmission_from_toa_radiation()
-            else:
-                assert(False), f'Unknown calibration strategy - {self.settings_calibration}'
+            iscal = self.dataset.attrs.get('calibrated_langley', False)
+            hasunit = self.dataset.global_horizontal.attrs.get('units', 'units attribute is missing')
+            # if iscal and (hasunit == 'W m-2 nm-1'):
+               
+            # elif self.settings_calibration == 'atm_gam':
+            #     self._apply_calibration_atm_gam()
+            # elif self.settings_calibration == 'toa_radiation':
+            #     self._transmission_from_toa_radiation()
+            # else:
+            assert(iscal and (hasunit == 'W m-2 nm-1')), f"I don't think the data is calibrated. Calibrate the irradiances while data is an object of CombinedGlobalDiffuseDirect using apply_calibration_langley. After that the dataset will have a calibrated_langley attribute, that is true (currently: {iscal}) and the irradiances have a unit of 'W m-2 nm-1' (currently: {hasunit})"
+            self._transmission_from_toa_radiation()
             if 0:
                 #### Deprecated!!! below is the old sp02 retrieval, remove when sp02 retrieval is adapted
                 #### load calibrations
