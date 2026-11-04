@@ -696,7 +696,7 @@ class Langley_Timeseries(object):
         # dsout = dsout.drop_vars('quantile')
         return dsout
 
-    def makev0prediction4date(self, date):
+    def makev0prediction4date(self, date, verbose = False):
 
         where_ds = self.threshold_mask
         # todo: the below (and a few lines below that) is only when am and pm (time_of_day) are combined, there is probably interested in separating that out at some point?
@@ -714,7 +714,8 @@ class Langley_Timeseries(object):
 
         channel_l = []
         for ch in intercept.channel.values:
-            # break
+            if verbose:
+                print(f'gam analysis of channel:{int(ch)}')
             interc = np.exp(intercept.where(where).sel(channel = ch, drop = True))
             # df = pd.DataFrame(interc).dropna()
             df = interc.drop_vars('quantile', errors='ignore').to_dataframe().dropna()
