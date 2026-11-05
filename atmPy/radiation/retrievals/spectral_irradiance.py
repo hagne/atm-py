@@ -25,6 +25,51 @@ from .. import solar as atmsol
 import typing
 import warnings
 
+
+def merge_by_datetime(
+    dataset: xr.Dataset,
+    data: xr.Dataset,
+    required_units: dict[str, str],
+) -> xr.Dataset:
+    """Interpolate variables onto ``dataset.datetime`` and add them to ``dataset``."""
+    if 'datetime' not in dataset.coords:
+        raise KeyError('Target dataset is missing the datetime coordinate.')
+    if 'datetime' not in data.coords:
+        raise KeyError('Data to merge is missing the datetime coordinate.')
+
+    missing_variables = [variable for variable in required_units if variable not in data]
+    if missing_variables:
+        raise KeyError(f'Data to merge is missing required variables: {missing_variables}')
+
+    for variable, required_unit in required_units.items():
+        if 'datetime' not in data[variable].dims:
+            raise ValueError(f'The {variable} variable requires a datetime dimension.')
+        unit = data[variable].attrs.get('units')
+        if unit != required_unit:
+            raise ValueError(
+                f'The {variable} variable requires the unit "{required_unit}" '
+                f'(it currently has "{unit}").'
+            )
+
+    variables = list(required_units)
+    data = data[variables].assign_coords(
+        datetime=data.datetime.astype(dataset.datetime.dtype)
+    )
+    overlaps = (
+        (data.datetime.min() <= dataset.datetime.max())
+        & (data.datetime.max() >= dataset.datetime.min())
+    )
+    if not bool(overlaps):
+        raise ValueError(
+            'Data to merge has no temporal overlap with the target dataset; '
+            'did you provide data for the right day?'
+        )
+
+    interpolated = data.interp(datetime=dataset.datetime, method='linear')
+    dataset.update(interpolated)
+    return interpolated
+
+
 class RadiationDatabase(object):
     def __init__(self, path2db = '/nfs/grad/surfrad/database/surfraddatabase.db', 
                  # parent = None, 
@@ -437,7 +482,20 @@ class SolarIrradiation(object):
             rad_top = ds_solar.interp(wavelength=self.dataset.channel_wavelength, method='linear')# 
             rad_top = rad_top / self.sun_position.sun_earth_distance**2
             rad_top = rad_top.drop_vars('wavelength')
-            self.dataset['toa_spectral_irradiance'] = rad_top.irradiance
+            toai = rad_top.irradiance
+            toai.attrs.update(
+                {'source': 'ASTM E490-00a zero-air-mass solar spectral irradiance spectrum',
+                'references': (
+                    'ASTM International, ASTM E490-00a, Standard Solar Constant and '
+                    'Zero Air Mass Solar Spectral Irradiance Tables, '
+                    'https://doi.org/10.1520/E0490-00A'
+                ),
+                'comment': (
+                    'Linearly interpolated to the MFRSR channel center wavelengths and '
+                    'adjusted for Earth-Sun distance.'
+                )}
+            )
+            self.dataset['toa_spectral_irradiance'] = toai
         return self.dataset.toa_spectral_irradiance
             
 
@@ -783,52 +841,20 @@ class SolarIrradiation(object):
     def met_data(self, value):
         if isinstance(value, xr.Dataset):
             dsmet = value
-        elif pl.Path(value).is_file():
+        elif isinstance(value, (str, pl.Path)) and pl.Path(value).is_file():
             dsmet = xr.open_dataset(value)
         else:
-            ValueError(f'Expected xr.Dataset, or valid Path (as str or pathlib.Path). Got: {value}')
-        dsmet_clean = xr.Dataset()
-        if 'datetime' not in dsmet.coords:
-            altcoords = ['time',]
-            found = [coo for coo in dsmet.coords if coo in altcoords]    
-            assert(len(found) == 1), f'Problem with time coordinate. Expeced one of: {altcoords + ['datetime']}. Available coordinates: {list(dsmet.coords)}'
-            dsmet = dsmet.rename_dims({found[0]:'datetime'})
-            dsmet = dsmet.rename_vars({found[0]:'datetime'})
+            raise ValueError(f'Expected xr.Dataset, or valid Path (as str or pathlib.Path). Got: {value}')
 
         if fill_value := dsmet.attrs.get('fill_value', False):
             dsmet = dsmet.where(dsmet != fill_value)
 
-        if 'pressure' not in dsmet:
-            altcoords = []
-            found = [coo for coo in dsmet if coo in altcoords]    
-            assert(len(found) == 1), f'Problem with pressure variable. Expeced one of: {altcoords + ['pressure']}. Available variables: {[v for v in dsmet]}'
-            dsmet = dsmet.rename_vars({found[0]:'pressure'})
-        dsmet_clean['pressure'] = dsmet['pressure']
-
-        if 'temperature' not in dsmet:
-            altcoords = ['air_temperature', 'temp']
-            found = [coo for coo in dsmet if coo in altcoords]    
-            assert(len(found) == 1), f'Problem with temperature variable. Expeced one of: {altcoords + ['temperature']}. Available variables: {[v for v in dsmet]}'
-            dsmet = dsmet.rename_vars({found[0]:'temperature'})
-        dsmet_clean['temperature'] = dsmet['temperature']
-
-        reqired_units = {
+        required_units = {
             'pressure': 'hPa',
             'temperature': 'DegC'
         }
-        for v in reqired_units:
-            hasunit = dsmet_clean[v].attrs.get('units','units attrs does not exist')
-            assert(hasunit == reqired_units[v]), f'The {v} variable requires the unit "{reqired_units[v]}" (it currently has "{hasunit}"). Sorry if this is not an SI unit. If you dont like it, change it ... but dont break anything!'
-
-        assert(np.any(np.logical_and(self.dataset.datetime.max() > dsmet_clean.datetime, self.dataset.datetime.min() < dsmet_clean.datetime))), 'The provide met data has no temporal overlab with radiation data, did you provide data for the right day?'
-
-        dsmet_clean = dsmet_clean.assign_coords(datetime=dsmet_clean.datetime.astype(self.dataset.datetime.dtype)) #if the precisions are different the interpolation will fail
-        dsmet_clean = dsmet_clean.interp({'datetime':self.dataset.datetime}, method = 'linear')
+        dsmet_clean = merge_by_datetime(self.dataset, dsmet, required_units)
         self.tp_dsmet_clean = dsmet_clean
-        # dst = dsmet[['pressure','temperature']].interp({'datetime':self.dataset.datetime})
-        # dst = dst.where(dst > -90)
-
-        self.dataset[['pressure','temperature']] = dsmet_clean[['pressure','temperature']]
         return
         
 
@@ -913,7 +939,6 @@ class DirectNormalIrradiation(SolarIrradiation):
         # self.settings_metdata = metdata
         # self.settings_ozone = settings_ozone
         self.mfrsr_history = '/Users/htelg/projects/AOD_redesign/MFRSR_History.xlsx'
-        self.precipitable_water_varname = None
         self.settings_rayleigh = 'firstprinciple' #options: 'john', 'firstprinciple'. "john" might have an errror in it, not sure if the error happend appon translation or his code actually has that error. results in an over estimation of the rayleigh od.
         # self.path2absorption_correction_ceoff_1625 = None #'1625nm_absorption_correction_coefficience.nc'
         self._absorption_correction_coeff_1625 = None
@@ -1208,7 +1233,7 @@ class DirectNormalIrradiation(SolarIrradiation):
         if 'ozon_absoption_by_channel' not in self.dataset:
             ozon2bychannel = self.ozone_absorption_spectrum.interp(wavelength = self.dataset['channel_wavelength'])
             self.tp_ozon2bychannel = ozon2bychannel.copy()
-            ozon2bychannel = ozon2bychannel.drop('wavelength')
+            ozon2bychannel = ozon2bychannel.drop_vars('wavelength')
 
             # 368 and 1050 are outside the ozon spectrum. Values should be very small
             ozon2bychannel = ozon2bychannel.fillna(0)
@@ -1232,16 +1257,19 @@ class DirectNormalIrradiation(SolarIrradiation):
                 - a path to a file (e.g. netcdf or csv)
             if int or float is given it is assumed to be a constant value (in DU) for all times.      
         """
-        if 'ozone_data' not in self.dataset:
+        if 'ozone' not in self.dataset:
             assert(False), 'Set ozone_data'
-        return self.dataset['ozone_data']
+        return self.dataset['ozone']
     
     @ozone_data.setter
     def ozone_data(self, value: typing.Union[xr.Dataset, xr.DataArray, int, float, str, pl.Path]) -> None:
-        if isinstance(value, (xr.Dataset, xr.DataArray)):
+        if isinstance(value, xr.Dataset):
             ozone_data = value
             self.tp_ozon_data1 = ozone_data.copy()
-        elif isinstance(value, str):
+        elif isinstance(value, xr.DataArray):
+            ozone_data = value.to_dataset()
+            self.tp_ozon_data1 = ozone_data.copy()
+        elif isinstance(value, (str, pl.Path)):
             if pl.Path(value).is_file():
                 ozone_data = xr.open_dataset(value)
             # elif value == 'johns':
@@ -1278,44 +1306,29 @@ class DirectNormalIrradiation(SolarIrradiation):
                 ozone = xr.open_mfdataset(p2f_list)
                 ozone = ozone.rename({'time': 'datetime'})
                 
-                ozone_data = ozone.interp(datetime = self.dataset.datetime).TO3
+                ozone_data = ozone.interp(datetime = self.dataset.datetime).TO3.rename('ozone_data').to_dataset()
+            else:
+                raise FileNotFoundError(f'File {value} not found')
 
         elif isinstance(value, (int, float)):
-            ozone_data = xr.DataArray(value, dims=('datetime',), coords={'datetime': self.dataset.datetime})
+            ozone_data = xr.Dataset(
+                data_vars={
+                    'ozone_data': xr.full_like(self.dataset.datetime, value, dtype=float)
+                }
+            )
+            ozone_data.ozone_data.attrs['units'] = 'DU'
 
         else:
             assert(False), 'no idea what to do with this~!!?!?'
 
-        if isinstance(ozone_data, xr.Dataset):
-            varname_options = ['ozone_data', 'ozone']
-            varname_found = [v for v in varname_options if v in ozone_data]
-            assert(len(varname_found) == 1), f'Could not find ozone variable in dataset. Expected one of: {varname_options}. Available variables: {list(value.data_vars)}'
-            ozone_data = ozone_data[varname_found[0]]
-
-        if 'datetime' not in ozone_data.coords:
-            if self.verbose:
-                print('Renaming time coordinate to datetime for ozone data.')
-            time_coord_options = ['time',]
-            found = [coo for coo in ozone_data.coords if coo in time_coord_options]
-            assert(len(found) == 1), f'Problem with time coordinate. Expeced one of: {time_coord_options + ['datetime']}. Available coordinates: {list(ozone_data.coords)}'
-            ozone_data = ozone_data.rename({found[0]:'datetime'})
-
-        
-        
-        # interp to match times
-        assert(np.any(np.logical_and(self.dataset.datetime.max() > ozone_data.datetime, self.dataset.datetime.min() < ozone_data.datetime))), 'The provide ozone data has no temporal overlab with radiation data, did you provide data for the right day?'
-
-
-        hasunit = ozone_data.attrs.get('units','units attrs does not exist')
-        assert(hasunit == 'DU'), f'The ozone data requires the unit "DU" (Dobsons units) (it currently has "{hasunit}"). Sorry if the required unit is not an SI unit. If you dont like it, change it ... but dont break anything!'
-
-        ozone_data = ozone_data.assign_coords(datetime=ozone_data.datetime.astype(self.dataset.datetime.dtype)) #if the precisions are different the interpolation will fail
-        ozone_data = ozone_data.interp(datetime = self.dataset.datetime)
-
-        if ozone_data.sum() == 0:
+        ozone_data = merge_by_datetime(
+            self.dataset,
+            ozone_data,
+            {'ozone': 'DU'},
+        )
+        if ozone_data.ozone.sum() == 0:
             raise ValueError('Ozone data is all none or zero! Try setting it with a constant value.')
-        self.dataset['ozone_data'] = ozone_data
-        self.dataset.ozone_data.attrs = dict(long_name = "Total column ozone",
+        self.dataset.ozone.attrs = dict(long_name = "Total column ozone",
                                              units     = "Dobson Units (DU)",)
         return
 
@@ -1515,21 +1528,26 @@ class DirectNormalIrradiation(SolarIrradiation):
         if isinstance(value, xr.Dataset):
             ds = value
         elif isinstance(value, xr.DataArray):
-            ds = xr.Dataset()
-            ds['precipitable_water'] = value
-        elif isinstance(value, str): 
+            ds = value.to_dataset()
+        elif isinstance(value, (str, pl.Path)):
             if pl.Path(value).is_file():
                 ds = xr.open_dataset(value)
             else:
                 raise FileNotFoundError(f'File {value} not found')
         elif isinstance(value, (int, float)): 
-            ds = xr.Dataset()
-            ds['precipitable_water'] =xr.DataArray(value, dims=('datetime',), coords={'datetime': self.dataset.datetime})
-            # return self.dataset['precipitable_water']
+            ds = xr.Dataset(
+                data_vars={
+                    'precipitable_water': xr.full_like(
+                        self.dataset.datetime,
+                        value,
+                        dtype=float,
+                    )
+                }
+            )
+            ds.precipitable_water.attrs['units'] = 'cm'
         else:
             raise ValueError(f'Expected xr.Dataset, or valid Path (as str or pathlib.Path). Got: {value}')
 
-        # ds_clean = xr.Dataset()
         if 'product' in ds.attrs:
             if ds.attrs["product"] == "mfrsr_pwv_lut":
                 # this is a lookup table to retreive pwv from 940nm channel, we will process this when the getter is called.
@@ -1538,39 +1556,14 @@ class DirectNormalIrradiation(SolarIrradiation):
             else:
                 pass
         
-        if 'datetime' not in ds.coords:
-            altcoords = ['time',]
-            found = [coo for coo in ds.coords if coo in altcoords]    
-            assert(len(found) == 1), f'Problem with time coordinate. Expeced one of: {altcoords + ['datetime']}. Available coordinates: {list(dsmet.coords)}'
-            ds = ds.rename_dims({found[0]:'datetime'})
-            ds = ds.rename_vars({found[0]:'datetime'})
-
         if fill_value := ds.attrs.get('fill_value', False):
             ds = ds.where(ds != fill_value)
 
-        if not isinstance(self.precipitable_water_varname, type(None)):
-            ds_clean = ds[self.precipitable_water_varname]
-        else:
-            varlist = [var for var in ds if 'precipitable' in var]
-            if len(varlist) > 0:
-                assert(len(varlist) == 1), f'more then one variable found that indicate precipitable water ({varlist}). Try setting self.precipitable_water_varname with the appropriete variable name.'
-                ds_clean = ds[varlist[0]]
-        # todo: This kind of merger is happening now the 3rd time (met_data, ozone_data). In all cases i need to check overalap (if its the right day), precision of the datetime coord, the existence of the variable and the unit. finally the new data becomes a new variable in self.dataset.
-        ds_clean = ds_clean.interp({'datetime':self.dataset.datetime}, method = 'linear')
-        # self.tp_dsmet_clean = ds_clean
-        if 'units' in ds_clean.attrs:
-            if ds_clean.attrs['units'] == 'mm':
-                ds_clean = ds_clean / 10 # convert to cm
-            elif ds_clean.attrs['units'] in ['cm', 'centimeter', 'centimeters']:
-                pass
-            else:
-                assert(False), f'precipitable water unit {ds_clean.attrs["units"]} not recognized. Set the precipitable_water_varname attribute to the correct variable name and make sure it is in cm.'
-        else:
-            print('precipitable water variable has no unit attribute. Assuming it is in cm.')
-            
-        ds_clean.attrs['units'] = 'cm'
-        ds_clean.attrs['long_name'] = 'Precipitable water'
-        self.dataset['precipitable_water'] = ds_clean
+        merge_by_datetime(
+            self.dataset,
+            ds,
+            {'precipitable_water': 'cm'},
+        )
         self.dataset.precipitable_water.attrs = dict(long_name = "Precipitable water",
                                                     units     = "cm",
                                                     comment   = "Equivalent liquid water depth; not CF-standard, convertible to 0.1 kg m-2 per mm.")
@@ -1658,7 +1651,7 @@ class DirectNormalIrradiation(SolarIrradiation):
                         da = params.OD.interp({'airmass': self.sun_position.airmass})
                         da = da.assign_coords(airmass = self.sun_position.datetime)
                         # da = da.rename({'airmass': 'datetime'})
-                        da = da.drop(['filter_no', 'molecule', 'batch', 'airmass'])
+                        da = da.drop_vars(['filter_no', 'molecule', 'batch', 'airmass'])
                         ds[molecule] = da
                     
                     # self.tp_params = params_dict
@@ -1705,7 +1698,9 @@ class DirectNormalIrradiation(SolarIrradiation):
 
     @property
     def od_total(self):
-        od = - np.log(self.transmission)/self.sun_position.airmass
+        # todo: 6572494654 handle invalid data more gracefully, same in the angstrom exponent, basically everywhere, where we do log, also, where there could be a log with <=0 and a zero division 
+        with np.errstate(divide="ignore", invalid="ignore"):
+            od = -np.log(self.transmission) / self.sun_position.airmass
         return od
     
     @property
@@ -1752,11 +1747,20 @@ class DirectNormalIrradiation(SolarIrradiation):
     @property
     def angstrom_exponent(self):
         if 'angstrom_exponent' not in self.dataset:
+            aod = self.aod
+            aod = aod.where((aod > 0) & np.isfinite(aod))
+
             def get_ang(self, lambda1, lambda2):
-                tau =  lambda lam:  self.aod.sel(channel = lam)
-                cw =  lambda lam:  self.dataset.channel_wavelength.sel(channel = lam)
-                alpha = - np.log(tau(lambda1) / tau(lambda2)) / np.log(cw(lambda1) / cw(lambda2))
-                beta = tau(lambda1) * (cw(lambda1) * 1e-3)**alpha
+                tau1 = aod.sel(channel = lambda1)
+                tau2 = aod.sel(channel = lambda2)
+                wavelength1 = self.dataset.channel_wavelength.sel(channel = lambda1)
+                wavelength2 = self.dataset.channel_wavelength.sel(channel = lambda2)
+                alpha = -(
+                    np.log(tau1) - np.log(tau2)
+                ) / (
+                    np.log(wavelength1) - np.log(wavelength2)
+                )
+                beta = tau1 * (wavelength1 * 1e-3)**alpha
                 return alpha,beta
             
             def get_ang_uncertainty(self, lambda1, lambda2):
@@ -1802,8 +1806,9 @@ class DirectNormalIrradiation(SolarIrradiation):
                 "units": "1",
                 "ancillary_variables": "aod cloud_flag",
                 "comment": (
-                    "Aerosol Ångström exponent calculated from pairs of retrieved aerosol "
-                    "optical depth channels."
+                    "Aerosol Ångström exponent calculated from aerosol optical depths at two "
+                    "wavelengths: alpha = -ln(tau_a(lambda_1) / tau_a(lambda_2)) / "
+                    "ln(lambda_1 / lambda_2)."
                 ),
             }
             
