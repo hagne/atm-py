@@ -943,7 +943,7 @@ class DirectNormalIrradiation(SolarIrradiation):
         # self.settings_calibration = calibration_strategy 
         # self.settings_metdata = metdata
         # self.settings_ozone = settings_ozone
-        self.mfrsr_history = '/Users/htelg/projects/AOD_redesign/MFRSR_History.xlsx'
+        self.mfrsr_history = files('atmPy') / 'data' / 'MFRSR_History.xlsx'
         self.settings_rayleigh = 'firstprinciple' #options: 'john', 'firstprinciple'. "john" might have an errror in it, not sure if the error happend appon translation or his code actually has that error. results in an over estimation of the rayleigh od.
         # self.path2absorption_correction_ceoff_1625 = None #'1625nm_absorption_correction_coefficience.nc'
         self._absorption_correction_coeff_1625 = None
