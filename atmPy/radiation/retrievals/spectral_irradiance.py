@@ -20,6 +20,7 @@ import sqlite3
 # import matplotlib.pyplot as _plt
 from atmPy.opt_imports import plt as _plt
 import copy
+from importlib.resources import files
 import types
 from .. import solar as atmsol
 import typing
@@ -463,7 +464,11 @@ class SolarIrradiation(object):
         self._sun_position_variables = ['zenith', 'zenith_geometric', 'elevation_geometric', 'elevation', 'azimuth', 'equation_of_time', 'airmass', 'airmass_absolute', 'sun_earth_distance']
         self._sun_position = None
         self._solarspectrum = None
-        self.path2solar_spectrum = '/Users/htelg/fundgrube/reference_data/solar/spectrum/solar_spectral_irradiance_e490_00a_amo.nc'
+        self.path2solar_spectrum = (
+            files('atmPy')
+            / 'data'
+            / 'solar_spectral_irradiance_e490_00a_amo.nc'
+        )
 
         
     @property

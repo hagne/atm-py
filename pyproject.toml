@@ -30,14 +30,17 @@ Repository = "https://github.com/hagne/atm-py"
 # scipy = "*"
 # matplotlib = "*"
 
-[tool.setuptools]
-packages = ["atmPy"]
+[tool.setuptools.packages.find]
+include = ["atmPy*"]
 
 [project.optional-dependencies]
 nasa = ["earthaccess", "harmony-py", "netCDF4"]
 
 #[tool.setuptools]
 #find-packages = { where = "." }
+
+[tool.setuptools.package-data]
+atmPy = ["data/*.nc"]
 
 #[tool.setuptools.scripts]
 # Add your scripts here if any
