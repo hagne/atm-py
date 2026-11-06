@@ -40,7 +40,7 @@ nasa = ["earthaccess", "harmony-py", "netCDF4"]
 #find-packages = { where = "." }
 
 [tool.setuptools.package-data]
-atmPy = ["data/*.nc", "data/*.xlsx"]
+atmPy = ["data/*.coefs", "data/*.nc", "data/*.xlsx"]
 
 #[tool.setuptools.scripts]
 # Add your scripts here if any

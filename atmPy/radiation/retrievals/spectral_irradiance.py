@@ -1210,7 +1210,7 @@ class DirectNormalIrradiation(SolarIrradiation):
 
         if 'ozone_absorption_spectrum' not in self.dataset:
            #try the default folder
-           self.ozone_absorption_spectrum = '/Users/htelg/home/grad/surfrad/aod/ozone.coefs'
+           self.ozone_absorption_spectrum = files('atmPy') / 'data' / 'ozone.coefs'
             # else:
             #     assert(False), 'set ozone_absorption_spectrum!'
         return self.dataset['ozone_absorption_spectrum']
