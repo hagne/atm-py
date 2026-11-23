@@ -134,5 +134,67 @@ class RadFluxClearSkyParameterNamesTest(unittest.TestCase):
         )
 
 
+class RadFluxCloudFractionTest(unittest.TestCase):
+    def setUp(self):
+        datetime = np.arange(
+            np.datetime64("2020-01-01T00:00"),
+            np.datetime64("2020-01-01T00:11"),
+            np.timedelta64(1, "m"),
+        )
+        self.ds = xr.Dataset(
+            {
+                "global_horizontal": ("datetime", np.full(11, 100.0)),
+                "diffuse_horizontal": ("datetime", np.full(11, 60.0)),
+                "clearsky_global_horizontal": (
+                    "datetime",
+                    np.full(11, 100.0),
+                ),
+                "clearsky_diffuse_horizontal": (
+                    "datetime",
+                    np.full(11, 10.0),
+                ),
+                "mask_clear_sky_shortwave": (
+                    "datetime",
+                    np.zeros(11, dtype=bool),
+                ),
+                "mu0": ("datetime", np.full(11, 0.5)),
+            },
+            coords={"datetime": datetime},
+            attrs={"clear_sky_parameters_optimization_status": "True"},
+        )
+
+    def test_empirical_cloud_fraction_is_limited_to_one(self):
+        cloud_fraction = RadFlux(self.ds).cloud_fraction
+
+        np.testing.assert_array_equal(
+            cloud_fraction.shortwave_cloud_fraction,
+            np.ones(11),
+        )
+        np.testing.assert_array_equal(
+            cloud_fraction.shortwave_cloud_fraction_uncorrected,
+            np.ones(11),
+        )
+
+    def test_cloud_fraction_requires_minimum_solar_cosine(self):
+        self.ds["mu0"] = (
+            "datetime",
+            np.array([0.19] * 5 + [0.2] + [0.21] * 5),
+        )
+
+        cloud_fraction = RadFlux(self.ds).cloud_fraction
+        expected = np.array([np.nan] * 5 + [1.0] * 6)
+
+        np.testing.assert_allclose(
+            cloud_fraction.shortwave_cloud_fraction,
+            expected,
+            equal_nan=True,
+        )
+        np.testing.assert_allclose(
+            cloud_fraction.shortwave_cloud_fraction_uncorrected,
+            expected,
+            equal_nan=True,
+        )
+
+
 if __name__ == "__main__":
     unittest.main()

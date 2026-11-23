@@ -1981,6 +1981,9 @@ class RadFlux(CombinedGlobalDiffuseDirect):
         N_sw_rest = 2.255 * D_n**0.9381
         where = N_sw.isnull().compute()
         N_sw[where] = N_sw_rest[where]
+        N_sw = N_sw.clip(max=1)
+        # Original RadFlux retrieval limit: cos(solar zenith angle) >= 0.2.
+        N_sw = N_sw.where(self.mu0 >= 0.2)
 
         ### The two 11-point corrections
         #### Test 1
